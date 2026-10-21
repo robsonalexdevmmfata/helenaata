@@ -1,0 +1,90 @@
+import {
+  Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact,
+  CreditCard, Gauge, Inbox, KeyRound, KanbanSquare, ListChecks, Lock, MessageSquareQuote, Network,
+  Radar, Repeat, Rocket, Scale, Settings2, ShieldCheck, Sparkles, Users, UsersRound, Webhook, Workflow,
+  Wrench, Zap, Cpu, MessageCircle, List,
+  type LucideIcon,
+} from "lucide-react";
+
+export interface NavItem {
+  label: string;
+  to: string;
+  icon: LucideIcon;
+}
+export interface NavGroup {
+  label: string;
+  icon: LucideIcon;
+  items: NavItem[];
+}
+
+export const NAV_TOP: NavItem[] = [
+  { label: "Visão geral", to: "/visao-geral", icon: Gauge },
+  { label: "Operações", to: "/operacoes", icon: Rocket },
+];
+
+export const NAV_GROUPS: NavGroup[] = [
+  { label: "Atendimento", icon: Inbox, items: [
+    { label: "Inbox", to: "/atendimento/inbox", icon: Inbox },
+    { label: "Radar", to: "/atendimento/radar", icon: Radar },
+    { label: "Respostas rápidas", to: "/atendimento/respostas", icon: MessageSquareQuote },
+  ] },
+  { label: "CRM", icon: KanbanSquare, items: [
+    { label: "Pipeline", to: "/crm/pipeline", icon: KanbanSquare },
+    { label: "Contatos", to: "/crm/contatos", icon: Contact },
+    { label: "Empresas", to: "/crm/empresas", icon: Building2 },
+    { label: "Tarefas", to: "/crm/tarefas", icon: ListChecks },
+  ] },
+  { label: "Prospecção", icon: Zap, items: [
+    { label: "Listas", to: "/prospeccao/listas", icon: List },
+    { label: "Campanhas", to: "/prospeccao/campanhas", icon: Zap },
+    { label: "Cadências", to: "/prospeccao/cadencias", icon: Repeat },
+  ] },
+  { label: "IA", icon: Sparkles, items: [
+    { label: "Helena", to: "/ia/helena", icon: Sparkles },
+    { label: "Times", to: "/ia/times", icon: Network },
+    { label: "Agentes", to: "/ia/agentes", icon: Bot },
+    { label: "Conhecimento", to: "/ia/conhecimento", icon: BookOpen },
+    { label: "Memória", to: "/ia/memoria", icon: Brain },
+    { label: "Skills", to: "/ia/skills", icon: Wrench },
+    { label: "Execuções", to: "/ia/execucoes", icon: Activity },
+    { label: "Custos", to: "/ia/custos", icon: CircleDollarSign },
+  ] },
+];
+
+export const NAV_MIDDLE: NavItem[] = [{ label: "Automações", to: "/automacoes", icon: Workflow }];
+
+export const NAV_GROUPS_2: NavGroup[] = [
+  { label: "Integrações", icon: Cable, items: [
+    { label: "WhatsApp", to: "/integracoes/whatsapp", icon: MessageCircle },
+    { label: "Webhooks", to: "/integracoes/webhooks", icon: Webhook },
+    { label: "API", to: "/integracoes/api", icon: KeyRound },
+    { label: "Provedores", to: "/integracoes/provedores", icon: Cpu },
+  ] },
+];
+
+export const NAV_BOTTOM: NavItem[] = [
+  { label: "Analytics", to: "/analytics", icon: BarChart3 },
+  { label: "Equipe", to: "/equipe", icon: UsersRound },
+];
+
+export const NAV_SETTINGS: NavGroup = {
+  label: "Configurações", icon: Settings2, items: [
+    { label: "Organização", to: "/configuracoes/organizacao", icon: Building2 },
+    { label: "Usuários", to: "/configuracoes/usuarios", icon: Users },
+    { label: "Permissões", to: "/configuracoes/permissoes", icon: ShieldCheck },
+    { label: "Segurança", to: "/configuracoes/seguranca", icon: Lock },
+    { label: "LGPD", to: "/configuracoes/lgpd", icon: Scale },
+    { label: "Billing", to: "/configuracoes/billing", icon: CreditCard },
+  ],
+};
+
+export const ALL_NAV: NavItem[] = [
+  ...NAV_TOP,
+  ...NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, label: `${g.label} · ${i.label}` }))),
+  ...NAV_MIDDLE,
+  ...NAV_GROUPS_2.flatMap((g) => g.items.map((i) => ({ ...i, label: `${g.label} · ${i.label}` }))),
+  ...NAV_BOTTOM,
+  ...NAV_SETTINGS.items.map((i) => ({ ...i, label: `Configurações · ${i.label}` })),
+];
+
+export const CalendarIcon = CalendarClock;
