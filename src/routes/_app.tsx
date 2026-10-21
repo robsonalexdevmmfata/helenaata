@@ -32,12 +32,13 @@ export const Route = createFileRoute("/_app")({
 
 function NavLinks({ items }: { items: NavItem[] }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const router = useRouter();
   return (
     <SidebarMenu>
       {items.map((i) => (
         <SidebarMenuItem key={i.to as string}>
           <SidebarMenuButton asChild isActive={path.startsWith(i.to as string)} tooltip={i.label}>
-            <a href={i.to as string} onClick={(e) => { e.preventDefault(); window.history.pushState({}, "", i.to as string); window.dispatchEvent(new PopStateEvent("popstate")); }}>
+            <a href={i.to as string} onClick={(e) => { e.preventDefault(); router.history.push(i.to as string); }}>
               <i.icon /> <span>{i.label}</span>
             </a>
           </SidebarMenuButton>
