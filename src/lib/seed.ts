@@ -1,6 +1,6 @@
 import type {
-  Activity, Agent, AiUsage, Approval, Campaign, Company, Contact, Conversation, DB, Deal,
-  Execution, KnowledgeDoc, Memory, Operation, Task, Team, User,
+  AbExperiment, Activity, Agent, AiUsage, Approval, Campaign, Company, Contact, Conversation, DB, Deal,
+  Execution, KnowledgeDoc, Memory, Mission, MissionEvent, MissionTask, Operation, Task, Team, User,
 } from "./types";
 import { DEFAULT_ROLE_PERMISSIONS, TOOL_REGISTRY } from "./helena/registry";
 
@@ -394,7 +394,7 @@ export function createSeed(now = new Date()): DB {
 
   return {
     version: 1,
-    organization: { id: ORG, name: "Nova Rota Digital", slug: "nova-rota", industry: "Agência de marketing e sites", timezone: "America/Sao_Paulo", document: "12.345.678/0001-90", plan: "Scale", createdAt: days(180) },
+    organization: { id: ORG, name: "Info Tech Ltda", slug: "info-tech", industry: "Agência de Marketing & Tecnologia B2B", timezone: "America/Sao_Paulo", document: "12.345.678/0001-90", plan: "Scale", createdAt: days(180) },
     currentUserId: "u1",
     users,
     invites: [

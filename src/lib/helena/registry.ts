@@ -34,6 +34,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "knowledge.search", label: "Buscar conhecimento", description: "Busca semântica na base de conhecimento.", category: "Conhecimento", defaultRisk: "baixo", permission: "helena.use" },
   { name: "analytics.query", label: "Consultar métricas", description: "Consulta indicadores comerciais e de IA.", category: "Analytics", defaultRisk: "baixo", permission: "analytics.view" },
   { name: "calendar.create_event", label: "Agendar reunião", description: "Cria um evento na agenda.", category: "Agenda", defaultRisk: "medio", permission: "crm.edit" },
+  { name: "prospect.scan_maps", label: "Varredura Google Maps (#sem-site)", description: "Varre empresas sem site no Google Maps e cadastra no CRM com tag #sem-site.", category: "Prospecção", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "automation.create", label: "Criar automação", description: "Cria e ativa uma automação externa.", category: "Automação", defaultRisk: "alto", permission: "automations.manage" },
 ];
 

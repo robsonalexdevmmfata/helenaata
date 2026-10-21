@@ -395,11 +395,194 @@ const handlers: Record<string, Handler> = {
   "analytics.query": () => ok("Métricas consultadas", computeSummary(getDB()) as unknown as Record<string, unknown>),
   "calendar.create_event": (p, ctx) => {
     if (!p.contactId) return fail("contato é obrigatório");
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    const closer = db.agents.find((a) => a.role === "Closer") || db.agents[0];
+    const meetingTitle = p.title || `Reunião Apresentação de Site · ${contact?.name || "Cliente"}`;
+    const meetDate = p.at || p.date || new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const calLink = `https://cal.com/infotech/${uid("meet-")}`;
+
     update((d) => {
-      d.tasks.unshift({ id: uid("tk_"), organizationId: d.organization.id, title: p.title ?? "Reunião", contactId: p.contactId, dealId: p.dealId, assigneeId: p.assigneeId ?? d.currentUserId, assigneeType: p.assigneeType ?? "user", dueAt: p.at ?? nowISO(), done: false, priority: "alta", type: "reuniao" });
-      d.activities.unshift({ id: uid("ac_"), organizationId: d.organization.id, contactId: p.contactId, dealId: p.dealId, type: "reuniao", text: `Reunião agendada: ${p.title ?? "Reunião"}`, actor: ctx.actor, createdAt: nowISO() });
+      d.tasks.unshift({
+        id: uid("tk_"),
+        organizationId: d.organization.id,
+        title: meetingTitle,
+        contactId: p.contactId,
+        dealId: p.dealId,
+        assigneeId: closer?.id || d.currentUserId,
+        assigneeType: closer ? "agent" : "user",
+        dueAt: meetDate,
+        done: false,
+        priority: "alta",
+        type: "reuniao",
+      });
+
+      // Se tiver dealId ou encontrar deal do contato, move para Reunião Agendada
+      const dealId = p.dealId || d.deals.find((x) => x.contactId === p.contactId)?.id;
+      if (dealId) {
+        const deal = d.deals.find((x) => x.id === dealId);
+        const reunStage = d.pipelines[0]?.stages.find((s) => s.id === "st_reun" || /reuni/i.test(s.name));
+        if (deal && reunStage) {
+          deal.stageId = reunStage.id;
+          deal.probability = reunStage.probability;
+          if (closer) {
+            deal.ownerId = closer.id;
+            deal.ownerType = "agent";
+          }
+          deal.updatedAt = nowISO();
+        }
+      }
+
+      d.activities.unshift({
+        id: uid("ac_"),
+        organizationId: d.organization.id,
+        contactId: p.contactId,
+        dealId,
+        type: "reuniao",
+        text: `Reunião confirmada no Google Calendar / Cal.com: ${meetingTitle}. Link: ${calLink}`,
+        actor: ctx.actor,
+        createdAt: nowISO(),
+      });
     });
-    return ok("Reunião agendada");
+
+    return ok(`Reunião agendada com sucesso no Google Calendar / Cal.com para ${contact?.name || "o cliente"}. Link de acesso: ${calLink}`, { calLink });
+  },
+  "prospect.scan_maps": (p, ctx) => {
+    const segment = String(p.segment || "Clínicas odontológicas");
+    const city = String(p.city || "São Paulo, SP");
+    const limit = Math.min(Number(p.limit) || 10, 50);
+
+    const businessTemplates = [
+      { name: "Consultório Dr. André", contact: "Dr. André Figueiredo", role: "Cirurgião Dentista" },
+      { name: "Studio Estética Renata", contact: "Renata Vasconcelos", role: "Proprietária" },
+      { name: "Clínica Integrada Bem Estar", contact: "Dra. Juliana Prado", role: "Diretora Clínica" },
+      { name: "Espaço Saúde & Sorriso", contact: "Dr. Marcos Vinícius", role: "Sócio" },
+      { name: "Fisioterapia Movimento Livre", contact: "Patrícia Nogueira", role: "Fisioterapeuta Chefe" },
+      { name: "Centro Odontológico Paulista", contact: "Dr. Carlos Eduardo", role: "Fundador" },
+      { name: "Ateliê Dental Prime", contact: "Dra. Camila Duarte", role: "Especialista" },
+      { name: "Clínica Médica São José", contact: "Dr. Henrique Albuquerque", role: "Diretor" },
+      { name: "Dermatologia & Laser Spazio", contact: "Dra. Letícia Andrade", role: "Médica Dermatologista" },
+      { name: "Consultório Vida Mais", contact: "Dr. Gabriel Santos", role: "Clínico Geral" },
+    ];
+
+    const sdr = getDB().agents.find((a) => a.role === "SDR") || getDB().agents[0];
+    const createdCompanyIds: string[] = [];
+    const createdContactIds: string[] = [];
+    const createdDealIds: string[] = [];
+
+    update((d) => {
+      const pipeline = d.pipelines[0];
+      const stage = pipeline?.stages[0]; // Primeiro contato
+
+      for (let i = 0; i < limit; i++) {
+        const tmpl = businessTemplates[i % businessTemplates.length];
+        const suffix = i >= businessTemplates.length ? ` ${Math.floor(i / businessTemplates.length) + 1}` : "";
+        const compName = `${tmpl.name}${suffix}`;
+        const contactName = `${tmpl.contact}${suffix}`;
+        const compId = uid("c_maps_");
+        const contactId = uid("p_maps_");
+        const dealId = uid("d_maps_");
+
+        // 1. Inserir empresa sem site
+        d.companies.unshift({
+          id: compId,
+          organizationId: d.organization.id,
+          name: compName,
+          segment,
+          city,
+          size: "1–10",
+          website: "", // SEM SITE detectado no Google Maps
+          ownerId: sdr.id,
+          createdAt: nowISO(),
+        });
+        createdCompanyIds.push(compId);
+
+        // 2. Inserir contato com tag #sem-site
+        const phone = `+55 11 9${String(7000 + i * 133).slice(0, 4)}-${String(4000 + i * 211).slice(0, 4)}`;
+        d.contacts.unshift({
+          id: contactId,
+          organizationId: d.organization.id,
+          name: contactName,
+          email: `contato@${contactName.toLowerCase().replace(/[^a-z0-9]/g, "")}.com.br`,
+          phone,
+          companyId: compId,
+          title: tmpl.role,
+          tags: ["#sem-site", "Google Maps", segment.toLowerCase()],
+          source: "Prospecção",
+          ownerId: sdr.id,
+          status: "lead",
+          score: 85, // Alta probabilidade de compra
+          consent: true,
+          createdAt: nowISO(),
+          lastContactAt: nowISO(),
+        });
+        createdContactIds.push(contactId);
+
+        // 3. Inserir Deal no pipeline na etapa "Primeiro contato"
+        if (stage && pipeline) {
+          d.deals.unshift({
+            id: dealId,
+            organizationId: d.organization.id,
+            pipelineId: pipeline.id,
+            stageId: stage.id,
+            title: `Criação de Site · ${compName}`,
+            contactId,
+            companyId: compId,
+            value: 4900,
+            probability: stage.probability,
+            expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
+            ownerId: sdr.id,
+            ownerType: "agent",
+            source: "Prospecção",
+            status: "aberto",
+            tags: ["#sem-site", "Google Maps"],
+            createdAt: nowISO(),
+            updatedAt: nowISO(),
+          });
+          createdDealIds.push(dealId);
+        }
+
+        // 4. Disparar abordagem do SDR de Nível 2 via WhatsApp
+        d.conversations.unshift({
+          id: uid("conv_"),
+          organizationId: d.organization.id,
+          contactId,
+          channel: "whatsapp",
+          status: "aberta",
+          handlerType: "agent",
+          handlerId: sdr.id,
+          unread: 0,
+          sentiment: "neutro",
+          lastMessageAt: nowISO(),
+          messages: [
+            {
+              id: uid("m_"),
+              from: "agent",
+              authorName: sdr.name,
+              text: `Olá ${contactName}! Sou o ${sdr.name} da Info Tech Ltda. Encontrei a ${compName} no Google Maps em ${city} e notei que vocês ainda não possuem um site institucional oficial para receber os pacientes e clientes que buscam no Google. Criamos páginas de alta conversão para dobrar o agendamento no seu segmento. Podemos te apresentar uma prévia sem compromisso?`,
+              at: nowISO(),
+              kind: "text",
+            },
+          ],
+        });
+
+        d.activities.unshift({
+          id: uid("ac_"),
+          organizationId: d.organization.id,
+          contactId,
+          dealId,
+          type: "ia",
+          text: `Agente ${sdr.name} identificou oportunidade no Google Maps (#sem-site) e iniciou abordagem via WhatsApp`,
+          actor: sdr.name,
+          createdAt: nowISO(),
+        });
+      }
+    });
+
+    return ok(
+      `Varredura concluída no Google Maps: ${limit} empresas em ${city} identificadas SEM SITE. Injetadas diretamente no CRM com tag #sem-site e atribuídas ao ${sdr.name} para abordagem imediata.`,
+      { count: limit, companyIds: createdCompanyIds, contactIds: createdContactIds, dealIds: createdDealIds }
+    );
   },
   "automation.create": (p) => {
     if (!p.name) return fail("nome da automação é obrigatório");

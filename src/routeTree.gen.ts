@@ -13,6 +13,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
+import { Route as AppConfiguracoesOrganizacaoRouteImport } from './routes/_app/configuracoes/organizacao'
+import { Route as AppConfiguracoesPermissoesRouteImport } from './routes/_app/configuracoes/permissoes'
+import { Route as AppConfiguracoesUsuariosRouteImport } from './routes/_app/configuracoes/usuarios'
+import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
+import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
+import { Route as AppCrmPipelineRouteImport } from './routes/_app/crm/pipeline'
+import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
+import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospeccao/buscar'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -33,16 +41,75 @@ const AppVisaoGeralRoute = AppVisaoGeralRouteImport.update({
   path: '/visao-geral',
   getParentRoute: () => AppRoute,
 } as any)
+const AppConfiguracoesOrganizacaoRoute =
+  AppConfiguracoesOrganizacaoRouteImport.update({
+    id: '/configuracoes/organizacao',
+    path: '/configuracoes/organizacao',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppConfiguracoesPermissoesRoute =
+  AppConfiguracoesPermissoesRouteImport.update({
+    id: '/configuracoes/permissoes',
+    path: '/configuracoes/permissoes',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppConfiguracoesUsuariosRoute =
+  AppConfiguracoesUsuariosRouteImport.update({
+    id: '/configuracoes/usuarios',
+    path: '/configuracoes/usuarios',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppCrmContatosRoute = AppCrmContatosRouteImport.update({
+  id: '/crm/contatos',
+  path: '/crm/contatos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCrmEmpresasRoute = AppCrmEmpresasRouteImport.update({
+  id: '/crm/empresas',
+  path: '/crm/empresas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCrmPipelineRoute = AppCrmPipelineRouteImport.update({
+  id: '/crm/pipeline',
+  path: '/crm/pipeline',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCrmTarefasRoute = AppCrmTarefasRouteImport.update({
+  id: '/crm/tarefas',
+  path: '/crm/tarefas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoBuscarRoute = AppProspeccaoBuscarRouteImport.update({
+  id: '/prospeccao/buscar',
+  path: '/prospeccao/buscar',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
+  '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
+  '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
+  '/crm/contatos': typeof AppCrmContatosRoute
+  '/crm/empresas': typeof AppCrmEmpresasRoute
+  '/crm/pipeline': typeof AppCrmPipelineRoute
+  '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
+  '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
+  '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
+  '/crm/contatos': typeof AppCrmContatosRoute
+  '/crm/empresas': typeof AppCrmEmpresasRoute
+  '/crm/pipeline': typeof AppCrmPipelineRoute
+  '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -50,13 +117,56 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/visao-geral': typeof AppVisaoGeralRoute
+  '/_app/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
+  '/_app/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
+  '/_app/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
+  '/_app/crm/contatos': typeof AppCrmContatosRoute
+  '/_app/crm/empresas': typeof AppCrmEmpresasRoute
+  '/_app/crm/pipeline': typeof AppCrmPipelineRoute
+  '/_app/crm/tarefas': typeof AppCrmTarefasRoute
+  '/_app/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/visao-geral'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/visao-geral'
+    | '/configuracoes/organizacao'
+    | '/configuracoes/permissoes'
+    | '/configuracoes/usuarios'
+    | '/crm/contatos'
+    | '/crm/empresas'
+    | '/crm/pipeline'
+    | '/crm/tarefas'
+    | '/prospeccao/buscar'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/visao-geral'
-  id: '__root__' | '/' | '/_app' | '/login' | '/_app/visao-geral'
+  to:
+    | '/'
+    | '/login'
+    | '/visao-geral'
+    | '/configuracoes/organizacao'
+    | '/configuracoes/permissoes'
+    | '/configuracoes/usuarios'
+    | '/crm/contatos'
+    | '/crm/empresas'
+    | '/crm/pipeline'
+    | '/crm/tarefas'
+    | '/prospeccao/buscar'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/login'
+    | '/_app/visao-geral'
+    | '/_app/configuracoes/organizacao'
+    | '/_app/configuracoes/permissoes'
+    | '/_app/configuracoes/usuarios'
+    | '/_app/crm/contatos'
+    | '/_app/crm/empresas'
+    | '/_app/crm/pipeline'
+    | '/_app/crm/tarefas'
+    | '/_app/prospeccao/buscar'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -95,15 +205,87 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVisaoGeralRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/configuracoes/organizacao': {
+      id: '/_app/configuracoes/organizacao'
+      path: '/configuracoes/organizacao'
+      fullPath: '/configuracoes/organizacao'
+      preLoaderRoute: typeof AppConfiguracoesOrganizacaoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracoes/permissoes': {
+      id: '/_app/configuracoes/permissoes'
+      path: '/configuracoes/permissoes'
+      fullPath: '/configuracoes/permissoes'
+      preLoaderRoute: typeof AppConfiguracoesPermissoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracoes/usuarios': {
+      id: '/_app/configuracoes/usuarios'
+      path: '/configuracoes/usuarios'
+      fullPath: '/configuracoes/usuarios'
+      preLoaderRoute: typeof AppConfiguracoesUsuariosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crm/contatos': {
+      id: '/_app/crm/contatos'
+      path: '/crm/contatos'
+      fullPath: '/crm/contatos'
+      preLoaderRoute: typeof AppCrmContatosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crm/empresas': {
+      id: '/_app/crm/empresas'
+      path: '/crm/empresas'
+      fullPath: '/crm/empresas'
+      preLoaderRoute: typeof AppCrmEmpresasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crm/pipeline': {
+      id: '/_app/crm/pipeline'
+      path: '/crm/pipeline'
+      fullPath: '/crm/pipeline'
+      preLoaderRoute: typeof AppCrmPipelineRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crm/tarefas': {
+      id: '/_app/crm/tarefas'
+      path: '/crm/tarefas'
+      fullPath: '/crm/tarefas'
+      preLoaderRoute: typeof AppCrmTarefasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/buscar': {
+      id: '/_app/prospeccao/buscar'
+      path: '/prospeccao/buscar'
+      fullPath: '/prospeccao/buscar'
+      preLoaderRoute: typeof AppProspeccaoBuscarRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
+  AppConfiguracoesOrganizacaoRoute: typeof AppConfiguracoesOrganizacaoRoute
+  AppConfiguracoesPermissoesRoute: typeof AppConfiguracoesPermissoesRoute
+  AppConfiguracoesUsuariosRoute: typeof AppConfiguracoesUsuariosRoute
+  AppCrmContatosRoute: typeof AppCrmContatosRoute
+  AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
+  AppCrmPipelineRoute: typeof AppCrmPipelineRoute
+  AppCrmTarefasRoute: typeof AppCrmTarefasRoute
+  AppProspeccaoBuscarRoute: typeof AppProspeccaoBuscarRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppVisaoGeralRoute: AppVisaoGeralRoute,
+  AppConfiguracoesOrganizacaoRoute: AppConfiguracoesOrganizacaoRoute,
+  AppConfiguracoesPermissoesRoute: AppConfiguracoesPermissoesRoute,
+  AppConfiguracoesUsuariosRoute: AppConfiguracoesUsuariosRoute,
+  AppCrmContatosRoute: AppCrmContatosRoute,
+  AppCrmEmpresasRoute: AppCrmEmpresasRoute,
+  AppCrmPipelineRoute: AppCrmPipelineRoute,
+  AppCrmTarefasRoute: AppCrmTarefasRoute,
+  AppProspeccaoBuscarRoute: AppProspeccaoBuscarRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

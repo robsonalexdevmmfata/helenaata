@@ -35,6 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Tarefas", to: "/crm/tarefas", icon: ListChecks },
   ] },
   { label: "Prospecção", icon: Zap, items: [
+    { label: "Caçar Leads", to: "/prospeccao/buscar", icon: Radar },
     { label: "Listas", to: "/prospeccao/listas", icon: List },
     { label: "Campanhas", to: "/prospeccao/campanhas", icon: Zap },
     { label: "Cadências", to: "/prospeccao/cadencias", icon: Repeat },

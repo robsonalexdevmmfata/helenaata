@@ -185,6 +185,7 @@ export interface QuickReply {
 }
 
 export type AgentStatus = "trabalhando" | "aguardando" | "pausado" | "erro";
+export type AgentHealth = "healthy" | "idle" | "busy" | "degraded" | "blocked" | "offline";
 
 export interface Agent {
   id: ID;
@@ -206,6 +207,9 @@ export interface Agent {
   budget: number;
   spent: number;
   status: AgentStatus;
+  health?: AgentHealth;
+  isTemporary?: boolean;
+  temporaryExpiresAt?: string;
   permissions: string[];
   color: ColorToken;
   currentTask?: string;
@@ -264,6 +268,91 @@ export interface Operation {
   createdAt: string;
   result?: string;
 }
+
+export type MissionStatus =
+  | "draft"
+  | "awaiting_approval"
+  | "running"
+  | "paused"
+  | "blocked"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface MissionFunnel {
+  prospects: number;
+  contacted: number;
+  replied: number;
+  qualified: number;
+  meetings: number;
+  won: number;
+}
+
+export interface Mission {
+  id: ID;
+  organizationId: ID;
+  code: string;
+  title: string;
+  objective: string;
+  status: MissionStatus;
+  priority: "baixa" | "media" | "alta" | "urgente";
+  targetMetric: string;
+  targetValue: number;
+  currentValue: number;
+  deadline: string;
+  budget: number;
+  spent: number;
+  strategy: string;
+  supervisorId: ID;
+  agentIds: ID[];
+  funnel: MissionFunnel;
+  createdBy: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export type MissionTaskStatus = "pending" | "ready" | "running" | "completed" | "failed" | "skipped";
+
+export interface MissionTask {
+  id: ID;
+  missionId: ID;
+  title: string;
+  description: string;
+  agentId: ID;
+  status: MissionTaskStatus;
+  dependsOn: ID[];
+  input?: Record<string, any>;
+  output?: Record<string, any>;
+  retryCount: number;
+  maxRetries: number;
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+}
+
+export interface MissionEvent {
+  id: ID;
+  missionId: ID;
+  at: string;
+  actor: string;
+  kind: "info" | "success" | "warning" | "error" | "decision";
+  text: string;
+}
+
+export interface AbExperiment {
+  id: ID;
+  organizationId: ID;
+  title: string;
+  status: "running" | "completed" | "paused";
+  variantA: { label: string; text: string; sent: number; replies: number; conversions: number };
+  variantB: { label: string; text: string; sent: number; replies: number; conversions: number };
+  winner?: "A" | "B";
+  recommendation?: string;
+  createdAt: string;
+}
+
+export type AutonomyLevel = 1 | 2 | 3 | 4;
 
 export interface Approval {
   id: ID;
@@ -466,6 +555,32 @@ export type HelenaCard =
   | { type: "approval"; approvalId: ID }
   | { type: "operation"; operationId: ID }
   | {
+      type: "mission_plan";
+      missionId: ID;
+      code: string;
+      title: string;
+      strategy: string;
+      targets: { label: string; value: string }[];
+      tasks: { id: string; label: string; agent: string; status: string }[];
+      approvalId?: ID;
+    }
+  | { type: "war_room"; missionId: ID }
+  | {
+      type: "decision";
+      decisionId: string;
+      title: string;
+      reason: string;
+      recommendation: string;
+      options: { label: string; action: string }[];
+    }
+  | {
+      type: "briefing";
+      title: string;
+      summary: string;
+      stats: { label: string; value: string }[];
+      pendingDecisions: number;
+    }
+  | {
       type: "agent_proposal";
       proposal: Pick<Agent, "name" | "role" | "objective" | "tools" | "channels" | "model"> & {
         supervisorId?: ID;
@@ -539,6 +654,12 @@ export interface DB {
   agents: Agent[];
   teams: Team[];
   operations: Operation[];
+  missions: Mission[];
+  missionTasks: MissionTask[];
+  missionEvents: MissionEvent[];
+  abExperiments: AbExperiment[];
+  autonomyLevel: AutonomyLevel;
+  killSwitchActive: boolean;
   approvals: Approval[];
   executions: Execution[];
   memories: Memory[];
