@@ -1,0 +1,565 @@
+// Domain types. Mirrors database/schema.sql so the mock layer can be swapped
+// for a real PostgreSQL-backed API later. Every business record carries organizationId.
+
+export type ID = string;
+export type Role = "owner" | "admin" | "manager" | "agent" | "viewer";
+export type ColorToken = "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5";
+export type Channel = "whatsapp" | "instagram" | "messenger" | "email" | "webchat";
+export type LeadSource =
+  | "Facebook Ads"
+  | "Google Ads"
+  | "Indicação"
+  | "Site"
+  | "Prospecção"
+  | "Instagram"
+  | "Evento";
+export type RiskLevel = "baixo" | "medio" | "alto";
+export type OwnerType = "user" | "agent";
+
+export interface Organization {
+  id: ID;
+  name: string;
+  slug: string;
+  industry: string;
+  timezone: string;
+  document: string;
+  plan: string;
+  createdAt: string;
+}
+
+export interface User {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  email: string;
+  username: string;
+  role: Role;
+  title: string;
+  color: ColorToken;
+  status: "ativo" | "convidado" | "inativo";
+  workHours: string;
+  goal: number;
+  achieved: number;
+  lastSeen: string;
+}
+
+export interface Invite {
+  id: ID;
+  organizationId: ID;
+  email: string;
+  role: Role;
+  sentAt: string;
+}
+
+export interface Company {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  segment: string;
+  city: string;
+  size: string;
+  website: string;
+  ownerId: ID;
+  createdAt: string;
+}
+
+export interface Contact {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  email: string;
+  phone: string;
+  companyId?: ID;
+  title: string;
+  tags: string[];
+  source: LeadSource;
+  ownerId: ID;
+  status: "lead" | "cliente" | "inativo";
+  score: number;
+  consent: boolean;
+  createdAt: string;
+  lastContactAt: string;
+}
+
+export interface Stage {
+  id: ID;
+  name: string;
+  probability: number;
+  color: ColorToken;
+}
+
+export interface Pipeline {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  stages: Stage[];
+}
+
+export interface Deal {
+  id: ID;
+  organizationId: ID;
+  pipelineId: ID;
+  stageId: ID;
+  title: string;
+  contactId: ID;
+  companyId?: ID;
+  value: number;
+  probability: number;
+  expectedClose: string;
+  ownerId: ID;
+  ownerType: OwnerType;
+  source: LeadSource;
+  status: "aberto" | "ganho" | "perdido";
+  lossReason?: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ActivityType =
+  | "nota"
+  | "ligacao"
+  | "email"
+  | "whatsapp"
+  | "reuniao"
+  | "etapa"
+  | "tarefa"
+  | "handoff"
+  | "ia";
+
+export interface Activity {
+  id: ID;
+  organizationId: ID;
+  contactId: ID;
+  dealId?: ID;
+  type: ActivityType;
+  text: string;
+  actor: string;
+  createdAt: string;
+}
+
+export interface Task {
+  id: ID;
+  organizationId: ID;
+  title: string;
+  contactId?: ID;
+  dealId?: ID;
+  assigneeId: ID;
+  assigneeType: OwnerType;
+  dueAt: string;
+  done: boolean;
+  priority: "baixa" | "media" | "alta";
+  type: "follow-up" | "ligacao" | "reuniao" | "proposta" | "outro";
+}
+
+export interface Message {
+  id: ID;
+  from: "contact" | "human" | "agent" | "helena" | "system";
+  authorName: string;
+  text: string;
+  at: string;
+  kind?: "text" | "image" | "audio" | "document" | "event";
+}
+
+export interface Conversation {
+  id: ID;
+  organizationId: ID;
+  contactId: ID;
+  channel: Channel;
+  connectionId?: ID;
+  status: "aberta" | "pendente" | "resolvida";
+  handlerType: "human" | "agent" | "helena";
+  handlerId: ID;
+  unread: number;
+  sentiment: "positivo" | "neutro" | "negativo";
+  lastMessageAt: string;
+  messages: Message[];
+}
+
+export interface QuickReply {
+  id: ID;
+  organizationId: ID;
+  shortcut: string;
+  title: string;
+  text: string;
+}
+
+export type AgentStatus = "trabalhando" | "aguardando" | "pausado" | "erro";
+
+export interface Agent {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  role: string;
+  description: string;
+  objective: string;
+  personality: string;
+  prompt: string;
+  model: string;
+  temperature: number;
+  knowledgeIds: ID[];
+  tools: string[];
+  channels: Channel[];
+  schedule: string;
+  supervisorId?: ID;
+  teamId?: ID;
+  budget: number;
+  spent: number;
+  status: AgentStatus;
+  permissions: string[];
+  color: ColorToken;
+  currentTask?: string;
+  metrics: { tasks: number; conversations: number; responseRate: number; conversions: number };
+}
+
+export type TeamStatus = "ativo" | "pausado" | "aguardando" | "erro" | "requer_aprovacao";
+
+export interface Team {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  objective: string;
+  supervisorId: ID;
+  agentIds: ID[];
+  goals: string;
+  schedule: string;
+  channels: Channel[];
+  budget: number;
+  spent: number;
+  status: TeamStatus;
+  metrics: { leads: number; meetings: number; conversions: number };
+}
+
+export type OperationStatus = "running" | "awaiting_approval" | "completed" | "failed" | "paused";
+
+export interface OperationStep {
+  id: ID;
+  label: string;
+  status: "done" | "running" | "pending" | "failed";
+  detail?: string;
+}
+
+export interface OperationEvent {
+  at: string;
+  text: string;
+  kind: "info" | "success" | "warning" | "error";
+}
+
+export interface Operation {
+  id: ID;
+  organizationId: ID;
+  code: string;
+  title: string;
+  objective: string;
+  requestedBy: string;
+  agentIds: ID[];
+  connectionId?: ID;
+  status: OperationStatus;
+  total: number;
+  processed: number;
+  metrics: { responded: number; interested: number; qualified: number; meetings: number; handoffs: number };
+  cost: number;
+  steps: OperationStep[];
+  events: OperationEvent[];
+  createdAt: string;
+  result?: string;
+}
+
+export interface Approval {
+  id: ID;
+  organizationId: ID;
+  title: string;
+  description: string;
+  details: { label: string; value: string }[];
+  tool: string;
+  params: Record<string, unknown>;
+  risk: RiskLevel;
+  requestedBy: string;
+  status: "pendente" | "aprovada" | "negada";
+  createdAt: string;
+  decidedBy?: string;
+  decidedAt?: string;
+}
+
+export interface Execution {
+  id: ID;
+  organizationId: ID;
+  at: string;
+  actor: string;
+  actorType: "helena" | "agent" | "user" | "sistema";
+  action: string;
+  description: string;
+  params?: Record<string, unknown>;
+  result: "sucesso" | "falha" | "pendente";
+  error?: string;
+  requestedBy: string;
+  approvedBy?: string;
+  durationMs: number;
+}
+
+export type MemoryType = "permanente" | "conversa" | "operacional" | "documental";
+
+export interface Memory {
+  id: ID;
+  organizationId: ID;
+  type: MemoryType;
+  title: string;
+  content: string;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeDoc {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  type: "PDF" | "DOCX" | "TXT" | "CSV" | "URL";
+  size: number;
+  collection: string;
+  status: "indexado" | "indexando" | "erro";
+  chunks: number;
+  uploadedAt: string;
+  agentIds: ID[];
+}
+
+export interface ToolSetting {
+  name: string;
+  enabled: boolean;
+  risk: RiskLevel;
+}
+
+export interface ProspectList {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  segment: string;
+  icp: string;
+  count: number;
+  source: string;
+  blacklisted: number;
+  createdAt: string;
+}
+
+export interface Campaign {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  listId: ID;
+  cadenceId: ID;
+  agentIds: ID[];
+  channel: Channel;
+  connectionId: ID;
+  status: "rascunho" | "ativa" | "pausada" | "concluida" | "aguardando_aprovacao";
+  total: number;
+  sent: number;
+  replies: number;
+  interested: number;
+  meetings: number;
+  optOuts: number;
+  createdAt: string;
+}
+
+export interface CadenceStep {
+  day: number;
+  channel: Channel;
+  action: string;
+}
+
+export interface Cadence {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  steps: CadenceStep[];
+  active: boolean;
+}
+
+export interface Automation {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  trigger: string;
+  conditions: { field: string; op: string; value: string }[];
+  actions: { type: string; value: string }[];
+  active: boolean;
+  runs: number;
+  lastRunAt?: string;
+}
+
+export interface WhatsAppConnection {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  phone: string;
+  type: "qrcode" | "cloud_api";
+  status: "online" | "offline" | "conectando";
+  queue: number;
+  sentToday: number;
+  dailyLimit: number;
+  lastSyncAt: string;
+}
+
+export interface WaTemplate {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  category: "Marketing" | "Utilidade" | "Autenticação";
+  language: string;
+  status: "aprovado" | "pendente" | "rejeitado";
+  body: string;
+}
+
+export interface Webhook {
+  id: ID;
+  organizationId: ID;
+  direction: "entrada" | "saida";
+  name: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  secret: string;
+}
+
+export interface WebhookLog {
+  id: ID;
+  webhookId: ID;
+  event: string;
+  status: number;
+  attempts: number;
+  at: string;
+}
+
+export interface ApiToken {
+  id: ID;
+  organizationId: ID;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
+export interface Provider {
+  id: "openai" | "anthropic" | "google" | "openrouter";
+  name: string;
+  connected: boolean;
+  keyMasked: string;
+  models: string[];
+  monthlyLimit: number;
+  spent: number;
+}
+
+export interface AiUsage {
+  id: ID;
+  date: string;
+  provider: Provider["id"];
+  model: string;
+  agentId: ID;
+  operationId?: ID;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+}
+
+export type HelenaCard =
+  | { type: "plan"; title: string; steps: { label: string; done: boolean }[]; approvalId: ID }
+  | { type: "approval"; approvalId: ID }
+  | { type: "operation"; operationId: ID }
+  | {
+      type: "agent_proposal";
+      proposal: Pick<Agent, "name" | "role" | "objective" | "tools" | "channels" | "model"> & {
+        supervisorId?: ID;
+        teamId?: ID;
+      };
+      createdAgentId?: ID;
+    }
+  | { type: "list"; title: string; items: { label: string; sub?: string; href?: string }[] }
+  | { type: "stats"; title: string; items: { label: string; value: string; hint?: string }[] }
+  | { type: "result"; ok: boolean; title: string; detail: string };
+
+export interface HelenaMessage {
+  id: ID;
+  role: "user" | "helena";
+  text: string;
+  at: string;
+  card?: HelenaCard;
+}
+
+export interface HelenaSettings {
+  model: string;
+  agentsDefaultModel: string;
+  classifierModel: string;
+  autoApproveMedium: boolean;
+  tone: string;
+  monthlyBudget: number;
+  alertAt: number;
+  blockAtLimit: boolean;
+}
+
+export interface LgpdRequest {
+  id: ID;
+  organizationId: ID;
+  contactName: string;
+  type: "exportacao" | "anonimizacao" | "exclusao";
+  status: "aberta" | "concluida";
+  requestedAt: string;
+}
+
+export interface SessionInfo {
+  id: ID;
+  device: string;
+  ip: string;
+  location: string;
+  lastActive: string;
+  current: boolean;
+}
+
+export interface Invoice {
+  id: ID;
+  number: string;
+  date: string;
+  amount: number;
+  status: "paga" | "aberta";
+}
+
+export interface DB {
+  version: number;
+  organization: Organization;
+  currentUserId: ID;
+  users: User[];
+  invites: Invite[];
+  companies: Company[];
+  contacts: Contact[];
+  pipelines: Pipeline[];
+  deals: Deal[];
+  activities: Activity[];
+  tasks: Task[];
+  conversations: Conversation[];
+  quickReplies: QuickReply[];
+  agents: Agent[];
+  teams: Team[];
+  operations: Operation[];
+  approvals: Approval[];
+  executions: Execution[];
+  memories: Memory[];
+  knowledge: KnowledgeDoc[];
+  toolSettings: ToolSetting[];
+  lists: ProspectList[];
+  campaigns: Campaign[];
+  cadences: Cadence[];
+  automations: Automation[];
+  connections: WhatsAppConnection[];
+  templates: WaTemplate[];
+  webhooks: Webhook[];
+  webhookLogs: WebhookLog[];
+  apiTokens: ApiToken[];
+  providers: Provider[];
+  aiUsage: AiUsage[];
+  helenaMessages: HelenaMessage[];
+  helenaSettings: HelenaSettings;
+  rolePermissions: Record<Role, string[]>;
+  lgpdRequests: LgpdRequest[];
+  sessions: SessionInfo[];
+  invoices: Invoice[];
+  retentionDays: number;
+}
