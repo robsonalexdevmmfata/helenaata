@@ -312,7 +312,7 @@ export function createSeed(now = new Date()): DB {
   const approvals: Approval[] = [
     { id: "ap1", organizationId: ORG, title: "Iniciar campanha Clínicas SP", description: "Envio de primeira abordagem para clínicas sem presença digital.", details: [
       { label: "Contatos", value: "100" }, { label: "Canal", value: "WhatsApp Comercial" }, { label: "Limite", value: "100 mensagens" }, { label: "Agente", value: "SDR 02" },
-    ], tool: "operations.resume", params: { operationId: "op4" }, risk: "alto", requestedBy: "Helena", status: "pendente", createdAt: ago(25) },
+    ], tool: "campaigns.start", params: { campaignId: "cp2", operationId: "op4" }, risk: "alto", requestedBy: "Helena", status: "pendente", createdAt: ago(25) },
     { id: "ap2", organizationId: ORG, title: "Ativar automação externa n8n", description: "Enviar leads ganhos para o ERP via webhook n8n.", details: [
       { label: "Destino", value: "https://n8n.novarota.com.br/webhook/erp" }, { label: "Gatilho", value: "Oportunidade ganha" },
     ], tool: "automation.create", params: { name: "Enviar ganhos para ERP", trigger: "Etapa alterada", action: "webhook" }, risk: "alto", requestedBy: "Supervisor Comercial", status: "pendente", createdAt: ago(95) },

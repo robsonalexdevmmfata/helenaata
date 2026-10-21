@@ -30,6 +30,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "campaigns.pause", label: "Pausar campanha", description: "Pausa uma campanha em andamento.", category: "Campanhas", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "operations.start", label: "Iniciar operação", description: "Cria e inicia uma operação com agentes e contato externo.", category: "Operações", defaultRisk: "alto", permission: "campaigns.send" },
   { name: "operations.pause", label: "Pausar operação", description: "Pausa uma operação em andamento.", category: "Operações", defaultRisk: "medio", permission: "prospect.manage" },
+  { name: "operations.resume", label: "Retomar operação", description: "Retoma uma operação pausada.", category: "Operações", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "knowledge.search", label: "Buscar conhecimento", description: "Busca semântica na base de conhecimento.", category: "Conhecimento", defaultRisk: "baixo", permission: "helena.use" },
   { name: "analytics.query", label: "Consultar métricas", description: "Consulta indicadores comerciais e de IA.", category: "Analytics", defaultRisk: "baixo", permission: "analytics.view" },
   { name: "calendar.create_event", label: "Agendar reunião", description: "Cria um evento na agenda.", category: "Agenda", defaultRisk: "medio", permission: "crm.edit" },
