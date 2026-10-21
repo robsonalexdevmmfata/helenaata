@@ -36,6 +36,7 @@ export function ApprovalBlock({ approvalId, compact }: { approvalId: string; com
   if (!ap) return null;
   const decide = (approve: boolean) => {
     const r = decideApproval(ap.id, approve);
+    helenaUi.set({ state: "ocioso" });
     if (!approve) toast("Ação negada. Nada foi executado.");
     else if (r.ok) toast.success(r.message);
     else toast.error(`Falhou: ${r.message}`);
@@ -144,9 +145,9 @@ export function HelenaCardView({ card, messageId }: { card: HelenaCard; messageI
             <div className="mt-3 border-t pt-3">
               {!decided ? (
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => decideApproval(ap.id, true)}><ShieldAlert /> Autorizar execução</Button>
+                  <Button size="sm" onClick={() => { decideApproval(ap.id, true); helenaUi.set({ state: "ocioso" }); }}><ShieldAlert /> Autorizar execução</Button>
                   <Button size="sm" variant="outline" onClick={() => helenaUi.set({ draft: "Altere o plano: " })}>Alterar plano</Button>
-                  <Button size="sm" variant="ghost" onClick={() => decideApproval(ap.id, false)}>Cancelar</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { decideApproval(ap.id, false); helenaUi.set({ state: "ocioso" }); }}>Cancelar</Button>
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground"><Status value={ap.status} /> <span className="ml-1">por {ap.decidedBy}</span></div>
