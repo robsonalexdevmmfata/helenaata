@@ -1,6 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { Disc3, Maximize2, Music, Pause, Play, RotateCcw, Volume2, X } from "lucide-react";
+import { Disc3, Maximize2, Pause, Play, RotateCcw, X } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Dot } from "@/components/app/kit";
@@ -95,9 +95,11 @@ export function HelenaPanel() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Register iframe for Happy Nation playback
+  // Register iframe as soon as it mounts (iframe always mounted, not inside Sheet)
   useEffect(() => {
-    registerMusicIframe(iframeRef.current);
+    if (iframeRef.current) {
+      registerMusicIframe(iframeRef.current);
+    }
     return () => registerMusicIframe(null);
   }, []);
 
@@ -106,9 +108,10 @@ export function HelenaPanel() {
     if (ui.open) {
       const cfg = getBriefingConfig();
       if (cfg.autoPlayMusic) {
+        // Give the iframe postMessage time to be received (it's always mounted now)
         setTimeout(() => {
           playHappyNation(cfg.musicVolume);
-        }, 200);
+        }, 800);
       }
     } else {
       pauseHappyNation();
@@ -119,31 +122,46 @@ export function HelenaPanel() {
   const ytId = extractYouTubeId(cfg.musicUrl);
 
   return (
-    <Sheet open={ui.open} onOpenChange={(open) => helenaUi.set({ open })}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[480px] [&>button]:hidden shadow-2xl">
-        <SheetTitle className="sr-only">Helena AI</SheetTitle>
-        <SheetDescription className="sr-only">Command center e briefing executivo da Helena</SheetDescription>
-        <HelenaHeader
-          onExpand={() => { helenaUi.set({ open: false }); router.history.push("/ia/helena"); }}
-          onClose={() => helenaUi.set({ open: false })}
+    <>
+      {/* YouTube iframe always mounted outside Sheet so browser allows audio playback */}
+      <div
+        style={{
+          position: "fixed",
+          left: "-9999px",
+          top: "-9999px",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          pointerEvents: "none",
+          zIndex: -1,
+        }}
+        aria-hidden="true"
+      >
+        <iframe
+          ref={iframeRef}
+          width="320"
+          height="180"
+          src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"}&loop=1&playlist=${ytId}&autoplay=0`}
+          title="Happy Nation Player"
+          allow="autoplay; encrypted-media"
+          allowFullScreen
         />
-        <div className="min-h-0 flex-1">
-          <HelenaChat />
-        </div>
+      </div>
 
-        {/* Hidden YouTube Iframe Player for Happy Nation */}
-        <div className="hidden" aria-hidden="true">
-          <iframe
-            ref={iframeRef}
-            width="200"
-            height="200"
-            src={`https://www.youtube-nocookie.com/embed/${ytId}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : ""}&loop=1&playlist=${ytId}`}
-            title="Happy Nation Player"
-            allow="autoplay; encrypted-media"
+      <Sheet open={ui.open} onOpenChange={(open) => helenaUi.set({ open })}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[480px] [&>button]:hidden shadow-2xl">
+          <SheetTitle className="sr-only">Helena AI</SheetTitle>
+          <SheetDescription className="sr-only">Command center e briefing executivo da Helena</SheetDescription>
+          <HelenaHeader
+            onExpand={() => { helenaUi.set({ open: false }); router.history.push("/ia/helena"); }}
+            onClose={() => helenaUi.set({ open: false })}
           />
-        </div>
-      </SheetContent>
-    </Sheet>
+          <div className="min-h-0 flex-1">
+            <HelenaChat />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
