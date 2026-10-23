@@ -1,5 +1,6 @@
-// Groq Cloud LLM Integration for HELENA AI Orchestrator
+// Groq Cloud & FreeLLMAPI Integration for HELENA AI Orchestrator
 import { getDB } from "@/lib/store";
+import { callFreeLLMOrchestrator, getFreeLLMConfig } from "./freellmapi";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -168,7 +169,14 @@ export async function callGroqOrchestrator(
   history: Array<{ role: "user" | "assistant" | "system"; content: string }> = [],
 ): Promise<GroqResponse | null> {
   const apiKey = getGroqApiKey();
-  if (!apiKey) return null;
+  if (!apiKey) {
+    const freeConfig = getFreeLLMConfig();
+    if (freeConfig.enabled) {
+      const freeReply = await callFreeLLMOrchestrator(userMessage, history);
+      if (freeReply) return { text: freeReply };
+    }
+    return null;
+  }
 
   const db = getDB();
   const org = db.organization.name;
@@ -247,7 +255,11 @@ Quando o usuário pedir algo que requer ferramenta, use a Tool Call apropriada. 
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     };
   } catch (err) {
-    console.warn("Failed to contact Groq Cloud:", err);
+    console.warn("Failed to contact Groq Cloud, attempting FreeLLMAPI failover:", err);
+    try {
+      const freeReply = await callFreeLLMOrchestrator(userMessage, history);
+      if (freeReply) return { text: freeReply };
+    } catch {}
     return null;
   }
 }
