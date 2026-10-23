@@ -371,11 +371,6 @@ export function interpret(text: string): Reply[] {
         ],
       },
     }];
-  }${plan.meetings} reuniões com meta de ${plan.sales} fechamentos`,
-        "Supervisor Comercial: acompanhar o funil e me alertar se a taxa de resposta cair",
-      ],
-    });
->>>>>>> be495da4cf79feca20b3d19e95de36d1168e5e25
   }
 
   // Strategy
