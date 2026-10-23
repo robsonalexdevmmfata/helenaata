@@ -1,149 +1,103 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Copy, MessageSquareQuote, Plus, Search, Trash2, Zap } from "lucide-react";
-import { PageHeader, Panel } from "@/components/app/kit";
+import { useState, type FormEvent } from "react";
+import { Copy, MessageSquareQuote, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useDB, update, uid } from "@/lib/store";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState, PageHeader } from "@/components/app/kit";
+import { uid, update, useDB } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
+import type { QuickReply } from "@/lib/types";
 
 export const Route = createFileRoute("/_app/atendimento/respostas")({
-  head: () => pageHead("Respostas Rápidas", "Gerenciamento de snippets e atalhos rápidos para atendimento e vendas."),
-  component: RespostasRapidasPage,
+  head: () => pageHead("Respostas rápidas", "Atalhos de mensagens usados por humanos e agentes no atendimento."),
+  component: QuickRepliesPage,
 });
 
-function RespostasRapidasPage() {
+function QuickRepliesPage() {
   const db = useDB();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isNewOpen, setIsNewOpen] = useState(false);
-  const [shortcut, setShortcut] = useState("");
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
+  const [editing, setEditing] = useState<QuickReply | null>(null);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ shortcut: "", title: "", text: "" });
+  const [q, setQ] = useState("");
 
-  const filteredReplies = db.quickReplies.filter((qr) =>
-    `${qr.title} ${qr.shortcut} ${qr.text}`.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const list = db.quickReplies.filter((r) => `${r.shortcut} ${r.title} ${r.text}`.toLowerCase().includes(q.toLowerCase()));
 
-  const handleCreate = () => {
-    if (!title.trim() || !text.trim()) {
-      toast.error("Preencha o título e o texto da resposta");
-      return;
-    }
-    const cleanShortcut = shortcut.startsWith("/") ? shortcut : `/${shortcut || title.toLowerCase().slice(0, 6)}`;
-    update((d) => {
-      d.quickReplies.push({
-        id: uid("qr_"),
-        organizationId: d.organization.id,
-        shortcut: cleanShortcut,
-        title,
-        text,
-      });
-    });
-    toast.success("Resposta rápida cadastrada com sucesso!");
-    setIsNewOpen(false);
-    setTitle("");
-    setShortcut("");
-    setText("");
+  const openForm = (r?: QuickReply) => {
+    setEditing(r ?? null);
+    setForm(r ? { shortcut: r.shortcut, title: r.title, text: r.text } : { shortcut: "/", title: "", text: "" });
+    setOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    const shortcut = form.shortcut.startsWith("/") ? form.shortcut.trim() : `/${form.shortcut.trim()}`;
+    if (shortcut.length < 2 || !form.title.trim() || !form.text.trim()) return toast.error("Preencha atalho, título e mensagem.");
+    if (db.quickReplies.some((r) => r.shortcut === shortcut && r.id !== editing?.id)) return toast.error("Esse atalho já existe.");
     update((d) => {
-      d.quickReplies = d.quickReplies.filter((qr) => qr.id !== id);
+      if (editing) Object.assign(d.quickReplies.find((r) => r.id === editing.id)!, { ...form, shortcut });
+      else d.quickReplies.unshift({ id: uid("q_"), organizationId: d.organization.id, ...form, shortcut });
     });
-    toast.success("Resposta rápida excluída");
+    toast.success(editing ? "Resposta atualizada" : "Resposta criada");
+    setOpen(false);
   };
 
-  const handleCopy = (t: string) => {
-    navigator.clipboard.writeText(t);
-    toast.success("Texto copiado para a área de transferência!");
+  const remove = (r: QuickReply) => {
+    update((d) => { d.quickReplies = d.quickReplies.filter((x) => x.id !== r.id); });
+    toast.success(`${r.shortcut} removida`);
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Atendimento e Produtividade"
-        title="Respostas Rápidas"
-        description="Atalhos padronizados que facilitam a resposta dos SDRs e do time de suporte no WhatsApp."
-        actions={
-          <Dialog open={isNewOpen} onOpenChange={setIsNewOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="size-4" /> Nova Resposta Rápida
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Criar Resposta Rápida</DialogTitle>
-                <DialogDescription>Defina um atalho que poderá ser invocado digitando "/" no chat.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">Título de Identificação</label>
-                  <Input placeholder="Ex: Tabela de Preços Site" value={title} onChange={(e) => setTitle(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">Atalho (ex: /precos)</label>
-                  <Input placeholder="/precos" value={shortcut} onChange={(e) => setShortcut(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">Mensagem Completa</label>
-                  <Textarea
-                    rows={4}
-                    placeholder="Texto completo que será enviado ao lead..."
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsNewOpen(false)}>Cancelar</Button>
-                <Button onClick={handleCreate}>Salvar Resposta</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        }
+        eyebrow="Atendimento"
+        title="Respostas rápidas"
+        description="Digite / no Inbox para usar. Os agentes de IA também usam estes textos como referência."
+        actions={<Button onClick={() => openForm()}><Plus /> Nova resposta</Button>}
       />
-
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por atalho, título ou conteúdo…"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredReplies.map((qr) => (
-          <div key={qr.id} className="flex flex-col justify-between rounded-xl border bg-card p-4 transition-all hover:border-foreground/20">
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                  {qr.shortcut}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => handleCopy(qr.text)}>
-                    <Copy className="size-3.5 text-muted-foreground" />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="size-7 hover:text-destructive" onClick={() => handleDelete(qr.id)}>
-                    <Trash2 className="size-3.5 text-muted-foreground" />
-                  </Button>
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por atalho, título ou texto..." className="max-w-sm" />
+      {list.length === 0 ? (
+        <EmptyState icon={<MessageSquareQuote />} title="Nenhuma resposta encontrada" action={<Button size="sm" onClick={() => openForm()}><Plus /> Criar</Button>} />
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {list.map((r) => (
+            <div key={r.id} className="group rounded-xl border bg-card p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="rounded bg-helena/10 px-1.5 py-0.5 font-mono text-xs text-helena">{r.shortcut}</span>
+                  <div className="mt-1.5 text-sm font-medium">{r.title}</div>
+                </div>
+                <div className="flex gap-0.5 opacity-70 group-hover:opacity-100">
+                  <Button size="icon" variant="ghost" className="size-7" aria-label="Copiar" onClick={() => { void navigator.clipboard?.writeText(r.text); toast.success("Copiado"); }}><Copy /></Button>
+                  <Button size="icon" variant="ghost" className="size-7" aria-label="Editar" onClick={() => openForm(r)}><Pencil /></Button>
+                  <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="Excluir" onClick={() => remove(r)}><Trash2 /></Button>
                 </div>
               </div>
-              <h3 className="mt-2 font-medium text-sm">{qr.title}</h3>
-              <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed line-clamp-4">
-                {qr.text}
-              </p>
+              <p className="mt-2 text-sm text-muted-foreground">{r.text}</p>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <form onSubmit={save} className="space-y-4">
+            <DialogHeader><DialogTitle>{editing ? "Editar resposta" : "Nova resposta rápida"}</DialogTitle></DialogHeader>
+            <div className="grid grid-cols-[120px_1fr] gap-3">
+              <div className="space-y-1.5"><Label>Atalho</Label><Input value={form.shortcut} onChange={(e) => setForm({ ...form, shortcut: e.target.value })} placeholder="/prazo" /></div>
+              <div className="space-y-1.5"><Label>Título</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Prazo de entrega" /></div>
+            </div>
+            <div className="space-y-1.5"><Label>Mensagem</Label><Textarea rows={5} value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} /></div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit">Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

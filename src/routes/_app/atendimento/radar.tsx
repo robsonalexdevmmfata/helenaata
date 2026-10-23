@@ -1,145 +1,116 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
-import { AlertCircle, ArrowUpRight, Clock, Flame, MessageCircle, Radar as RadarIcon, ShieldAlert, Sparkles, TrendingUp, Users } from "lucide-react";
-import { Dot, EntityAvatar, PageHeader, Panel, StatCard, Status } from "@/components/app/kit";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { AlertTriangle, Clock, Flame, MessageCircle, Radar, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { useDB } from "@/lib/store";
+import { Dot, EntityAvatar, Panel, StatCard, StatusBadge, Status, colorFor } from "@/components/app/kit";
+import { ownerName, useDB } from "@/lib/store";
+import { openHelena } from "@/lib/helena/orchestrator";
+import { timeAgo } from "@/lib/format";
 import { pageHead } from "@/lib/head";
+import type { Conversation } from "@/lib/types";
 
 export const Route = createFileRoute("/_app/atendimento/radar")({
-  head: () => pageHead("Radar de Atendimento", "Monitoramento preditivo de conversas críticas, tempo de espera e SLA."),
-  component: RadarAtendimentoPage,
+  head: () => pageHead("Radar de atendimento", "Monitoramento em tempo real de conversas em risco, SLA e agentes."),
+  component: RadarPage,
 });
 
-function RadarAtendimentoPage() {
-  const db = useDB();
-  const router = useRouter();
+function waitingMinutes(c: Conversation) {
+  const lastContact = [...c.messages].reverse().find((m) => m.from === "contact");
+  const lastReply = [...c.messages].reverse().find((m) => m.from !== "contact" && m.from !== "system");
+  if (!lastContact || (lastReply && +new Date(lastReply.at) > +new Date(lastContact.at))) return 0;
+  return Math.round((Date.now() - +new Date(lastContact.at)) / 60000);
+}
 
-  const openConversations = db.conversations.filter((c) => c.status === "aberta");
-  const urgentCount = openConversations.filter((c) => c.sentiment === "negativo" || c.unread > 0).length;
-  const botManaged = openConversations.filter((c) => c.handlerType === "agent").length;
-  const humanManaged = openConversations.filter((c) => c.handlerType === "human").length;
+function RadarPage() {
+  const db = useDB();
+  const active = db.conversations.filter((c) => c.status !== "resolvida");
+  const scored = active
+    .map((c) => {
+      const wait = waitingMinutes(c);
+      const risk = (c.sentiment === "negativo" ? 50 : 0) + Math.min(40, wait / 3) + c.unread * 5;
+      return { c, wait, risk };
+    })
+    .sort((a, b) => b.risk - a.risk);
+  const waitingCount = scored.filter((s) => s.wait > 0).length;
+  const slaBreach = scored.filter((s) => s.wait > 2).length;
+  const positive = db.conversations.filter((c) => c.sentiment === "positivo").length;
+  const hot = db.contacts.filter((c) => c.score >= 75 && c.status === "lead").slice(0, 6);
+  const atAgents = db.agents.filter((a) => ["Atendimento", "Suporte", "Customer Success", "Supervisor"].includes(a.role) && a.teamId === "t_at");
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Monitoramento em Tempo Real"
-        title="Radar de Atendimento"
-        description="Identificação preditiva de conversas com alta intenção de compra, risco de abandono ou violação de SLA."
-      />
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Conversas no Radar" value={openConversations.length} hint="Monitoradas ativamente" icon={<RadarIcon />} tone="info" />
-        <StatCard label="Atenção Imediata" value={urgentCount} hint="Risco ou não lidas" icon={<AlertCircle />} tone="warning" />
-        <StatCard label="Atendidas por IA" value={botManaged} hint="SDRs & Atendimento" icon={<Sparkles />} tone="helena" />
-        <StatCard label="Atendidas por Humanos" value={humanManaged} hint="Especialistas e Closer" icon={<Users />} tone="success" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground"><Dot tone="success" pulse /> Ao vivo</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Radar</h1>
+          <p className="text-sm text-muted-foreground">Onde a operação precisa de você agora: conversas esperando, sentimento negativo e leads quentes.</p>
+        </div>
+        <Button variant="outline" onClick={() => openHelena("Helena, quais conversas precisam de atenção agora?")}><Radar /> Pedir análise à Helena</Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-8">
-          <Panel title="Feed do Radar · Conversas em Alerta">
-            <div className="space-y-3">
-              {openConversations.map((c) => {
-                const ct = db.contacts.find((x) => x.id === c.contactId);
-                const lastMsg = c.messages[c.messages.length - 1];
-                const isUrgent = c.sentiment === "negativo" || c.unread > 0;
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Conversas ativas" value={active.length} icon={<MessageCircle />} tone="info" />
+        <StatCard label="Aguardando resposta" value={waitingCount} icon={<Clock />} tone="warning" />
+        <StatCard label="Fora do SLA (2 min)" value={slaBreach} icon={<AlertTriangle />} tone="danger" />
+        <StatCard label="Sentimento positivo" value={`${Math.round((positive / Math.max(1, db.conversations.length)) * 100)}%`} icon={<Smile />} tone="success" />
+      </div>
 
-                return (
-                  <div
-                    key={c.id}
-                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border bg-card p-4 transition-all hover:border-foreground/20"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <EntityAvatar name={ct?.name || "Contato"} size="sm" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{ct?.name}</span>
-                          <span className="text-xs text-muted-foreground">{ct?.phone}</span>
-                          {isUrgent && (
-                            <Badge variant="destructive" className="h-4 px-1.5 text-[9px]">
-                              Urgente
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="truncate text-xs text-muted-foreground mt-0.5 max-w-md">
-                          "{lastMsg?.text || "Sem mensagens"}"
-                        </p>
-                      </div>
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <Panel title="Fila de prioridade" description="Ordenada por risco: sentimento, tempo de espera e mensagens não lidas." bodyClassName="p-0">
+          <div className="divide-y">
+            {scored.map(({ c, wait, risk }) => {
+              const ct = db.contacts.find((x) => x.id === c.contactId);
+              return (
+                <div key={c.id} className="flex items-center gap-3 px-5 py-3">
+                  <EntityAvatar name={ct?.name ?? "?"} color={colorFor(c.contactId)} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <span className="truncate">{ct?.name}</span>
+                      {risk >= 50 && <StatusBadge tone="danger">Risco alto</StatusBadge>}
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right text-xs">
-                        <div className="font-medium capitalize">{c.channel}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">
-                          {new Date(c.lastMessageAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => router.history.push("/atendimento/inbox")}
-                        className="gap-1.5 text-xs h-8"
-                      >
-                        Ver no Inbox <ArrowUpRight className="size-3.5" />
-                      </Button>
-                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{c.messages.at(-1)?.text}</div>
                   </div>
-                );
-              })}
+                  <div className="hidden text-right text-xs sm:block">
+                    <div className={wait > 2 ? "font-medium text-destructive" : "text-muted-foreground"}>{wait > 0 ? `esperando ${wait} min` : "respondida"}</div>
+                    <div className="text-muted-foreground">{c.handlerType === "helena" ? "Helena" : ownerName(db, c.handlerId)}</div>
+                  </div>
+                  <Status value={c.status} />
+                </div>
+              );
+            })}
+            {scored.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa ativa.</p>}
+          </div>
+          <div className="border-t px-5 py-3">
+            <Button asChild size="sm" variant="outline"><Link to="/atendimento/inbox">Abrir Inbox</Link></Button>
+          </div>
+        </Panel>
+
+        <div className="space-y-6">
+          <Panel title="Agentes de atendimento">
+            <div className="space-y-3">
+              {atAgents.map((a) => (
+                <div key={a.id} className="flex items-center gap-3">
+                  <EntityAvatar name={a.name} color={a.color} agent size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{a.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">{a.currentTask || `${a.metrics.responseRate}% de resposta`}</div>
+                  </div>
+                  <Status value={a.status} />
+                </div>
+              ))}
             </div>
           </Panel>
-        </div>
-
-        <div className="lg:col-span-4 space-y-6">
-          <Panel title="Indicadores de Qualidade">
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">Tempo Médio de 1ª Resposta</span>
-                  <span className="font-semibold text-success">18 segundos</span>
+          <Panel title={<span className="inline-flex items-center gap-1.5"><Flame className="size-4 text-warning" /> Leads quentes</span>}>
+            <div className="space-y-2">
+              {hot.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate">{c.name}</span>
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {timeAgo(c.lastContactAt)}
+                    <span className="rounded bg-warning/15 px-1.5 font-mono text-warning">{c.score}</span>
+                  </span>
                 </div>
-                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-success w-[92%]" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">Índice de Resolução no 1º Contato</span>
-                  <span className="font-semibold text-primary">84%</span>
-                </div>
-                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary w-[84%]" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">Satisfação dos Leads (CSAT)</span>
-                  <span className="font-semibold text-helena">4.8 / 5.0</span>
-                </div>
-                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-helena w-[96%]" />
-                </div>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel title="Travas de Atendimento Ativas">
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2 p-2 rounded border bg-muted/20">
-                <Dot tone="success" />
-                <span>Trava 1: Anti-duplicidade de telefones ativa</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded border bg-muted/20">
-                <Dot tone="success" />
-                <span>Trava 2: Deduplicação de fila imutável</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded border bg-muted/20">
-                <Dot tone="success" />
-                <span>Trava 3: Handoff lock entre SDRs ativo</span>
-              </div>
+              ))}
+              {hot.length === 0 && <p className="text-sm text-muted-foreground">Nenhum lead acima de 75 pontos.</p>}
             </div>
           </Panel>
         </div>

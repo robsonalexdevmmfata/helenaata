@@ -1,161 +1,118 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  Calendar, CheckCircle2, Clock, Edit2, MessageCircle, Plus, Repeat, Trash2, Zap,
-} from "lucide-react";
-import { PageHeader, StatCard, Status } from "@/components/app/kit";
+import { useState, type FormEvent } from "react";
+import { Mail, MessageCircle, Plus, Repeat, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import { useDB, update, uid, nowISO } from "@/lib/store";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PageHeader, StatusBadge } from "@/components/app/kit";
+import { uid, update, useDB } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
-import type { Cadence, CadenceStep, Channel } from "@/lib/types";
+import type { CadenceStep, Channel } from "@/lib/types";
 
 export const Route = createFileRoute("/_app/prospeccao/cadencias")({
-  head: () => pageHead("Cadências", "Configure as sequências de follow-up automáticas dos SDR Agents."),
-  component: CadenciasPage,
+  head: () => pageHead("Cadências", "Sequências de toques por WhatsApp e e-mail usadas pelos SDRs."),
+  component: CadencesPage,
 });
 
-const CHANNELS: Channel[] = ["whatsapp", "instagram", "email"];
+const channelIcon = (c: Channel) => (c === "email" ? <Mail className="size-3.5" /> : <MessageCircle className="size-3.5" />);
 
-function CadenciasPage() {
+function CadencesPage() {
   const db = useDB();
-  const [isNewOpen, setIsNewOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [steps, setSteps] = useState<CadenceStep[]>([
-    { day: 1, channel: "whatsapp", action: "Primeiro contato personalizado com apresentação de benefícios" },
-    { day: 3, channel: "whatsapp", action: "Follow-up com proposta de valor + depoimento de cliente" },
-    { day: 7, channel: "instagram", action: "DM de reativação com oferta especial limitada" },
-  ]);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [steps, setSteps] = useState<CadenceStep[]>([{ day: 0, channel: "whatsapp", action: "Primeira abordagem" }]);
 
-  const addStep = () =>
-    setSteps((s) => [...s, { day: s.length > 0 ? s[s.length - 1]!.day + 2 : 1, channel: "whatsapp", action: "" }]);
-  const removeStep = (i: number) => setSteps((s) => s.filter((_, idx) => idx !== i));
+  const toggle = (id: string, active: boolean) => {
+    update((d) => { d.cadences.find((c) => c.id === id)!.active = active; });
+    toast.success(active ? "Cadência ativada" : "Cadência desativada");
+  };
 
-  const handleCreate = () => {
-    if (!newName.trim()) { toast.error("Nome da cadência é obrigatório"); return; }
-    if (steps.length === 0) { toast.error("Adicione pelo menos 1 passo"); return; }
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || steps.some((s) => !s.action.trim())) return toast.error("Dê um nome e descreva todas as etapas.");
     update((d) => {
-      d.cadences.unshift({ id: uid("cad_"), organizationId: d.organization.id, name: newName, steps, active: true });
+      d.cadences.push({ id: uid("cd_"), organizationId: d.organization.id, name: name.trim(), active: true, steps: [...steps].sort((a, b) => a.day - b.day) });
     });
-    toast.success(`Cadência "${newName}" criada!`);
-    setIsNewOpen(false);
-    setNewName("");
-    setSteps([{ day: 1, channel: "whatsapp", action: "" }]);
+    toast.success("Cadência criada");
+    setOpen(false);
+    setName("");
+    setSteps([{ day: 0, channel: "whatsapp", action: "Primeira abordagem" }]);
   };
 
-  const toggleActive = (id: string, val: boolean) => {
-    update((d) => { const c = d.cadences.find((x) => x.id === id); if (c) c.active = val; });
-    toast.success(val ? "Cadência ativada" : "Cadência pausada");
-  };
-
-  const totalSteps = db.cadences.reduce((s, c) => s + c.steps.length, 0);
-  const active = db.cadences.filter((c) => c.active).length;
+  const setStep = (i: number, patch: Partial<CadenceStep>) => setSteps(steps.map((s, j) => (j === i ? { ...s, ...patch } : s)));
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Prospecção"
-        title="Cadências de Follow-up"
-        description="Sequências multicanal que o SDR Agent executa automaticamente — até fechar a reunião."
-        actions={
-          <Dialog open={isNewOpen} onOpenChange={setIsNewOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="size-4" /> Nova Cadência</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Criar Cadência de Follow-up</DialogTitle>
-                <DialogDescription>Defina a sequência de passos que os SDRs vão executar automaticamente após o primeiro contato.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
-                <div><label className="text-xs font-medium text-muted-foreground">Nome da Cadência</label>
-                  <Input placeholder="Ex: Clínicas — 7 dias multicanal" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-muted-foreground">Passos da Cadência</label>
-                    <Button size="sm" variant="outline" onClick={addStep} className="h-7 text-xs gap-1">
-                      <Plus className="size-3" /> Passo
-                    </Button>
-                  </div>
-                  {steps.map((step, i) => (
-                    <div key={i} className="rounded-lg border p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-muted-foreground w-5">{i + 1}</span>
-                        <div className="flex gap-2 flex-1">
-                          <Input type="number" min={1} max={90} value={step.day} onChange={(e) => { const s = [...steps]; if (s[i]) s[i]!.day = Number(e.target.value); setSteps(s); }}
-                            className="w-20" placeholder="Dia" />
-                          <select className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm" value={step.channel}
-                            onChange={(e) => { const s = [...steps]; if (s[i]) s[i]!.channel = e.target.value as Channel; setSteps(s); }}>
-                            {CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
-                          </select>
-                          <Button size="icon" variant="ghost" className="size-8 hover:text-destructive" onClick={() => removeStep(i)}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      <Input placeholder="Ação / mensagem do passo..." value={step.action}
-                        onChange={(e) => { const s = [...steps]; if (s[i]) s[i]!.action = e.target.value; setSteps(s); }} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsNewOpen(false)}>Cancelar</Button>
-                <Button onClick={handleCreate}>Criar Cadência</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        }
+        title="Cadências"
+        description="Os SDRs seguem estas sequências e param automaticamente quando o lead responde ou pede para sair."
+        actions={<Button onClick={() => setOpen(true)}><Plus /> Nova cadência</Button>}
       />
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Cadências Ativas" value={active} icon={<Repeat />} tone="success" />
-        <StatCard label="Total de Passos" value={totalSteps} hint="Somando todas as cadências" icon={<CheckCircle2 />} tone="info" />
-        <StatCard label="Canais Cobertos" value="WA + IG + Email" icon={<MessageCircle />} tone="helena" />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {db.cadences.map((cad) => (
-          <div key={cad.id} className="rounded-xl border bg-card p-5 space-y-4 hover:border-foreground/20 transition-all">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-semibold">{cad.name}</h3>
-                <p className="text-xs text-muted-foreground">{cad.steps.length} passos · {cad.steps[cad.steps.length - 1]?.day ?? 0} dias</p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {db.cadences.map((c) => {
+          const used = db.campaigns.filter((x) => x.cadenceId === c.id).length;
+          const days = c.steps.at(-1)?.day ?? 0;
+          return (
+            <div key={c.id} className="rounded-xl border bg-card p-5">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-xs text-muted-foreground">{c.steps.length} toques em {days} dias · usada em {used} campanha(s)</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge tone={c.active ? "success" : "neutral"}>{c.active ? "Ativa" : "Inativa"}</StatusBadge>
+                  <Switch checked={c.active} onCheckedChange={(v) => toggle(c.id, v)} aria-label="Ativar cadência" />
+                </div>
               </div>
-              <Badge variant={cad.active ? "default" : "secondary"} className="shrink-0">
-                {cad.active ? "Ativa" : "Pausada"}
-              </Badge>
-            </div>
-
-            <div className="space-y-2">
-              {cad.steps.map((s, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold">{i + 1}</div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">{s.channel}</Badge>
-                      <span className="text-[10px] text-muted-foreground">Dia {s.day}</span>
+              <ol className="relative mt-5 space-y-4 border-l pl-5">
+                {c.steps.map((s, i) => (
+                  <li key={i} className="relative">
+                    <span className="absolute -left-[27px] top-0.5 flex size-3.5 items-center justify-center rounded-full border-2 border-card bg-helena" />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-mono">Dia {s.day}</span>·<span className="inline-flex items-center gap-1">{channelIcon(s.channel)} {s.channel === "email" ? "E-mail" : "WhatsApp"}</span>
                     </div>
-                    <p className="text-xs mt-0.5 text-muted-foreground line-clamp-1">{s.action}</p>
-                  </div>
+                    <div className="text-sm">{s.action}</div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          );
+        })}
+      </div>
+      {db.cadences.length === 0 && <p className="text-sm text-muted-foreground"><Repeat className="mr-1 inline size-4" />Nenhuma cadência.</p>}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <form onSubmit={save} className="space-y-4">
+            <DialogHeader><DialogTitle>Nova cadência</DialogTitle></DialogHeader>
+            <div className="space-y-1.5"><Label>Nome</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Restaurantes (4 toques)" /></div>
+            <div className="space-y-2">
+              <Label>Etapas</Label>
+              {steps.map((s, i) => (
+                <div key={i} className="grid grid-cols-[70px_130px_1fr_auto] gap-2">
+                  <Input type="number" min={0} value={s.day} onChange={(e) => setStep(i, { day: Number(e.target.value) })} aria-label="Dia" />
+                  <Select value={s.channel} onValueChange={(v) => setStep(i, { channel: v as Channel })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="whatsapp">WhatsApp</SelectItem><SelectItem value="email">E-mail</SelectItem></SelectContent>
+                  </Select>
+                  <Input value={s.action} onChange={(e) => setStep(i, { action: e.target.value })} placeholder="O que enviar" />
+                  <Button type="button" size="icon" variant="ghost" disabled={steps.length === 1} onClick={() => setSteps(steps.filter((_, j) => j !== i))} aria-label="Remover etapa"><Trash2 /></Button>
                 </div>
               ))}
+              <Button type="button" size="sm" variant="outline" onClick={() => setSteps([...steps, { day: (steps.at(-1)?.day ?? 0) + 2, channel: "whatsapp", action: "" }])}><Plus /> Adicionar etapa</Button>
             </div>
-
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="flex-1 h-8 gap-1 text-xs" onClick={() => toggleActive(cad.id, !cad.active)}>
-                {cad.active ? <><Clock className="size-3.5" /> Pausar</> : <><Zap className="size-3.5" /> Ativar</>}
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit">Salvar cadência</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

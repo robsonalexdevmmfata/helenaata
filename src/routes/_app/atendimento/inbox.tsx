@@ -1,379 +1,246 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  ArrowRightLeft,
-  Bot,
-  CheckCheck,
-  CreditCard,
-  MessageCircle,
-  MessageSquareQuote,
-  Paperclip,
-  Phone,
-  QrCode,
-  Search,
-  Send,
-  ShieldAlert,
-  Sparkles,
-  User,
-  Zap,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Bot, CheckCheck, Hand, Inbox, Search, Send, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { EntityAvatar, PageHeader, Status } from "@/components/app/kit";
-import { useDB, currentUser } from "@/lib/store";
-import { runTool } from "@/lib/helena/engine";
-import { OBJECTION_MATRIX, evaluateBant } from "@/lib/helena/sales-brain";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState, EntityAvatar, StatusBadge, Status, colorFor } from "@/components/app/kit";
+import { currentUser, nowISO, ownerName, update, useDB } from "@/lib/store";
+import { userAction } from "@/lib/helena/engine";
+import { openHelena } from "@/lib/helena/orchestrator";
+import { fmtTime, timeAgo } from "@/lib/format";
 import { pageHead } from "@/lib/head";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import type { Channel, Conversation } from "@/lib/types";
 
 export const Route = createFileRoute("/_app/atendimento/inbox")({
-  head: () => pageHead("Inbox", "Caixa de entrada omnichannel unificada com inteligência de vendas e fechamento."),
+  head: () => pageHead("Inbox", "Conversas de WhatsApp, Instagram, e-mail e webchat em um só lugar."),
   component: InboxPage,
 });
 
+export const CHANNEL_LABEL: Record<Channel, string> = {
+  whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger", email: "E-mail", webchat: "Webchat",
+};
+
 function InboxPage() {
   const db = useDB();
-  const user = currentUser(db);
-  const [selectedConvId, setSelectedConvId] = useState<string | null>(db.conversations[0]?.id ?? null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [messageDraft, setMessageDraft] = useState("");
-  const [channelFilter, setChannelFilter] = useState<string>("todos");
+  const me = currentUser(db);
+  const [status, setStatus] = useState<"all" | Conversation["status"]>("all");
+  const [q, setQ] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
 
-  const conversations = db.conversations.filter((c) => {
-    if (channelFilter !== "todos" && c.channel !== channelFilter) return false;
-    if (!searchTerm.trim()) return true;
-    const contact = db.contacts.find((ct) => ct.id === c.contactId);
-    const searchTarget = `${contact?.name || ""} ${contact?.phone || ""} ${c.messages.map((m) => m.text).join(" ")}`.toLowerCase();
-    return searchTarget.includes(searchTerm.toLowerCase());
-  });
+  const list = useMemo(
+    () =>
+      [...db.conversations]
+        .filter((c) => status === "all" || c.status === status)
+        .filter((c) => {
+          if (!q.trim()) return true;
+          const ct = db.contacts.find((x) => x.id === c.contactId);
+          return `${ct?.name ?? ""} ${c.messages.at(-1)?.text ?? ""}`.toLowerCase().includes(q.toLowerCase());
+        })
+        .sort((a, b) => +new Date(b.lastMessageAt) - +new Date(a.lastMessageAt)),
+    [db.conversations, db.contacts, status, q],
+  );
+  const conv = db.conversations.find((c) => c.id === (selectedId ?? list[0]?.id));
+  const contact = conv && db.contacts.find((c) => c.id === conv.contactId);
+  const company = contact?.companyId ? db.companies.find((c) => c.id === contact.companyId) : undefined;
+  const deals = contact ? db.deals.filter((d) => d.contactId === contact.id) : [];
 
-  const activeConv = db.conversations.find((c) => c.id === selectedConvId) || db.conversations[0];
-  const activeContact = activeConv ? db.contacts.find((ct) => ct.id === activeConv.contactId) : undefined;
-  const activeDeal = activeContact ? db.deals.find((d) => d.contactId === activeContact.id) : undefined;
-  const bant = activeContact ? evaluateBant(activeContact, activeDeal) : null;
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [conv?.id, conv?.messages.length]);
 
-  const handleSendMessage = () => {
-    if (!messageDraft.trim() || !activeConv) return;
-    const res = runTool(
-      "messages.send",
-      {
-        conversationId: activeConv.id,
-        text: messageDraft,
-        from: "human",
-        authorName: user.name,
-      },
-      { actor: user.name, actorType: "user" }
-    );
+  useEffect(() => {
+    if (conv && conv.unread > 0) update((d) => { const c = d.conversations.find((x) => x.id === conv.id); if (c) c.unread = 0; });
+  }, [conv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    if (res.ok) {
-      setMessageDraft("");
-    } else {
-      toast.error(res.message);
-    }
+  const quickMatches = text.startsWith("/") ? db.quickReplies.filter((r) => r.shortcut.startsWith(text.split(" ")[0])) : [];
+
+  const send = (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!conv || !text.trim()) return;
+    const r = userAction("messages.send", { conversationId: conv.id, text: text.trim() });
+    if (r.ok) setText("");
+    else toast.error(`Não enviado: ${r.message}`);
   };
 
-  const handleApplyObjection = (objId: string) => {
-    if (!activeContact) return;
-    const res = runTool(
-      "sales.handle_objection",
-      { contactId: activeContact.id, objectionId: objId },
-      { actor: "Helena AI", actorType: "helena" }
-    );
-    if (res.ok) {
-      toast.success(res.message);
-    } else {
-      toast.error(res.message);
-    }
-  };
-
-  const handleGeneratePix = () => {
-    if (!activeContact) return;
-    const res = runTool(
-      "sales.generate_checkout_pix",
-      { contactId: activeContact.id, dealId: activeDeal?.id, amount: activeDeal?.value || 4900 },
-      { actor: "Helena Closer", actorType: "helena" }
-    );
-    if (res.ok) {
-      toast.success(res.message);
-    } else {
-      toast.error(res.message);
-    }
-  };
-
-  const handleHandoff = () => {
-    if (!activeContact) return;
-    const res = runTool(
-      "sales.trigger_handoff",
-      { contactId: activeContact.id, reason: "Transbordo solicitado pelo atendente humano" },
-      { actor: user.name, actorType: "user" }
-    );
-    if (res.ok) {
-      toast.success(res.message);
-    } else {
-      toast.error(res.message);
-    }
+  const setConv = (patch: Partial<Conversation>, msg: string) => {
+    if (!conv) return;
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv.id)!;
+      Object.assign(c, patch);
+      c.messages.push({ id: `ev_${Date.now()}`, from: "system", authorName: "Sistema", text: msg, at: nowISO(), kind: "event" });
+    });
+    toast.success(msg);
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inbox Omnichannel</h1>
-          <p className="text-sm text-muted-foreground">Conversas ao vivo com WhatsApp, Instagram e motor autônomo de vendas.</p>
+    <div className="flex h-[calc(100svh-7.5rem)] min-h-[520px] overflow-hidden rounded-xl border bg-card">
+      {/* List */}
+      <div className={cn("flex w-full flex-col border-r md:w-80", conv && "hidden md:flex")}>
+        <div className="space-y-2 border-b p-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversas..." className="h-8 pl-8" />
+          </div>
+          <Tabs value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+            <TabsList className="h-8 w-full">
+              <TabsTrigger value="all" className="text-xs">Todas</TabsTrigger>
+              <TabsTrigger value="aberta" className="text-xs">Abertas</TabsTrigger>
+              <TabsTrigger value="pendente" className="text-xs">Pendentes</TabsTrigger>
+              <TabsTrigger value="resolvida" className="text-xs">Resolvidas</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1.5 py-1 text-xs">
-            <span className="size-2 rounded-full bg-success animate-pulse" />
-            Worker WhatsApp Socket Ativo (~68MB RAM)
-          </Badge>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {list.map((c) => {
+            const ct = db.contacts.find((x) => x.id === c.contactId);
+            const last = c.messages.at(-1);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedId(c.id)}
+                className={cn("flex w-full gap-3 border-b px-3 py-3 text-left transition-colors hover:bg-muted/50", conv?.id === c.id && "bg-muted")}
+              >
+                <EntityAvatar name={ct?.name ?? "?"} color={colorFor(c.contactId)} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{ct?.name ?? "Contato"}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(c.lastMessageAt)}</span>
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">{last?.text}</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span>{CHANNEL_LABEL[c.channel]}</span>·
+                    <span className="inline-flex items-center gap-0.5">
+                      {c.handlerType === "human" ? <UserRound className="size-3" /> : <Bot className="size-3" />}
+                      {c.handlerType === "helena" ? "Helena" : ownerName(db, c.handlerId)}
+                    </span>
+                    {c.unread > 0 && <span className="ml-auto rounded-full bg-helena px-1.5 font-mono text-[10px] text-helena-foreground">{c.unread}</span>}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+          {list.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa.</p>}
         </div>
       </div>
 
-      <div className="grid h-[calc(100vh-210px)] min-h-[580px] grid-cols-12 overflow-hidden rounded-xl border bg-card">
-        {/* Sidebar de conversas */}
-        <div className="col-span-12 flex flex-col border-r md:col-span-4 lg:col-span-4">
-          <div className="border-b p-3 space-y-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar conversa ou mensagem…"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 text-xs h-9"
-              />
+      {/* Thread */}
+      {conv && contact ? (
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+            <div className="flex items-center gap-3">
+              <Button size="sm" variant="ghost" className="md:hidden" onClick={() => setSelectedId(null)}>←</Button>
+              <div>
+                <div className="text-sm font-semibold">{contact.name}</div>
+                <div className="text-xs text-muted-foreground">{CHANNEL_LABEL[conv.channel]} · {contact.phone || contact.email}</div>
+              </div>
+              <Status value={conv.status} />
             </div>
-            <div className="flex gap-1 overflow-x-auto pb-1 text-xs">
-              {["todos", "whatsapp", "instagram", "webchat"].map((ch) => (
-                <button
-                  key={ch}
-                  onClick={() => setChannelFilter(ch)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-all ${
-                    channelFilter === ch ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                >
-                  {ch}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-1.5">
+              {conv.handlerType !== "human" ? (
+                <Button size="sm" variant="outline" onClick={() => setConv({ handlerType: "human", handlerId: me.id }, `${me.name} assumiu a conversa`)}>
+                  <Hand /> Assumir
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => setConv({ handlerType: "agent", handlerId: "a_at" }, "Conversa devolvida ao agente Atendimento Geral")}>
+                  <Bot /> Devolver ao agente
+                </Button>
+              )}
+              {conv.status !== "resolvida" && (
+                <Button size="sm" variant="outline" onClick={() => setConv({ status: "resolvida" }, "Conversa marcada como resolvida")}>
+                  <CheckCheck /> Resolver
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => openHelena(`Helena, resuma a conversa com ${contact.name} e sugira a próxima ação.`)}>
+                <Sparkles /> Helena
+              </Button>
             </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto divide-y">
-            {conversations.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">Nenhuma conversa encontrada.</div>
-            ) : (
-              conversations.map((c) => {
-                const ct = db.contacts.find((x) => x.id === c.contactId);
-                const lastMsg = c.messages[c.messages.length - 1];
-                const isSelected = c.id === activeConv?.id;
-                const isSemSite = ct?.tags.includes("#sem-site");
-
-                return (
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-muted/20 px-4 py-4">
+            {conv.messages.map((m) =>
+              m.kind === "event" || m.from === "system" ? (
+                <div key={m.id} className="text-center text-[11px] text-muted-foreground">— {m.text} · {fmtTime(m.at)} —</div>
+              ) : (
+                <div key={m.id} className={cn("flex", m.from === "contact" ? "justify-start" : "justify-end")}>
                   <div
-                    key={c.id}
-                    onClick={() => setSelectedConvId(c.id)}
-                    className={`flex cursor-pointer items-start gap-3 p-3 transition-colors ${
-                      isSelected ? "bg-muted/70 border-l-2 border-primary" : "hover:bg-muted/30"
-                    }`}
+                    className={cn(
+                      "max-w-[78%] rounded-2xl px-3.5 py-2 text-sm",
+                      m.from === "contact" ? "rounded-bl-md border bg-card" : m.from === "human" ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-br-md border border-helena/25 bg-helena/10",
+                    )}
                   >
-                    <EntityAvatar name={ct?.name || "Contato"} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="truncate text-xs font-medium">{ct?.name || "Contato"}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {lastMsg ? new Date(lastMsg.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
-                        </span>
-                      </div>
-                      <div className="truncate text-[11px] text-muted-foreground mt-0.5">
-                        {lastMsg ? lastMsg.text : "Nenhuma mensagem"}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                        {isSemSite && (
-                          <Badge variant="destructive" className="h-4 px-1 text-[9px]">
-                            #sem-site
-                          </Badge>
-                        )}
-                        <Badge variant="outline" className="h-4 px-1 text-[9px] capitalize">
-                          {c.channel}
-                        </Badge>
-                        {c.handlerType === "agent" ? (
-                          <Badge variant="secondary" className="h-4 px-1 text-[9px] gap-1">
-                            <Bot className="size-2.5" /> IA
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="h-4 px-1 text-[9px] gap-1">
-                            <User className="size-2.5" /> Humano
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+                    {m.from !== "contact" && <div className="mb-0.5 text-[10px] font-semibold opacity-70">{m.authorName}</div>}
+                    <div className="whitespace-pre-line">{m.text}</div>
+                    <div className="mt-0.5 text-right text-[10px] opacity-60">{fmtTime(m.at)}</div>
                   </div>
-                );
-              })
+                </div>
+              ),
             )}
+            <div ref={endRef} />
           </div>
-        </div>
-
-        {/* Área de Chat */}
-        <div className="col-span-12 flex flex-col md:col-span-8 lg:col-span-8">
-          {activeConv && activeContact ? (
-            <>
-              {/* Header do chat */}
-              <div className="flex items-center justify-between border-b px-4 py-3 bg-muted/20">
-                <div className="flex items-center gap-3">
-                  <EntityAvatar name={activeContact.name} size="sm" />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-semibold">{activeContact.name}</h2>
-                      <span className="text-xs text-muted-foreground">{activeContact.phone}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>{activeContact.title}</span>
-                      <span>·</span>
-                      <span>BANT Score: <strong className={bant?.isQualified ? "text-success" : ""}>{bant?.totalScore}/100</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="outline" className="gap-1.5 text-xs h-8">
-                        <Sparkles className="size-3.5 text-helena" /> Contornar Objeção
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-72">
-                      <DropdownMenuLabel>Matriz de Objeções (Sales Brain)</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {OBJECTION_MATRIX.map((obj) => (
-                        <DropdownMenuItem
-                          key={obj.id}
-                          onClick={() => handleApplyObjection(obj.id)}
-                          className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
-                        >
-                          <span className="font-medium text-xs">{obj.title}</span>
-                          <span className="text-[10px] text-muted-foreground">{obj.actionDescription}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  <Button size="sm" variant="default" onClick={handleGeneratePix} className="gap-1.5 text-xs h-8 bg-success hover:bg-success/90">
-                    <QrCode className="size-3.5" /> Gerar Pix
-                  </Button>
-
-                  <Button size="sm" variant="outline" onClick={handleHandoff} className="gap-1.5 text-xs h-8">
-                    <ArrowRightLeft className="size-3.5" /> Handoff
-                  </Button>
-                </div>
+          <form onSubmit={send} className="relative border-t p-3">
+            {quickMatches.length > 0 && (
+              <div className="absolute bottom-full left-3 right-3 mb-1 overflow-hidden rounded-lg border bg-popover shadow-md">
+                {quickMatches.map((r) => (
+                  <button key={r.id} type="button" onClick={() => setText(r.text)} className="block w-full px-3 py-2 text-left text-sm hover:bg-muted">
+                    <span className="font-mono text-xs text-helena">{r.shortcut}</span> <span className="font-medium">{r.title}</span>
+                    <div className="truncate text-xs text-muted-foreground">{r.text}</div>
+                  </button>
+                ))}
               </div>
-
-              {/* Thread de mensagens */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/5">
-                {activeConv.messages.map((m) => {
-                  const isContact = m.from === "contact";
-                  const isEvent = m.kind === "event";
-
-                  if (isEvent) {
-                    return (
-                      <div key={m.id} className="text-center my-2">
-                        <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-mono text-muted-foreground">
-                          {m.text}
-                        </span>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex flex-col ${isContact ? "items-start" : "items-end"}`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-1 px-1">
-                        <span className="text-[10px] text-muted-foreground font-medium">{m.authorName}</span>
-                        <span className="font-mono text-[9px] text-muted-foreground">
-                          {new Date(m.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <div
-                        className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-wrap shadow-sm ${
-                          isContact
-                            ? "bg-card border text-card-foreground rounded-tl-sm"
-                            : "bg-primary text-primary-foreground rounded-tr-sm"
-                        }`}
-                      >
-                        {m.text}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Caixa de envio com atalhos */}
-              <div className="border-t p-3 bg-card space-y-2">
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground border rounded px-2 py-0.5">
-                        <MessageSquareQuote className="size-3" /> Respostas Rápidas
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-80">
-                      <DropdownMenuLabel>Respostas Rápidas Salvas</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {db.quickReplies.map((qr) => (
-                        <DropdownMenuItem
-                          key={qr.id}
-                          onClick={() => setMessageDraft(qr.text)}
-                          className="flex flex-col items-start gap-0.5 cursor-pointer"
-                        >
-                          <span className="font-medium text-xs">{qr.title} ({qr.shortcut})</span>
-                          <span className="text-[10px] text-muted-foreground truncate w-full">{qr.text}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  {OBJECTION_MATRIX.slice(0, 3).map((obj) => (
-                    <button
-                      key={obj.id}
-                      onClick={() => handleApplyObjection(obj.id)}
-                      className="text-[10px] text-muted-foreground hover:text-primary bg-muted/60 hover:bg-muted rounded px-2 py-0.5 whitespace-nowrap"
-                    >
-                      ⚡ {obj.title}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Digite uma mensagem ou selecione uma resposta..."
-                    value={messageDraft}
-                    onChange={(e) => setMessageDraft(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-                    className="text-xs h-10"
-                  />
-                  <Button onClick={handleSendMessage} className="gap-1.5 px-4 h-10">
-                    <Send className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              Selecione uma conversa para começar o atendimento.
+            )}
+            <div className="flex gap-2">
+              <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Escreva uma mensagem ou digite / para respostas rápidas" />
+              <Button type="submit" disabled={!text.trim()}><Send /> Enviar</Button>
             </div>
-          )}
+          </form>
         </div>
-      </div>
+      ) : (
+        <div className="hidden flex-1 items-center justify-center md:flex">
+          <EmptyState icon={<Inbox />} title="Selecione uma conversa" />
+        </div>
+      )}
+
+      {/* Contact side */}
+      {conv && contact && (
+        <aside className="hidden w-72 shrink-0 space-y-5 overflow-y-auto border-l p-4 xl:block">
+          <div className="flex flex-col items-center text-center">
+            <EntityAvatar name={contact.name} color={colorFor(contact.id)} size="lg" />
+            <div className="mt-2 font-semibold">{contact.name}</div>
+            <div className="text-xs text-muted-foreground">{contact.title}{company && ` · ${company.name}`}</div>
+            <div className="mt-2 flex flex-wrap justify-center gap-1">
+              <Status value={contact.status} />
+              <StatusBadge tone={conv.sentiment === "positivo" ? "success" : conv.sentiment === "negativo" ? "danger" : "neutral"}>
+                Sentimento {conv.sentiment}
+              </StatusBadge>
+            </div>
+          </div>
+          <dl className="space-y-2 text-xs">
+            {[["E-mail", contact.email], ["Telefone", contact.phone], ["Origem", contact.source], ["Score", String(contact.score)], ["Último contato", timeAgo(contact.lastContactAt)]].map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-2"><dt className="text-muted-foreground">{k}</dt><dd className="truncate text-right">{v || "—"}</dd></div>
+            ))}
+          </dl>
+          {contact.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">{contact.tags.map((t) => <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[10px]">#{t}</span>)}</div>
+          )}
+          <div>
+            <div className="mb-2 text-xs font-semibold">Oportunidades</div>
+            {deals.length ? deals.map((d) => (
+              <div key={d.id} className="mb-1.5 rounded-lg border p-2 text-xs">
+                <div className="font-medium">{d.title}</div>
+                <div className="mt-0.5 flex justify-between text-muted-foreground"><span>{d.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span><Status value={d.status} /></div>
+              </div>
+            )) : <p className="text-xs text-muted-foreground">Nenhuma oportunidade.</p>}
+          </div>
+          <Button asChild size="sm" variant="outline" className="w-full">
+            <Link to="/crm/contatos">Abrir no CRM</Link>
+          </Button>
+        </aside>
+      )}
     </div>
   );
 }

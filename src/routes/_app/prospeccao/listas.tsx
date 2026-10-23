@@ -1,151 +1,132 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  Archive, Building2, Clock, Download, Filter, List, MapPin, Plus, Search, Tag, Trash2, Upload, Users,
-} from "lucide-react";
-import { PageHeader, Panel, StatCard, Status } from "@/components/app/kit";
-import { Badge } from "@/components/ui/badge";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import { Ban, List, Plus, Sparkles, Upload, Users, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import { useDB, update, uid, nowISO } from "@/lib/store";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PageHeader, StatCard } from "@/components/app/kit";
+import { uid, update, useDB } from "@/lib/store";
+import { userAction } from "@/lib/helena/engine";
+import { openHelena } from "@/lib/helena/orchestrator";
+import { fmtDate, num } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/prospeccao/listas")({
-  head: () => pageHead("Listas de Prospecção", "Gerencie as listas de leads segmentados para campanhas e operações."),
-  component: ListasPage,
+  head: () => pageHead("Listas de prospecção", "Listas segmentadas por ICP usadas pelas campanhas e pelos SDRs de IA."),
+  component: ListsPage,
 });
 
-function ListasPage() {
+function ListsPage() {
   const db = useDB();
-  const [search, setSearch] = useState("");
-  const [isNewOpen, setIsNewOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newSegment, setNewSegment] = useState("");
-  const [newIcp, setNewIcp] = useState("");
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", segment: "", icp: "", count: "100", source: "Importação CSV" });
 
-  const filtered = db.lists.filter((l) =>
-    `${l.name} ${l.segment} ${l.icp}`.toLowerCase().includes(search.toLowerCase())
-  );
+  const total = db.lists.reduce((s, l) => s + l.count, 0);
+  const inCampaign = (id: string) => db.campaigns.filter((c) => c.listId === id).length;
 
-  const totalLeads = db.lists.reduce((s, l) => s + l.count, 0);
-  const totalBlacklisted = db.lists.reduce((s, l) => s + l.blacklisted, 0);
-
-  const handleCreate = () => {
-    if (!newName.trim()) { toast.error("Nome da lista é obrigatório"); return; }
+  const create = (e: FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error("Informe o nome da lista.");
     update((d) => {
       d.lists.unshift({
-        id: uid("l_"), organizationId: d.organization.id,
-        name: newName, segment: newSegment || "Geral", icp: newIcp || "Negócios locais sem site",
-        count: 0, source: "Manual", blacklisted: 0, createdAt: nowISO(),
+        id: uid("l_"), organizationId: d.organization.id, name: form.name.trim(), segment: form.segment || "Geral",
+        icp: form.icp || "—", count: Math.max(1, Number(form.count) || 0), source: form.source, blacklisted: 0, createdAt: new Date().toISOString(),
       });
     });
-    toast.success(`Lista "${newName}" criada!`);
-    setIsNewOpen(false);
-    setNewName(""); setNewSegment(""); setNewIcp("");
+    toast.success(`Lista ${form.name} criada`);
+    setOpen(false);
+    setForm({ name: "", segment: "", icp: "", count: "100", source: "Importação CSV" });
   };
 
-  const handleDelete = (id: string) => {
-    update((d) => { d.lists = d.lists.filter((l) => l.id !== id); });
-    toast.success("Lista excluída");
+  const newCampaign = (listId: string, name: string) => {
+    const r = userAction("campaigns.create", { name: `Campanha ${name}`, listId, agentIds: ["a_sdr1", "a_sdr2"] });
+    if (r.ok) {
+      toast.success(r.message);
+      router.history.push("/prospeccao/campanhas");
+    } else toast.error(r.message);
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Prospecção"
-        title="Listas de Leads"
-        description="Segmentos de empresas para distribuição entre campanhas e SDRs."
+        title="Listas"
+        description="Bases segmentadas por perfil de cliente ideal. Contatos em opt-out ficam bloqueados automaticamente."
         actions={
-          <Dialog open={isNewOpen} onOpenChange={setIsNewOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="size-4" /> Nova Lista</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Criar Nova Lista</DialogTitle>
-                <DialogDescription>Segmente leads por nicho, ICP ou região para disparos precisos.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <div><label className="text-xs font-medium text-muted-foreground">Nome da Lista</label>
-                  <Input placeholder="Ex: Clínicas Odontológicas SP" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                </div>
-                <div><label className="text-xs font-medium text-muted-foreground">Segmento</label>
-                  <Input placeholder="Ex: Odontologia, Estética, Imobiliário" value={newSegment} onChange={(e) => setNewSegment(e.target.value)} />
-                </div>
-                <div><label className="text-xs font-medium text-muted-foreground">ICP (Perfil Ideal do Cliente)</label>
-                  <Input placeholder="Ex: Clínicas sem Google Meu Negócio otimizado" value={newIcp} onChange={(e) => setNewIcp(e.target.value)} />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsNewOpen(false)}>Cancelar</Button>
-                <Button onClick={handleCreate}>Criar Lista</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <>
+            <Button variant="outline" onClick={() => openHelena("Helena, varra o Google Maps e busque 50 clínicas sem site em São Paulo.")}><Sparkles /> Gerar com a Helena</Button>
+            <Button onClick={() => setOpen(true)}><Plus /> Nova lista</Button>
+          </>
         }
       />
-
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Total de Listas" value={db.lists.length} icon={<List />} tone="info" />
-        <StatCard label="Total de Leads" value={totalLeads.toLocaleString("pt-BR")} hint="Contatos elegíveis" icon={<Users />} tone="success" />
-        <StatCard label="Blocklist / Opt-out" value={totalBlacklisted} hint="Protegidos automaticamente" icon={<Archive />} tone="warning" />
+        <StatCard label="Listas" value={db.lists.length} icon={<List />} />
+        <StatCard label="Contatos disponíveis" value={num(total)} icon={<Users />} tone="info" />
+        <StatCard label="Bloqueados (opt-out)" value={db.lists.reduce((s, l) => s + l.blacklisted, 0)} icon={<Ban />} tone="danger" />
+      </div>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Lista</TableHead>
+              <TableHead className="hidden md:table-cell">Perfil (ICP)</TableHead>
+              <TableHead className="text-right">Contatos</TableHead>
+              <TableHead className="hidden sm:table-cell">Origem</TableHead>
+              <TableHead className="hidden lg:table-cell">Campanhas</TableHead>
+              <TableHead className="text-right">Ação</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {db.lists.map((l) => (
+              <TableRow key={l.id}>
+                <TableCell>
+                  <div className="font-medium">{l.name}</div>
+                  <div className="text-xs text-muted-foreground">{l.segment} · criada {fmtDate(l.createdAt)}</div>
+                </TableCell>
+                <TableCell className="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell">{l.icp}</TableCell>
+                <TableCell className="text-right font-mono">
+                  {num(l.count)}
+                  {l.blacklisted > 0 && <div className="text-[10px] text-destructive">{l.blacklisted} bloqueados</div>}
+                </TableCell>
+                <TableCell className="hidden text-sm sm:table-cell">{l.source}</TableCell>
+                <TableCell className="hidden lg:table-cell">{inCampaign(l.id)}</TableCell>
+                <TableCell className="text-right">
+                  <Button size="sm" variant="outline" onClick={() => newCampaign(l.id, l.name)}><Zap /> Campanha</Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-        <Input placeholder="Buscar lista..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((list) => (
-          <div key={list.id} className="rounded-xl border bg-card p-5 flex flex-col gap-4 hover:border-foreground/20 transition-all">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-semibold">{list.name}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{list.segment}</p>
-              </div>
-              <Button size="icon" variant="ghost" className="size-7 hover:text-destructive shrink-0" onClick={() => handleDelete(list.id)}>
-                <Trash2 className="size-3.5" />
-              </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <form onSubmit={create} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Nova lista</DialogTitle>
+              <DialogDescription>Simula uma importação. O arquivo CSV real será processado pelo seu servidor.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5"><Label>Nome</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Restaurantes Zona Sul" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label>Segmento</Label><Input value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value })} /></div>
+              <div className="space-y-1.5"><Label>Quantidade</Label><Input type="number" min={1} value={form.count} onChange={(e) => setForm({ ...form, count: e.target.value })} /></div>
             </div>
-
-            <div className="space-y-1">
-              <p className="text-[11px] text-muted-foreground"><span className="font-medium text-foreground">ICP:</span> {list.icp}</p>
-              <p className="text-[11px] text-muted-foreground"><span className="font-medium text-foreground">Fonte:</span> {list.source}</p>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="text-center">
-                <div className="text-2xl font-semibold">{list.count.toLocaleString("pt-BR")}</div>
-                <div className="text-[10px] text-muted-foreground">leads</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xl font-semibold text-destructive">{list.blacklisted}</div>
-                <div className="text-[10px] text-muted-foreground">blocklist</div>
-              </div>
-              <div className="text-center">
-                <div className="text-sm font-semibold text-success">
-                  {Math.round(((list.count - list.blacklisted) / (list.count || 1)) * 100)}%
-                </div>
-                <div className="text-[10px] text-muted-foreground">elegíveis</div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="flex-1 text-xs h-8 gap-1">
-                <Download className="size-3.5" /> Exportar CSV
-              </Button>
-              <Button size="sm" className="flex-1 text-xs h-8 gap-1">
-                <Upload className="size-3.5" /> Usar na Campanha
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
+            <div className="space-y-1.5"><Label>Perfil de cliente ideal</Label><Input value={form.icp} onChange={(e) => setForm({ ...form, icp: e.target.value })} placeholder="Ex: sem site, 5 a 50 funcionários" /></div>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground hover:bg-muted/40">
+              <Upload className="size-4" /> Anexar CSV (opcional)
+              <input type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setForm({ ...form, source: `CSV · ${f.name}`, name: form.name || f.name.replace(/\.csv$/i, "") }); }} />
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit">Criar lista</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

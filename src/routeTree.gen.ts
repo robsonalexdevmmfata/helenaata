@@ -39,6 +39,8 @@ import { Route as AppIntegracoesApiRouteImport } from './routes/_app/integracoes
 import { Route as AppIntegracoesProvedoresRouteImport } from './routes/_app/integracoes/provedores'
 import { Route as AppIntegracoesWebhooksRouteImport } from './routes/_app/integracoes/webhooks'
 import { Route as AppIntegracoesWhatsappRouteImport } from './routes/_app/integracoes/whatsapp'
+import { Route as AppOperacoesIndexRouteImport } from './routes/_app/operacoes/index'
+import { Route as AppOperacoesIdRouteImport } from './routes/_app/operacoes/$id'
 import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospeccao/buscar'
 import { Route as AppProspeccaoCadenciasRouteImport } from './routes/_app/prospeccao/cadencias'
 import { Route as AppProspeccaoCampanhasRouteImport } from './routes/_app/prospeccao/campanhas'
@@ -197,6 +199,16 @@ const AppIntegracoesWhatsappRoute = AppIntegracoesWhatsappRouteImport.update({
   path: '/integracoes/whatsapp',
   getParentRoute: () => AppRoute,
 } as any)
+const AppOperacoesIndexRoute = AppOperacoesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppOperacoesRoute,
+} as any)
+const AppOperacoesIdRoute = AppOperacoesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppOperacoesRoute,
+} as any)
 const AppProspeccaoBuscarRoute = AppProspeccaoBuscarRouteImport.update({
   id: '/prospeccao/buscar',
   path: '/prospeccao/buscar',
@@ -224,7 +236,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
   '/equipe': typeof AppEquipeRoute
-  '/operacoes': typeof AppOperacoesRoute
+  '/operacoes': typeof AppOperacoesRouteWithChildren
   '/visao-geral': typeof AppVisaoGeralRoute
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
@@ -248,10 +260,12 @@ export interface FileRoutesByFullPath {
   '/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
   '/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
   '/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
+  '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
   '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
   '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
   '/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -259,7 +273,6 @@ export interface FileRoutesByTo {
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
   '/equipe': typeof AppEquipeRoute
-  '/operacoes': typeof AppOperacoesRoute
   '/visao-geral': typeof AppVisaoGeralRoute
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
@@ -283,10 +296,12 @@ export interface FileRoutesByTo {
   '/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
   '/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
   '/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
+  '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
   '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
   '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
   '/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/operacoes': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -296,7 +311,7 @@ export interface FileRoutesById {
   '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/automacoes': typeof AppAutomacoesRoute
   '/_app/equipe': typeof AppEquipeRoute
-  '/_app/operacoes': typeof AppOperacoesRoute
+  '/_app/operacoes': typeof AppOperacoesRouteWithChildren
   '/_app/visao-geral': typeof AppVisaoGeralRoute
   '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
@@ -320,10 +335,12 @@ export interface FileRoutesById {
   '/_app/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
   '/_app/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
   '/_app/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
+  '/_app/operacoes/$id': typeof AppOperacoesIdRoute
   '/_app/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
   '/_app/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
   '/_app/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
   '/_app/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/_app/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -357,10 +374,12 @@ export interface FileRouteTypes {
     | '/integracoes/provedores'
     | '/integracoes/webhooks'
     | '/integracoes/whatsapp'
+    | '/operacoes/$id'
     | '/prospeccao/buscar'
     | '/prospeccao/cadencias'
     | '/prospeccao/campanhas'
     | '/prospeccao/listas'
+    | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -368,7 +387,6 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/automacoes'
     | '/equipe'
-    | '/operacoes'
     | '/visao-geral'
     | '/atendimento/inbox'
     | '/atendimento/radar'
@@ -392,10 +410,12 @@ export interface FileRouteTypes {
     | '/integracoes/provedores'
     | '/integracoes/webhooks'
     | '/integracoes/whatsapp'
+    | '/operacoes/$id'
     | '/prospeccao/buscar'
     | '/prospeccao/cadencias'
     | '/prospeccao/campanhas'
     | '/prospeccao/listas'
+    | '/operacoes'
   id:
     | '__root__'
     | '/'
@@ -428,10 +448,12 @@ export interface FileRouteTypes {
     | '/_app/integracoes/provedores'
     | '/_app/integracoes/webhooks'
     | '/_app/integracoes/whatsapp'
+    | '/_app/operacoes/$id'
     | '/_app/prospeccao/buscar'
     | '/_app/prospeccao/cadencias'
     | '/_app/prospeccao/campanhas'
     | '/_app/prospeccao/listas'
+    | '/_app/operacoes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -652,6 +674,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIntegracoesWhatsappRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/operacoes/': {
+      id: '/_app/operacoes/'
+      path: '/'
+      fullPath: '/operacoes/'
+      preLoaderRoute: typeof AppOperacoesIndexRouteImport
+      parentRoute: typeof AppOperacoesRoute
+    }
+    '/_app/operacoes/$id': {
+      id: '/_app/operacoes/$id'
+      path: '/$id'
+      fullPath: '/operacoes/$id'
+      preLoaderRoute: typeof AppOperacoesIdRouteImport
+      parentRoute: typeof AppOperacoesRoute
+    }
     '/_app/prospeccao/buscar': {
       id: '/_app/prospeccao/buscar'
       path: '/prospeccao/buscar'
@@ -683,11 +719,25 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppOperacoesRouteChildren {
+  AppOperacoesIdRoute: typeof AppOperacoesIdRoute
+  AppOperacoesIndexRoute: typeof AppOperacoesIndexRoute
+}
+
+const AppOperacoesRouteChildren: AppOperacoesRouteChildren = {
+  AppOperacoesIdRoute: AppOperacoesIdRoute,
+  AppOperacoesIndexRoute: AppOperacoesIndexRoute,
+}
+
+const AppOperacoesRouteWithChildren = AppOperacoesRoute._addFileChildren(
+  AppOperacoesRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomacoesRoute: typeof AppAutomacoesRoute
   AppEquipeRoute: typeof AppEquipeRoute
-  AppOperacoesRoute: typeof AppOperacoesRoute
+  AppOperacoesRoute: typeof AppOperacoesRouteWithChildren
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
   AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
   AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
@@ -721,7 +771,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomacoesRoute: AppAutomacoesRoute,
   AppEquipeRoute: AppEquipeRoute,
-  AppOperacoesRoute: AppOperacoesRoute,
+  AppOperacoesRoute: AppOperacoesRouteWithChildren,
   AppVisaoGeralRoute: AppVisaoGeralRoute,
   AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
   AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
