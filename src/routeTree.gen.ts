@@ -13,6 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
+import { Route as AppAtendimentoInboxRouteImport } from './routes/_app/atendimento/inbox'
+import { Route as AppAtendimentoRadarRouteImport } from './routes/_app/atendimento/radar'
+import { Route as AppAtendimentoRespostasRouteImport } from './routes/_app/atendimento/respostas'
 import { Route as AppConfiguracoesOrganizacaoRouteImport } from './routes/_app/configuracoes/organizacao'
 import { Route as AppConfiguracoesPermissoesRouteImport } from './routes/_app/configuracoes/permissoes'
 import { Route as AppConfiguracoesUsuariosRouteImport } from './routes/_app/configuracoes/usuarios'
@@ -41,6 +44,21 @@ const LoginRoute = LoginRouteImport.update({
 const AppVisaoGeralRoute = AppVisaoGeralRouteImport.update({
   id: '/visao-geral',
   path: '/visao-geral',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoInboxRoute = AppAtendimentoInboxRouteImport.update({
+  id: '/atendimento/inbox',
+  path: '/atendimento/inbox',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoRadarRoute = AppAtendimentoRadarRouteImport.update({
+  id: '/atendimento/radar',
+  path: '/atendimento/radar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoRespostasRoute = AppAtendimentoRespostasRouteImport.update({
+  id: '/atendimento/respostas',
+  path: '/atendimento/respostas',
   getParentRoute: () => AppRoute,
 } as any)
 const AppConfiguracoesOrganizacaoRoute =
@@ -101,6 +119,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -116,6 +137,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -133,6 +157,9 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/visao-geral': typeof AppVisaoGeralRoute
+  '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/_app/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/_app/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/_app/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/_app/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -150,6 +177,9 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/visao-geral'
+    | '/atendimento/inbox'
+    | '/atendimento/radar'
+    | '/atendimento/respostas'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/usuarios'
@@ -165,6 +195,9 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/visao-geral'
+    | '/atendimento/inbox'
+    | '/atendimento/radar'
+    | '/atendimento/respostas'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/usuarios'
@@ -181,6 +214,9 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/_app/visao-geral'
+    | '/_app/atendimento/inbox'
+    | '/_app/atendimento/radar'
+    | '/_app/atendimento/respostas'
     | '/_app/configuracoes/organizacao'
     | '/_app/configuracoes/permissoes'
     | '/_app/configuracoes/usuarios'
@@ -227,6 +263,27 @@ declare module '@tanstack/react-router' {
       path: '/visao-geral'
       fullPath: '/visao-geral'
       preLoaderRoute: typeof AppVisaoGeralRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/inbox': {
+      id: '/_app/atendimento/inbox'
+      path: '/atendimento/inbox'
+      fullPath: '/atendimento/inbox'
+      preLoaderRoute: typeof AppAtendimentoInboxRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/radar': {
+      id: '/_app/atendimento/radar'
+      path: '/atendimento/radar'
+      fullPath: '/atendimento/radar'
+      preLoaderRoute: typeof AppAtendimentoRadarRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/respostas': {
+      id: '/_app/atendimento/respostas'
+      path: '/atendimento/respostas'
+      fullPath: '/atendimento/respostas'
+      preLoaderRoute: typeof AppAtendimentoRespostasRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/configuracoes/organizacao': {
@@ -304,6 +361,9 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
+  AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
+  AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
+  AppAtendimentoRespostasRoute: typeof AppAtendimentoRespostasRoute
   AppConfiguracoesOrganizacaoRoute: typeof AppConfiguracoesOrganizacaoRoute
   AppConfiguracoesPermissoesRoute: typeof AppConfiguracoesPermissoesRoute
   AppConfiguracoesUsuariosRoute: typeof AppConfiguracoesUsuariosRoute
@@ -318,6 +378,9 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppVisaoGeralRoute: AppVisaoGeralRoute,
+  AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
+  AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
+  AppAtendimentoRespostasRoute: AppAtendimentoRespostasRoute,
   AppConfiguracoesOrganizacaoRoute: AppConfiguracoesOrganizacaoRoute,
   AppConfiguracoesPermissoesRoute: AppConfiguracoesPermissoesRoute,
   AppConfiguracoesUsuariosRoute: AppConfiguracoesUsuariosRoute,
