@@ -9,6 +9,10 @@ import { fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { HelenaCardView, ThinkingIndicator } from "./HelenaCards";
 import { HelenaOrb } from "./HelenaOrb";
+import { Disc3, Play, Sparkles } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { generateBriefingScript, getBriefingConfig } from "@/lib/helena/briefing";
+import { playHappyNation, helenaMusic } from "@/lib/helena/music";
 
 export const HELENA_SUGGESTIONS = [
   "Helena, precisamos faturar R$ 15.000 esta semana.",
@@ -68,18 +72,71 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
     void sendToHelena(ui.draft);
   };
 
+  const briefingCfg = getBriefingConfig();
+  const briefing = generateBriefingScript(db, briefingCfg, "entrada");
+  const music = helenaMusic.use();
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className={cn("min-h-0 flex-1 overflow-y-auto", variant === "panel" ? "px-5 py-4" : "px-1 py-2")}>
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col justify-center py-8">
-            <HelenaOrb className="mb-5 size-10" state={ui.state} />
-            <p className="font-serif text-3xl leading-tight">Como posso ajudar na operação?</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Eu consulto o CRM, coordeno os agentes e peço sua autorização antes de qualquer ação de risco.
-            </p>
-            <div className="mt-6 space-y-1.5">
-              {HELENA_SUGGESTIONS.map((s) => (
+          <div className="flex h-full flex-col justify-start py-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <HelenaOrb className="size-10" state={ui.state} />
+              <div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-helena">
+                    Briefing Executivo · Info Tech Ltda
+                  </span>
+                  {music.playing && (
+                    <Badge variant="outline" className="border-helena/40 text-helena text-[9px] px-1.5 py-0 flex items-center gap-1 font-mono">
+                      <Disc3 className="size-2.5 animate-spin" /> Happy Nation
+                    </Badge>
+                  )}
+                </div>
+                <h2 className="text-base font-bold text-foreground">
+                  Olá, {briefingCfg.userTitle} {briefingCfg.userName}!
+                </h2>
+              </div>
+            </div>
+
+            {/* Personalized Opening Quote */}
+            <div className="rounded-xl border border-helena/30 bg-helena/5 p-4 text-xs sm:text-sm text-foreground leading-relaxed italic shadow-sm relative">
+              "{briefing.script}"
+              <div className="mt-3 flex items-center justify-between border-t border-helena/20 pt-2.5 not-italic text-xs">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px] gap-1.5 border-helena/40 text-helena hover:bg-helena/10"
+                  onClick={() => {
+                    playHappyNation(briefingCfg.musicVolume);
+                    voice.speak(briefing.script);
+                  }}
+                >
+                  <Play className="size-3 fill-current" /> Ouvir Helena com Happy Nation
+                </Button>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  Meta: R$ 15.000,00
+                </span>
+              </div>
+            </div>
+
+            {/* KPIs Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {briefing.highlights.slice(0, 4).map((h, i) => (
+                <div key={i} className="rounded-lg border bg-card p-2.5 space-y-0.5">
+                  <div className="text-[10px] text-muted-foreground">{h.label}</div>
+                  <div className="font-semibold text-foreground truncate">{h.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Suggestions */}
+            <div className="space-y-1.5 pt-2">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Ações Recomendadas da Helena:
+              </p>
+              {HELENA_SUGGESTIONS.slice(0, 4).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -87,7 +144,7 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
                     voice.stopSpeaking();
                     void sendToHelena(s);
                   }}
-                  className="block w-full rounded-lg border bg-card px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:border-helena/40 hover:text-foreground"
+                  className="block w-full rounded-lg border bg-card px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:border-helena/40 hover:text-foreground"
                 >
                   {s}
                 </button>

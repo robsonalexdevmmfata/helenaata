@@ -11,6 +11,8 @@ import { getToolDef } from "./registry";
 import { callGroqOrchestrator } from "./groq";
 import { computeDynamicCadence, getWhatsAppWorkerStatus, OBJECTION_MATRIX, FINANCIAL_GOAL } from "./sales-brain";
 import { computeRevenuePlan, parseDeadline, parseRevenueGoal } from "./revenue-goal";
+import { generateBriefingScript, getBriefingConfig } from "./briefing";
+import { playHappyNation } from "./music";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
@@ -45,6 +47,68 @@ export function openHelena(prefill?: string) {
 export async function sendToHelena(text: string) {
   const clean = text.trim();
   if (!clean) return;
+
+  const nClean = normalize(clean);
+  const briefingCfg = getBriefingConfig();
+  const triggerNorm = normalize(briefingCfg.triggerPhrase || "olá helena, cheguei");
+  const exitNorm = normalize(briefingCfg.exitTriggerPhrase || "helena, encerrando por hoje");
+
+  // Intercept arrival triggers: "helena cheguei", "cheguei", "iniciar expediente", "abertura", or matching configured triggerPhrase
+  if (
+    nClean === triggerNorm ||
+    nClean.includes("cheguei") ||
+    nClean.includes("iniciar expediente") ||
+    nClean.includes("abertura") ||
+    nClean === "helena cheguei" ||
+    nClean === "ola helena" ||
+    nClean === "olá helena"
+  ) {
+    pushHelenaMessage(clean, undefined, "user");
+    helenaUi.set({ state: "pensando", draft: "" });
+    await sleep(250);
+
+    // Automatically trigger Happy Nation background soundtrack
+    if (briefingCfg.autoPlayMusic) {
+      playHappyNation(briefingCfg.musicVolume);
+    }
+
+    const briefing = generateBriefingScript(getDB(), briefingCfg, "entrada");
+    pushHelenaMessage(briefing.script, {
+      type: "stats",
+      title: "Briefing Executivo de Entrada · Info Tech Ltda",
+      items: briefing.highlights.map((h) => ({ label: h.label, value: h.value })),
+    });
+
+    helenaUi.set({ state: "concluindo" });
+    await sleep(400);
+    helenaUi.set({ state: "ocioso" });
+    return;
+  }
+
+  // Intercept exit triggers: "helena, encerrando por hoje", "encerrar expediente", etc.
+  if (
+    nClean === exitNorm ||
+    nClean.includes("encerrando por hoje") ||
+    nClean.includes("fim do expediente") ||
+    nClean.includes("tchau helena")
+  ) {
+    pushHelenaMessage(clean, undefined, "user");
+    helenaUi.set({ state: "pensando", draft: "" });
+    await sleep(250);
+
+    const briefing = generateBriefingScript(getDB(), briefingCfg, "encerramento");
+    pushHelenaMessage(briefing.script, {
+      type: "stats",
+      title: "Resumo Noturno de Encerramento",
+      items: briefing.highlights.map((h) => ({ label: h.label, value: h.value })),
+    });
+
+    helenaUi.set({ state: "concluindo" });
+    await sleep(400);
+    helenaUi.set({ state: "ocioso" });
+    return;
+  }
+
   pushHelenaMessage(clean, undefined, "user");
   helenaUi.set({ state: "pensando", draft: "" });
 
