@@ -26,6 +26,9 @@ import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
 import { Route as AppOperacoesIndexRouteImport } from './routes/_app/operacoes/index'
 import { Route as AppOperacoesIdRouteImport } from './routes/_app/operacoes/$id'
 import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospeccao/buscar'
+import { Route as AppProspeccaoCadenciasRouteImport } from './routes/_app/prospeccao/cadencias'
+import { Route as AppProspeccaoCampanhasRouteImport } from './routes/_app/prospeccao/campanhas'
+import { Route as AppProspeccaoListasRouteImport } from './routes/_app/prospeccao/listas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -114,6 +117,21 @@ const AppProspeccaoBuscarRoute = AppProspeccaoBuscarRouteImport.update({
   path: '/prospeccao/buscar',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProspeccaoCadenciasRoute = AppProspeccaoCadenciasRouteImport.update({
+  id: '/prospeccao/cadencias',
+  path: '/prospeccao/cadencias',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoCampanhasRoute = AppProspeccaoCampanhasRouteImport.update({
+  id: '/prospeccao/campanhas',
+  path: '/prospeccao/campanhas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoListasRoute = AppProspeccaoListasRouteImport.update({
+  id: '/prospeccao/listas',
+  path: '/prospeccao/listas',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -131,6 +149,9 @@ export interface FileRoutesByFullPath {
   '/crm/tarefas': typeof AppCrmTarefasRoute
   '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/prospeccao/listas': typeof AppProspeccaoListasRoute
   '/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -149,6 +170,9 @@ export interface FileRoutesByTo {
   '/crm/tarefas': typeof AppCrmTarefasRoute
   '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/prospeccao/listas': typeof AppProspeccaoListasRoute
   '/operacoes': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesById {
@@ -169,6 +193,9 @@ export interface FileRoutesById {
   '/_app/crm/tarefas': typeof AppCrmTarefasRoute
   '/_app/operacoes/$id': typeof AppOperacoesIdRoute
   '/_app/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/_app/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/_app/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/_app/prospeccao/listas': typeof AppProspeccaoListasRoute
   '/_app/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRouteTypes {
@@ -189,6 +216,9 @@ export interface FileRouteTypes {
     | '/crm/tarefas'
     | '/operacoes/$id'
     | '/prospeccao/buscar'
+    | '/prospeccao/cadencias'
+    | '/prospeccao/campanhas'
+    | '/prospeccao/listas'
     | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -207,6 +237,9 @@ export interface FileRouteTypes {
     | '/crm/tarefas'
     | '/operacoes/$id'
     | '/prospeccao/buscar'
+    | '/prospeccao/cadencias'
+    | '/prospeccao/campanhas'
+    | '/prospeccao/listas'
     | '/operacoes'
   id:
     | '__root__'
@@ -226,6 +259,9 @@ export interface FileRouteTypes {
     | '/_app/crm/tarefas'
     | '/_app/operacoes/$id'
     | '/_app/prospeccao/buscar'
+    | '/_app/prospeccao/cadencias'
+    | '/_app/prospeccao/campanhas'
+    | '/_app/prospeccao/listas'
     | '/_app/operacoes/'
   fileRoutesById: FileRoutesById
 }
@@ -356,6 +392,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProspeccaoBuscarRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prospeccao/cadencias': {
+      id: '/_app/prospeccao/cadencias'
+      path: '/prospeccao/cadencias'
+      fullPath: '/prospeccao/cadencias'
+      preLoaderRoute: typeof AppProspeccaoCadenciasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/campanhas': {
+      id: '/_app/prospeccao/campanhas'
+      path: '/prospeccao/campanhas'
+      fullPath: '/prospeccao/campanhas'
+      preLoaderRoute: typeof AppProspeccaoCampanhasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/listas': {
+      id: '/_app/prospeccao/listas'
+      path: '/prospeccao/listas'
+      fullPath: '/prospeccao/listas'
+      preLoaderRoute: typeof AppProspeccaoListasRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -373,6 +430,9 @@ interface AppRouteChildren {
   AppCrmTarefasRoute: typeof AppCrmTarefasRoute
   AppOperacoesIdRoute: typeof AppOperacoesIdRoute
   AppProspeccaoBuscarRoute: typeof AppProspeccaoBuscarRoute
+  AppProspeccaoCadenciasRoute: typeof AppProspeccaoCadenciasRoute
+  AppProspeccaoCampanhasRoute: typeof AppProspeccaoCampanhasRoute
+  AppProspeccaoListasRoute: typeof AppProspeccaoListasRoute
   AppOperacoesIndexRoute: typeof AppOperacoesIndexRoute
 }
 
@@ -390,6 +450,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppCrmTarefasRoute: AppCrmTarefasRoute,
   AppOperacoesIdRoute: AppOperacoesIdRoute,
   AppProspeccaoBuscarRoute: AppProspeccaoBuscarRoute,
+  AppProspeccaoCadenciasRoute: AppProspeccaoCadenciasRoute,
+  AppProspeccaoCampanhasRoute: AppProspeccaoCampanhasRoute,
+  AppProspeccaoListasRoute: AppProspeccaoListasRoute,
   AppOperacoesIndexRoute: AppOperacoesIndexRoute,
 }
 
