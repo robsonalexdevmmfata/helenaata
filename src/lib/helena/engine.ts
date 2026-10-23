@@ -7,6 +7,15 @@ import type {
 import { can, currentUser, getDB, nowISO, uid, update } from "@/lib/store";
 import { getToolDef } from "./registry";
 import { normalize } from "@/lib/format";
+import {
+  checkDuplicateContact,
+  isLeadHandledByAnotherSdr,
+  OBJECTION_MATRIX,
+  evaluateBant,
+  generatePixCheckout,
+  executeRescueColdLeads,
+  computeDynamicCadence,
+} from "./sales-brain";
 
 export interface ToolContext {
   actor: string;
@@ -595,6 +604,257 @@ const handlers: Record<string, Handler> = {
       d.automations.unshift(a);
     });
     return ok(`Automação ${p.name} criada e ativada`, { id });
+  },
+  "sales.handle_objection": (p, ctx) => {
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+
+    const objDef = OBJECTION_MATRIX.find((o) => o.id === p.objectionId) || OBJECTION_MATRIX[0];
+    const company = db.companies.find((c) => c.id === contact.companyId);
+    const compName = company?.name || "Empresa";
+    const responseText = objDef.getAutonomousResponse({
+      clientName: contact.name,
+      companyName: compName,
+      niche: company?.segment || "negócios locais",
+    });
+
+    update((d) => {
+      // 1. Enviar resposta autônoma no WhatsApp
+      let conv = d.conversations.find((c) => c.contactId === contact.id);
+      if (!conv) {
+        conv = {
+          id: uid("conv_"),
+          organizationId: d.organization.id,
+          contactId: contact.id,
+          channel: "whatsapp",
+          status: "aberta",
+          handlerType: "agent",
+          handlerId: contact.ownerId,
+          unread: 0,
+          sentiment: "positivo",
+          lastMessageAt: nowISO(),
+          messages: [],
+        };
+        d.conversations.unshift(conv);
+      }
+
+      conv.messages.push({
+        id: uid("m_"),
+        from: "agent",
+        authorName: "Helena AI (Sales Brain)",
+        text: responseText,
+        at: nowISO(),
+        kind: "text",
+      });
+
+      // Se a ação for enviar mídia demonstrativa
+      if (objDef.actionType === "send_demo_media" && objDef.demoMockMedia) {
+        conv.messages.push({
+          id: uid("m_media_"),
+          from: "agent",
+          authorName: "Helena AI (Sales Brain)",
+          text: `📸 ${objDef.demoMockMedia.title}\n${objDef.demoMockMedia.preview}\n\n👉 Demonstração ao vivo: ${objDef.demoMockMedia.url}`,
+          at: nowISO(),
+          kind: "image",
+        });
+      }
+
+      conv.lastMessageAt = nowISO();
+
+      // 2. Se a ação for reagendamento de follow-up
+      if (objDef.actionType === "reschedule_task") {
+        d.tasks.unshift({
+          id: uid("tk_"),
+          organizationId: d.organization.id,
+          title: `Follow-up comercial: ${contact.name} (Retorno 10h)`,
+          contactId: contact.id,
+          assigneeId: contact.ownerId,
+          assigneeType: "agent",
+          dueAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+          done: false,
+          priority: "alta",
+          type: "follow-up",
+        });
+      }
+
+      // 3. Registrar auditoria imutável
+      d.activities.unshift({
+        id: uid("ac_obj_"),
+        organizationId: d.organization.id,
+        contactId: contact.id,
+        type: "ia",
+        text: `⚡ HELENA contornou objeção "${objDef.title}". Ação: ${objDef.actionDescription}`,
+        actor: ctx.actor,
+        createdAt: nowISO(),
+      });
+    });
+
+    return ok(`Objeção contornada com sucesso para ${contact.name}. Resposta e ação estratégica aplicadas.`, {
+      objectionId: objDef.id,
+      response: responseText,
+      action: objDef.actionDescription,
+    });
+  },
+  "sales.generate_checkout_pix": (p, ctx) => {
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+
+    const deal = db.deals.find((d) => d.id === p.dealId || d.contactId === contact.id);
+    const amount = Number(p.amount) || deal?.value || 4900;
+    const pixData = generatePixCheckout(amount, contact.name, deal?.title || "Criação de Site Institucional");
+
+    update((d) => {
+      // 1. Injeta cobrança Pix na conversa do WhatsApp
+      let conv = d.conversations.find((c) => c.contactId === contact.id);
+      if (conv) {
+        const pixMsg = `Perfeito, ${contact.name}! Criei a cobrança com condição especial da Info Tech Ltda no valor de ${pixData.formattedValue}.\n\n🔑 Chave Pix Copia e Cola:\n\`${pixData.copyPasteKey}\`\n\n💳 Link de Pagamento / Cartão de Crédito:\n${pixData.checkoutUrl}\n\nAssim que o pagamento for identificado, liberamos seu domínio e o time técnico inicia imediatamente!`;
+        conv.messages.push({
+          id: uid("msg_pix_"),
+          from: "agent",
+          authorName: "Helena Closer (Fechamento)",
+          text: pixMsg,
+          at: nowISO(),
+          kind: "text",
+        });
+        conv.lastMessageAt = nowISO();
+      }
+
+      // 2. Move deal para Negociação ou Ganho
+      if (deal) {
+        const targetDeal = d.deals.find((x) => x.id === deal.id);
+        if (targetDeal) {
+          const negStage = d.pipelines[0]?.stages.find((s) => s.id === "st_neg" || s.id === "st_ganho");
+          if (negStage) {
+            targetDeal.stageId = negStage.id;
+            targetDeal.probability = 90;
+            targetDeal.updatedAt = nowISO();
+          }
+        }
+      }
+
+      // 3. Auditoria
+      d.activities.unshift({
+        id: uid("ac_pix_"),
+        organizationId: d.organization.id,
+        contactId: contact.id,
+        dealId: deal?.id,
+        type: "ia",
+        text: `💰 HELENA gerou cobrança Pix de ${pixData.formattedValue} para ${contact.name}. Link: ${pixData.checkoutUrl}`,
+        actor: ctx.actor,
+        createdAt: nowISO(),
+      });
+    });
+
+    return ok(`Cobrança Pix de ${pixData.formattedValue} gerada e enviada via WhatsApp para ${contact.name}!`, {
+      pix: pixData,
+    });
+  },
+  "sales.qualify_bant": (p) => {
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+
+    const deal = db.deals.find((d) => d.id === p.dealId || d.contactId === contact.id);
+    const bant = evaluateBant(contact, deal, p.lastText || "");
+
+    update((d) => {
+      const c = d.contacts.find((x) => x.id === contact.id);
+      if (c) {
+        c.score = bant.totalScore;
+        if (bant.isQualified && !c.tags.includes("#bant-qualificado")) {
+          c.tags.push("#bant-qualificado");
+        }
+      }
+
+      d.activities.unshift({
+        id: uid("ac_bant_"),
+        organizationId: d.organization.id,
+        contactId: contact.id,
+        dealId: deal?.id,
+        type: "ia",
+        text: `🎯 HELENA avaliou BANT (Score: ${bant.totalScore}/100). ${bant.recommendation}`,
+        actor: "Helena BANT",
+        createdAt: nowISO(),
+      });
+    });
+
+    return ok(`Lead ${contact.name} avaliado com Score BANT ${bant.totalScore}/100. ${bant.recommendation}`, {
+      bant,
+    });
+  },
+  "sales.rescue_cold_leads": (p, ctx) => {
+    const db = getDB();
+    const result = executeRescueColdLeads(db, ctx.actor);
+    if (result.rescuedCount === 0) {
+      return ok("Nenhuma oportunidade parada há mais de 48h precisando de resgate no momento.");
+    }
+    return ok(
+      `⚡ Resgate ativado: ${result.rescuedCount} oportunidade(s) paradas há mais de 48h foram reativadas com mensagem de parcelamento especial.`,
+      { rescued: result.dealTitles }
+    );
+  },
+  "sales.adjust_cadence": (p) => {
+    const db = getDB();
+    const cadence = computeDynamicCadence(db);
+    return ok(
+      `Cadência Dinâmica da Meta de R$ 15.000: Faturamento atual ${brl(cadence.achieved)} (${cadence.percent}%). Status: ${cadence.pacingStatus.toUpperCase()}. Cadência recomendada: ${cadence.dailyTargetCadence} abordagens/dia.`,
+      { cadence }
+    );
+  },
+  "sales.trigger_handoff": (p, ctx) => {
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+
+    const reason = p.reason || "Conta de alto ticket / Dúvidas complexas";
+    const manager = db.users.find((u) => u.role === "manager" || u.role === "owner") || currentUser(db);
+
+    update((d) => {
+      // 1. Altera responsável para o gestor humano
+      const c = d.contacts.find((x) => x.id === contact.id);
+      if (c) c.ownerId = manager.id;
+
+      const deal = d.deals.find((x) => x.contactId === contact.id);
+      if (deal) {
+        deal.ownerId = manager.id;
+        deal.ownerType = "user";
+        deal.updatedAt = nowISO();
+      }
+
+      // 2. Altera conversa para atendimento humano
+      const conv = d.conversations.find((x) => x.contactId === contact.id);
+      if (conv) {
+        conv.handlerType = "human";
+        conv.handlerId = manager.id;
+        conv.messages.push({
+          id: uid("msg_handoff_"),
+          from: "system",
+          authorName: "Sistema HELENA",
+          text: `🚨 Handoff Executado: Lead transferido para ${manager.name}. Motivo: ${reason}`,
+          at: nowISO(),
+          kind: "event",
+        });
+      }
+
+      // 3. Auditoria
+      d.activities.unshift({
+        id: uid("ac_handoff_"),
+        organizationId: d.organization.id,
+        contactId: contact.id,
+        type: "handoff",
+        text: `Handoff executado: Helena → ${manager.name}. Motivo: ${reason}`,
+        actor: ctx.actor,
+        createdAt: nowISO(),
+      });
+    });
+
+    return ok(`Transbordo (Handoff) realizado com sucesso para ${manager.name}. O lead agora está no Inbox aguardando o gestor.`, {
+      contactId: contact.id,
+      assignedTo: manager.name,
+      reason,
+    });
   },
 };
 

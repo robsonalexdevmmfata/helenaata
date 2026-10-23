@@ -183,6 +183,9 @@
 
 .helena-orb {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 9999px;
   background: radial-gradient(circle at 35% 30%, color-mix(in oklab, var(--helena) 35%, white), var(--helena) 55%, color-mix(in oklab, var(--helena) 60%, black));
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--helena) 40%, transparent), 0 6px 20px -6px color-mix(in oklab, var(--helena) 70%, transparent);

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/lib/auth";
 import { pageHead } from "@/lib/head";
+import { HelenaOrb } from "@/components/helena/HelenaOrb";
 
 export const Route = createFileRoute("/login")({
   head: () => pageHead("Entrar", "Acesse o HELENA AI, o sistema operacional empresarial com IA."),
@@ -37,7 +38,7 @@ function LoginPage() {
     <div className="grid min-h-screen bg-background lg:grid-cols-[1.1fr_1fr]">
       <div className="relative hidden flex-col justify-between overflow-hidden border-r bg-surface p-12 lg:flex">
         <div className="flex items-center gap-2.5">
-          <div className="helena-orb size-7" data-state="ocioso" />
+          <HelenaOrb className="size-7" />
           <span className="text-sm font-semibold tracking-[0.18em]">HELENA AI</span>
         </div>
         <div className="max-w-lg">
@@ -65,7 +66,7 @@ function LoginPage() {
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm space-y-6">
           <div className="space-y-2">
-            <div className="helena-orb size-9 lg:hidden" data-state="ocioso" />
+            <HelenaOrb className="size-9 lg:hidden" />
             <h1 className="text-2xl font-semibold tracking-tight">Entrar na sua organização</h1>
             <p className="text-sm text-muted-foreground">Use suas credenciais para acessar o HELENA AI.</p>
           </div>

@@ -36,6 +36,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "calendar.create_event", label: "Agendar reunião", description: "Cria um evento na agenda.", category: "Agenda", defaultRisk: "medio", permission: "crm.edit" },
   { name: "prospect.scan_maps", label: "Varredura Google Maps (#sem-site)", description: "Varre empresas sem site no Google Maps e cadastra no CRM com tag #sem-site.", category: "Prospecção", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "automation.create", label: "Criar automação", description: "Cria e ativa uma automação externa.", category: "Automação", defaultRisk: "alto", permission: "automations.manage" },
+  { name: "sales.handle_objection", label: "Contornar objeção comercial", description: "Aplica a matriz de objeções de vendas com resposta autônoma e ação estratégica.", category: "CRM", defaultRisk: "baixo", permission: "crm.edit" },
+  { name: "sales.generate_checkout_pix", label: "Gerar Checkout Pix", description: "Gera cobrança Pix instantânea para fechamento de venda.", category: "CRM", defaultRisk: "medio", permission: "crm.edit" },
+  { name: "sales.qualify_bant", label: "Qualificar Lead BANT", description: "Avalia Budget, Authority, Need e Timeline com pontuação de fechamento.", category: "CRM", defaultRisk: "baixo", permission: "crm.view" },
+  { name: "sales.rescue_cold_leads", label: "Resgatar Leads Frios (>48h)", description: "Dispara mensagem com condição especial para destravar oportunidades paradas.", category: "Campanhas", defaultRisk: "medio", permission: "campaigns.send" },
+  { name: "sales.adjust_cadence", label: "Ajustar Cadência Dinâmica (Meta R$ 15k)", description: "Monitora ritmo de vendas e ajusta cadência diária de prospecção.", category: "Operações", defaultRisk: "baixo", permission: "prospect.manage" },
+  { name: "sales.trigger_handoff", label: "Transbordo Humano (Handoff)", description: "Transfere lead qualificado para especialista com notificação e trava de segurança.", category: "CRM", defaultRisk: "baixo", permission: "crm.edit" },
 ];
 
 export const PERMISSIONS: { key: string; label: string; group: string }[] = [

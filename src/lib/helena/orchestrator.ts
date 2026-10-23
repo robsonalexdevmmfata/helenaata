@@ -9,6 +9,7 @@ import { brl, greeting, normalize, pct } from "@/lib/format";
 import { computeSummary, needsApproval, pushHelenaMessage, requestApproval, runTool, toolRisk, updateHelenaCard } from "./engine";
 import { getToolDef } from "./registry";
 import { callGroqOrchestrator } from "./groq";
+import { computeDynamicCadence, getWhatsAppWorkerStatus, OBJECTION_MATRIX, FINANCIAL_GOAL } from "./sales-brain";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
@@ -71,6 +72,24 @@ export async function sendToHelena(text: string) {
         pushHelenaMessage(
           groqRes.text || "Reunião agendada no Google Calendar / Cal.com e vinculada ao lead no pipeline!",
           { type: "result", ok: res.ok, title: "Google Calendar / Cal.com", detail: res.message }
+        );
+      } else if (tc.name === "sales_handle_objection") {
+        const res = runTool("sales.handle_objection", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        pushHelenaMessage(
+          groqRes.text || res.message,
+          { type: "result", ok: res.ok, title: "Matriz de Objeções (Sales Brain)", detail: res.message }
+        );
+      } else if (tc.name === "sales_generate_checkout_pix") {
+        const res = runTool("sales.generate_checkout_pix", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        pushHelenaMessage(
+          groqRes.text || res.message,
+          { type: "result", ok: res.ok, title: "Checkout Pix / Fechamento", detail: res.message }
+        );
+      } else if (tc.name === "sales_rescue_cold_leads") {
+        const res = runTool("sales.rescue_cold_leads", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        pushHelenaMessage(
+          groqRes.text || res.message,
+          { type: "result", ok: res.ok, title: "Resgate de Leads Frios (>48h)", detail: res.message }
         );
       } else {
         const replies = interpret(clean);
@@ -258,6 +277,75 @@ export function interpret(text: string): Reply[] {
         `Reunião agendada com sucesso no Google Calendar e Cal.com para ${contact?.name}! O convite com link de videoconferência foi gerado e o lead foi movido para a etapa de Reunião Agendada no pipeline.`
       ),
     ];
+  }
+
+  // 1. Gestão Dinâmica da Meta de R$ 15.000,00 (Dynamic Cadence)
+  if (/15\s*k|15000|15\.000|cadencia dinamica|ritmo de vendas|meta financeira/.test(n)) {
+    const cad = computeDynamicCadence(db);
+    return [{
+      text: `📊 Gestão Dinâmica da Meta de R$ 15.000,00 (Info Tech Ltda):\n\n• Faturamento acumulado: ${brl(cad.achieved)} de ${brl(cad.goal)} (${cad.percent}% da meta)\n• Pipeline em aberto: ${brl(cad.openPipelineValue)}\n• Ritmo Atual: ${cad.pacingStatus === "turbo" ? "⚡ TURBO (Acelerado automaticamente para recuperar ritmo)" : "✅ NORMAL (Ritmo sustentável)"}\n• Cadência Diária Recomendada: ${cad.dailyTargetCadence} abordagens/dia por SDR\n• Oportunidades paradas > 48h: ${cad.staleDealsCount} leads\n\n${cad.pacingStatus === "turbo" ? "Como o faturamento está abaixo da meta semanal, dobrei a cadência diária dos SDRs de 30 para 60 abordagens/dia para garantir o atingimento dos R$ 15.000,00!" : "Estamos no caminho certo para fechar os R$ 15.000,00 do mês!"}`,
+      card: {
+        type: "stats",
+        title: "Cadência Dinâmica · Meta R$ 15.000,00",
+        items: [
+          { label: "Meta Mensal", value: brl(cad.goal) },
+          { label: "Faturado Ganho", value: brl(cad.achieved), hint: `${cad.percent}% alcançado` },
+          { label: "Ritmo Operacional", value: cad.pacingStatus.toUpperCase(), hint: `${cad.dailyTargetCadence} abordagens/dia` },
+          { label: "Leads Parados (>48h)", value: String(cad.staleDealsCount), hint: "Elegíveis para resgate" },
+        ],
+      },
+    }];
+  }
+
+  // 2. Resgate de Leads Frios (> 48h)
+  if (/resgat\w*|leads? parados?|leads? frios?|destravar oportunidade/.test(n)) {
+    const cad = computeDynamicCadence(db);
+    return [
+      perform(
+        "sales.rescue_cold_leads",
+        {},
+        "Resgate de Leads Frios (>48h parados)",
+        [
+          { label: "Critério", value: "Leads sem interação há mais de 48h no Kanban" },
+          { label: "Oferta", value: "Condição especial de parcelamento + liberação de domínio" },
+          { label: "Total elegível", value: `${cad.staleDealsCount} oportunidades` },
+        ],
+        `⚡ HELENA ativou o motor de resgate comercial! As oportunidades paradas há mais de 48h receberam mensagens personalizadas com a condição especial de parcelamento da Info Tech Ltda.`
+      ),
+    ];
+  }
+
+  // 3. Matriz de Objeções (Sales Brain)
+  if (/obje[cç][aã]o|matriz de obje|contornar obje/.test(n)) {
+    return [{
+      text: `🧠 Matriz de Objeções Ativa (Sales Brain da Helena):\n\n1. "Já tenho Instagram, não preciso de site" → Envia print demonstrativo e alerta que 80% das buscas com urgência ocorrem no Google Maps.\n2. "Quanto custa?" → Não dá preço solto: oferece prévia demonstrativa e propõe 2 opções de horário (hoje às 16h ou amanhã às 10h).\n3. "Agora não posso conversar" → Compreende a rotina e agenda follow-up automático para as 10h ou 17h do dia seguinte.\n4. "Achei caro" → Demonstra que apenas 1 novo cliente por mês já paga todo o investimento do site.\n5. "Não tenho interesse" → Finaliza com cortesia e agenda reaquecimento em 45 dias.`,
+      card: {
+        type: "list",
+        title: "Matriz de Objeções Comerciais · Info Tech Ltda",
+        items: OBJECTION_MATRIX.map((obj) => ({
+          label: obj.title,
+          sub: `Ação autônoma: ${obj.actionDescription}`,
+        })),
+      },
+    }];
+  }
+
+  // 4. Arquitetura WhatsApp & 24/7 (Sem abas / Baileys / Oracle Cloud)
+  if (/aba[s]?|sem reload|baileys|socket|onde deixar rodando|oracle cloud|nuvem gratis/.test(n)) {
+    const ws = getWhatsAppWorkerStatus(db);
+    return [{
+      text: `🔌 Arquitetura WhatsApp da Helena (Socket Invisível em Segundo Plano):\n\n• Zero Abas de Navegador: Não usamos Chrome nem interface visual pesada. Usamos a biblioteca de Socket/API em segundo plano (@whiskeysockets/baileys).\n• Consumo de Recursos: Apenas ~${ws.ramUsageMb}MB de RAM (contra mais de 1GB de abas Chrome).\n• Pareamento Simples: Você lê o QR Code apenas uma vez no celular do chip de prospecção. Depois de conectado, o celular pode ficar no carregador com Wi-Fi/4G enquanto o motor invisível opera.\n• Onde deixar rodando 24/7 sem travar seu PC de trabalho?\n  1. Opção Grátis (PC/Notebook parado em casa no carregador rodando Node.js);\n  2. Opção Nuvem Grátis (Oracle Cloud Free Tier - VM Linux 100% gratuita para sempre com PM2).`,
+      card: {
+        type: "stats",
+        title: "Status do Worker WhatsApp (Socket Baileys)",
+        items: [
+          { label: "Arquitetura", value: "Socket / Background" },
+          { label: "Consumo RAM", value: `${ws.ramUsageMb} MB`, hint: "Leve e sem abas Chrome" },
+          { label: "Status Conexão", value: ws.status },
+          { label: "Hospedagem Recomendada", value: "Oracle Cloud Free Tier" },
+        ],
+      },
+    }];
   }
 
   // Strategy

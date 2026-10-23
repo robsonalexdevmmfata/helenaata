@@ -12,7 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
+import { Route as AppAutomacoesRouteImport } from './routes/_app/automacoes'
+import { Route as AppEquipeRouteImport } from './routes/_app/equipe'
+import { Route as AppOperacoesRouteImport } from './routes/_app/operacoes'
 import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
+import { Route as AppAtendimentoInboxRouteImport } from './routes/_app/atendimento/inbox'
+import { Route as AppAtendimentoRadarRouteImport } from './routes/_app/atendimento/radar'
+import { Route as AppAtendimentoRespostasRouteImport } from './routes/_app/atendimento/respostas'
 import { Route as AppConfiguracoesOrganizacaoRouteImport } from './routes/_app/configuracoes/organizacao'
 import { Route as AppConfiguracoesPermissoesRouteImport } from './routes/_app/configuracoes/permissoes'
 import { Route as AppConfiguracoesUsuariosRouteImport } from './routes/_app/configuracoes/usuarios'
@@ -20,7 +27,22 @@ import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
 import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
 import { Route as AppCrmPipelineRouteImport } from './routes/_app/crm/pipeline'
 import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
+import { Route as AppIaAgentesRouteImport } from './routes/_app/ia/agentes'
+import { Route as AppIaConhecimentoRouteImport } from './routes/_app/ia/conhecimento'
+import { Route as AppIaCustosRouteImport } from './routes/_app/ia/custos'
+import { Route as AppIaExecucoesRouteImport } from './routes/_app/ia/execucoes'
+import { Route as AppIaHelenaRouteImport } from './routes/_app/ia/helena'
+import { Route as AppIaMemoriaRouteImport } from './routes/_app/ia/memoria'
+import { Route as AppIaSkillsRouteImport } from './routes/_app/ia/skills'
+import { Route as AppIaTimesRouteImport } from './routes/_app/ia/times'
+import { Route as AppIntegracoesApiRouteImport } from './routes/_app/integracoes/api'
+import { Route as AppIntegracoesProvedoresRouteImport } from './routes/_app/integracoes/provedores'
+import { Route as AppIntegracoesWebhooksRouteImport } from './routes/_app/integracoes/webhooks'
+import { Route as AppIntegracoesWhatsappRouteImport } from './routes/_app/integracoes/whatsapp'
 import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospeccao/buscar'
+import { Route as AppProspeccaoCadenciasRouteImport } from './routes/_app/prospeccao/cadencias'
+import { Route as AppProspeccaoCampanhasRouteImport } from './routes/_app/prospeccao/campanhas'
+import { Route as AppProspeccaoListasRouteImport } from './routes/_app/prospeccao/listas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -36,9 +58,44 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAutomacoesRoute = AppAutomacoesRouteImport.update({
+  id: '/automacoes',
+  path: '/automacoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEquipeRoute = AppEquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOperacoesRoute = AppOperacoesRouteImport.update({
+  id: '/operacoes',
+  path: '/operacoes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppVisaoGeralRoute = AppVisaoGeralRouteImport.update({
   id: '/visao-geral',
   path: '/visao-geral',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoInboxRoute = AppAtendimentoInboxRouteImport.update({
+  id: '/atendimento/inbox',
+  path: '/atendimento/inbox',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoRadarRoute = AppAtendimentoRadarRouteImport.update({
+  id: '/atendimento/radar',
+  path: '/atendimento/radar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoRespostasRoute = AppAtendimentoRespostasRouteImport.update({
+  id: '/atendimento/respostas',
+  path: '/atendimento/respostas',
   getParentRoute: () => AppRoute,
 } as any)
 const AppConfiguracoesOrganizacaoRoute =
@@ -79,16 +136,99 @@ const AppCrmTarefasRoute = AppCrmTarefasRouteImport.update({
   path: '/crm/tarefas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIaAgentesRoute = AppIaAgentesRouteImport.update({
+  id: '/ia/agentes',
+  path: '/ia/agentes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaConhecimentoRoute = AppIaConhecimentoRouteImport.update({
+  id: '/ia/conhecimento',
+  path: '/ia/conhecimento',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaCustosRoute = AppIaCustosRouteImport.update({
+  id: '/ia/custos',
+  path: '/ia/custos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaExecucoesRoute = AppIaExecucoesRouteImport.update({
+  id: '/ia/execucoes',
+  path: '/ia/execucoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaHelenaRoute = AppIaHelenaRouteImport.update({
+  id: '/ia/helena',
+  path: '/ia/helena',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaMemoriaRoute = AppIaMemoriaRouteImport.update({
+  id: '/ia/memoria',
+  path: '/ia/memoria',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaSkillsRoute = AppIaSkillsRouteImport.update({
+  id: '/ia/skills',
+  path: '/ia/skills',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIaTimesRoute = AppIaTimesRouteImport.update({
+  id: '/ia/times',
+  path: '/ia/times',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIntegracoesApiRoute = AppIntegracoesApiRouteImport.update({
+  id: '/integracoes/api',
+  path: '/integracoes/api',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIntegracoesProvedoresRoute =
+  AppIntegracoesProvedoresRouteImport.update({
+    id: '/integracoes/provedores',
+    path: '/integracoes/provedores',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppIntegracoesWebhooksRoute = AppIntegracoesWebhooksRouteImport.update({
+  id: '/integracoes/webhooks',
+  path: '/integracoes/webhooks',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIntegracoesWhatsappRoute = AppIntegracoesWhatsappRouteImport.update({
+  id: '/integracoes/whatsapp',
+  path: '/integracoes/whatsapp',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProspeccaoBuscarRoute = AppProspeccaoBuscarRouteImport.update({
   id: '/prospeccao/buscar',
   path: '/prospeccao/buscar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoCadenciasRoute = AppProspeccaoCadenciasRouteImport.update({
+  id: '/prospeccao/cadencias',
+  path: '/prospeccao/cadencias',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoCampanhasRoute = AppProspeccaoCampanhasRouteImport.update({
+  id: '/prospeccao/campanhas',
+  path: '/prospeccao/campanhas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoListasRoute = AppProspeccaoListasRouteImport.update({
+  id: '/prospeccao/listas',
+  path: '/prospeccao/listas',
   getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/analytics': typeof AppAnalyticsRoute
+  '/automacoes': typeof AppAutomacoesRoute
+  '/equipe': typeof AppEquipeRoute
+  '/operacoes': typeof AppOperacoesRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -96,12 +236,34 @@ export interface FileRoutesByFullPath {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/ia/agentes': typeof AppIaAgentesRoute
+  '/ia/conhecimento': typeof AppIaConhecimentoRoute
+  '/ia/custos': typeof AppIaCustosRoute
+  '/ia/execucoes': typeof AppIaExecucoesRoute
+  '/ia/helena': typeof AppIaHelenaRoute
+  '/ia/memoria': typeof AppIaMemoriaRoute
+  '/ia/skills': typeof AppIaSkillsRoute
+  '/ia/times': typeof AppIaTimesRoute
+  '/integracoes/api': typeof AppIntegracoesApiRoute
+  '/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
+  '/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
+  '/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/prospeccao/listas': typeof AppProspeccaoListasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/analytics': typeof AppAnalyticsRoute
+  '/automacoes': typeof AppAutomacoesRoute
+  '/equipe': typeof AppEquipeRoute
+  '/operacoes': typeof AppOperacoesRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -109,14 +271,36 @@ export interface FileRoutesByTo {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/ia/agentes': typeof AppIaAgentesRoute
+  '/ia/conhecimento': typeof AppIaConhecimentoRoute
+  '/ia/custos': typeof AppIaCustosRoute
+  '/ia/execucoes': typeof AppIaExecucoesRoute
+  '/ia/helena': typeof AppIaHelenaRoute
+  '/ia/memoria': typeof AppIaMemoriaRoute
+  '/ia/skills': typeof AppIaSkillsRoute
+  '/ia/times': typeof AppIaTimesRoute
+  '/integracoes/api': typeof AppIntegracoesApiRoute
+  '/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
+  '/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
+  '/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/prospeccao/listas': typeof AppProspeccaoListasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/analytics': typeof AppAnalyticsRoute
+  '/_app/automacoes': typeof AppAutomacoesRoute
+  '/_app/equipe': typeof AppEquipeRoute
+  '/_app/operacoes': typeof AppOperacoesRoute
   '/_app/visao-geral': typeof AppVisaoGeralRoute
+  '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/_app/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/_app/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/_app/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/_app/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -124,14 +308,36 @@ export interface FileRoutesById {
   '/_app/crm/empresas': typeof AppCrmEmpresasRoute
   '/_app/crm/pipeline': typeof AppCrmPipelineRoute
   '/_app/crm/tarefas': typeof AppCrmTarefasRoute
+  '/_app/ia/agentes': typeof AppIaAgentesRoute
+  '/_app/ia/conhecimento': typeof AppIaConhecimentoRoute
+  '/_app/ia/custos': typeof AppIaCustosRoute
+  '/_app/ia/execucoes': typeof AppIaExecucoesRoute
+  '/_app/ia/helena': typeof AppIaHelenaRoute
+  '/_app/ia/memoria': typeof AppIaMemoriaRoute
+  '/_app/ia/skills': typeof AppIaSkillsRoute
+  '/_app/ia/times': typeof AppIaTimesRoute
+  '/_app/integracoes/api': typeof AppIntegracoesApiRoute
+  '/_app/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
+  '/_app/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
+  '/_app/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
   '/_app/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/_app/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/_app/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/_app/prospeccao/listas': typeof AppProspeccaoListasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/analytics'
+    | '/automacoes'
+    | '/equipe'
+    | '/operacoes'
     | '/visao-geral'
+    | '/atendimento/inbox'
+    | '/atendimento/radar'
+    | '/atendimento/respostas'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/usuarios'
@@ -139,12 +345,34 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/ia/agentes'
+    | '/ia/conhecimento'
+    | '/ia/custos'
+    | '/ia/execucoes'
+    | '/ia/helena'
+    | '/ia/memoria'
+    | '/ia/skills'
+    | '/ia/times'
+    | '/integracoes/api'
+    | '/integracoes/provedores'
+    | '/integracoes/webhooks'
+    | '/integracoes/whatsapp'
     | '/prospeccao/buscar'
+    | '/prospeccao/cadencias'
+    | '/prospeccao/campanhas'
+    | '/prospeccao/listas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/analytics'
+    | '/automacoes'
+    | '/equipe'
+    | '/operacoes'
     | '/visao-geral'
+    | '/atendimento/inbox'
+    | '/atendimento/radar'
+    | '/atendimento/respostas'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/usuarios'
@@ -152,13 +380,35 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/ia/agentes'
+    | '/ia/conhecimento'
+    | '/ia/custos'
+    | '/ia/execucoes'
+    | '/ia/helena'
+    | '/ia/memoria'
+    | '/ia/skills'
+    | '/ia/times'
+    | '/integracoes/api'
+    | '/integracoes/provedores'
+    | '/integracoes/webhooks'
+    | '/integracoes/whatsapp'
     | '/prospeccao/buscar'
+    | '/prospeccao/cadencias'
+    | '/prospeccao/campanhas'
+    | '/prospeccao/listas'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/login'
+    | '/_app/analytics'
+    | '/_app/automacoes'
+    | '/_app/equipe'
+    | '/_app/operacoes'
     | '/_app/visao-geral'
+    | '/_app/atendimento/inbox'
+    | '/_app/atendimento/radar'
+    | '/_app/atendimento/respostas'
     | '/_app/configuracoes/organizacao'
     | '/_app/configuracoes/permissoes'
     | '/_app/configuracoes/usuarios'
@@ -166,7 +416,22 @@ export interface FileRouteTypes {
     | '/_app/crm/empresas'
     | '/_app/crm/pipeline'
     | '/_app/crm/tarefas'
+    | '/_app/ia/agentes'
+    | '/_app/ia/conhecimento'
+    | '/_app/ia/custos'
+    | '/_app/ia/execucoes'
+    | '/_app/ia/helena'
+    | '/_app/ia/memoria'
+    | '/_app/ia/skills'
+    | '/_app/ia/times'
+    | '/_app/integracoes/api'
+    | '/_app/integracoes/provedores'
+    | '/_app/integracoes/webhooks'
+    | '/_app/integracoes/whatsapp'
     | '/_app/prospeccao/buscar'
+    | '/_app/prospeccao/cadencias'
+    | '/_app/prospeccao/campanhas'
+    | '/_app/prospeccao/listas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -198,11 +463,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/analytics': {
+      id: '/_app/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AppAnalyticsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/automacoes': {
+      id: '/_app/automacoes'
+      path: '/automacoes'
+      fullPath: '/automacoes'
+      preLoaderRoute: typeof AppAutomacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/equipe': {
+      id: '/_app/equipe'
+      path: '/equipe'
+      fullPath: '/equipe'
+      preLoaderRoute: typeof AppEquipeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/operacoes': {
+      id: '/_app/operacoes'
+      path: '/operacoes'
+      fullPath: '/operacoes'
+      preLoaderRoute: typeof AppOperacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/visao-geral': {
       id: '/_app/visao-geral'
       path: '/visao-geral'
       fullPath: '/visao-geral'
       preLoaderRoute: typeof AppVisaoGeralRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/inbox': {
+      id: '/_app/atendimento/inbox'
+      path: '/atendimento/inbox'
+      fullPath: '/atendimento/inbox'
+      preLoaderRoute: typeof AppAtendimentoInboxRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/radar': {
+      id: '/_app/atendimento/radar'
+      path: '/atendimento/radar'
+      fullPath: '/atendimento/radar'
+      preLoaderRoute: typeof AppAtendimentoRadarRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/respostas': {
+      id: '/_app/atendimento/respostas'
+      path: '/atendimento/respostas'
+      fullPath: '/atendimento/respostas'
+      preLoaderRoute: typeof AppAtendimentoRespostasRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/configuracoes/organizacao': {
@@ -254,6 +568,90 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCrmTarefasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/ia/agentes': {
+      id: '/_app/ia/agentes'
+      path: '/ia/agentes'
+      fullPath: '/ia/agentes'
+      preLoaderRoute: typeof AppIaAgentesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/conhecimento': {
+      id: '/_app/ia/conhecimento'
+      path: '/ia/conhecimento'
+      fullPath: '/ia/conhecimento'
+      preLoaderRoute: typeof AppIaConhecimentoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/custos': {
+      id: '/_app/ia/custos'
+      path: '/ia/custos'
+      fullPath: '/ia/custos'
+      preLoaderRoute: typeof AppIaCustosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/execucoes': {
+      id: '/_app/ia/execucoes'
+      path: '/ia/execucoes'
+      fullPath: '/ia/execucoes'
+      preLoaderRoute: typeof AppIaExecucoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/helena': {
+      id: '/_app/ia/helena'
+      path: '/ia/helena'
+      fullPath: '/ia/helena'
+      preLoaderRoute: typeof AppIaHelenaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/memoria': {
+      id: '/_app/ia/memoria'
+      path: '/ia/memoria'
+      fullPath: '/ia/memoria'
+      preLoaderRoute: typeof AppIaMemoriaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/skills': {
+      id: '/_app/ia/skills'
+      path: '/ia/skills'
+      fullPath: '/ia/skills'
+      preLoaderRoute: typeof AppIaSkillsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ia/times': {
+      id: '/_app/ia/times'
+      path: '/ia/times'
+      fullPath: '/ia/times'
+      preLoaderRoute: typeof AppIaTimesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/integracoes/api': {
+      id: '/_app/integracoes/api'
+      path: '/integracoes/api'
+      fullPath: '/integracoes/api'
+      preLoaderRoute: typeof AppIntegracoesApiRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/integracoes/provedores': {
+      id: '/_app/integracoes/provedores'
+      path: '/integracoes/provedores'
+      fullPath: '/integracoes/provedores'
+      preLoaderRoute: typeof AppIntegracoesProvedoresRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/integracoes/webhooks': {
+      id: '/_app/integracoes/webhooks'
+      path: '/integracoes/webhooks'
+      fullPath: '/integracoes/webhooks'
+      preLoaderRoute: typeof AppIntegracoesWebhooksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/integracoes/whatsapp': {
+      id: '/_app/integracoes/whatsapp'
+      path: '/integracoes/whatsapp'
+      fullPath: '/integracoes/whatsapp'
+      preLoaderRoute: typeof AppIntegracoesWhatsappRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/prospeccao/buscar': {
       id: '/_app/prospeccao/buscar'
       path: '/prospeccao/buscar'
@@ -261,11 +659,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProspeccaoBuscarRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prospeccao/cadencias': {
+      id: '/_app/prospeccao/cadencias'
+      path: '/prospeccao/cadencias'
+      fullPath: '/prospeccao/cadencias'
+      preLoaderRoute: typeof AppProspeccaoCadenciasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/campanhas': {
+      id: '/_app/prospeccao/campanhas'
+      path: '/prospeccao/campanhas'
+      fullPath: '/prospeccao/campanhas'
+      preLoaderRoute: typeof AppProspeccaoCampanhasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/listas': {
+      id: '/_app/prospeccao/listas'
+      path: '/prospeccao/listas'
+      fullPath: '/prospeccao/listas'
+      preLoaderRoute: typeof AppProspeccaoListasRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAnalyticsRoute: typeof AppAnalyticsRoute
+  AppAutomacoesRoute: typeof AppAutomacoesRoute
+  AppEquipeRoute: typeof AppEquipeRoute
+  AppOperacoesRoute: typeof AppOperacoesRoute
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
+  AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
+  AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
+  AppAtendimentoRespostasRoute: typeof AppAtendimentoRespostasRoute
   AppConfiguracoesOrganizacaoRoute: typeof AppConfiguracoesOrganizacaoRoute
   AppConfiguracoesPermissoesRoute: typeof AppConfiguracoesPermissoesRoute
   AppConfiguracoesUsuariosRoute: typeof AppConfiguracoesUsuariosRoute
@@ -273,11 +699,33 @@ interface AppRouteChildren {
   AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
   AppCrmPipelineRoute: typeof AppCrmPipelineRoute
   AppCrmTarefasRoute: typeof AppCrmTarefasRoute
+  AppIaAgentesRoute: typeof AppIaAgentesRoute
+  AppIaConhecimentoRoute: typeof AppIaConhecimentoRoute
+  AppIaCustosRoute: typeof AppIaCustosRoute
+  AppIaExecucoesRoute: typeof AppIaExecucoesRoute
+  AppIaHelenaRoute: typeof AppIaHelenaRoute
+  AppIaMemoriaRoute: typeof AppIaMemoriaRoute
+  AppIaSkillsRoute: typeof AppIaSkillsRoute
+  AppIaTimesRoute: typeof AppIaTimesRoute
+  AppIntegracoesApiRoute: typeof AppIntegracoesApiRoute
+  AppIntegracoesProvedoresRoute: typeof AppIntegracoesProvedoresRoute
+  AppIntegracoesWebhooksRoute: typeof AppIntegracoesWebhooksRoute
+  AppIntegracoesWhatsappRoute: typeof AppIntegracoesWhatsappRoute
   AppProspeccaoBuscarRoute: typeof AppProspeccaoBuscarRoute
+  AppProspeccaoCadenciasRoute: typeof AppProspeccaoCadenciasRoute
+  AppProspeccaoCampanhasRoute: typeof AppProspeccaoCampanhasRoute
+  AppProspeccaoListasRoute: typeof AppProspeccaoListasRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAnalyticsRoute: AppAnalyticsRoute,
+  AppAutomacoesRoute: AppAutomacoesRoute,
+  AppEquipeRoute: AppEquipeRoute,
+  AppOperacoesRoute: AppOperacoesRoute,
   AppVisaoGeralRoute: AppVisaoGeralRoute,
+  AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
+  AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
+  AppAtendimentoRespostasRoute: AppAtendimentoRespostasRoute,
   AppConfiguracoesOrganizacaoRoute: AppConfiguracoesOrganizacaoRoute,
   AppConfiguracoesPermissoesRoute: AppConfiguracoesPermissoesRoute,
   AppConfiguracoesUsuariosRoute: AppConfiguracoesUsuariosRoute,
@@ -285,7 +733,22 @@ const AppRouteChildren: AppRouteChildren = {
   AppCrmEmpresasRoute: AppCrmEmpresasRoute,
   AppCrmPipelineRoute: AppCrmPipelineRoute,
   AppCrmTarefasRoute: AppCrmTarefasRoute,
+  AppIaAgentesRoute: AppIaAgentesRoute,
+  AppIaConhecimentoRoute: AppIaConhecimentoRoute,
+  AppIaCustosRoute: AppIaCustosRoute,
+  AppIaExecucoesRoute: AppIaExecucoesRoute,
+  AppIaHelenaRoute: AppIaHelenaRoute,
+  AppIaMemoriaRoute: AppIaMemoriaRoute,
+  AppIaSkillsRoute: AppIaSkillsRoute,
+  AppIaTimesRoute: AppIaTimesRoute,
+  AppIntegracoesApiRoute: AppIntegracoesApiRoute,
+  AppIntegracoesProvedoresRoute: AppIntegracoesProvedoresRoute,
+  AppIntegracoesWebhooksRoute: AppIntegracoesWebhooksRoute,
+  AppIntegracoesWhatsappRoute: AppIntegracoesWhatsappRoute,
   AppProspeccaoBuscarRoute: AppProspeccaoBuscarRoute,
+  AppProspeccaoCadenciasRoute: AppProspeccaoCadenciasRoute,
+  AppProspeccaoCampanhasRoute: AppProspeccaoCampanhasRoute,
+  AppProspeccaoListasRoute: AppProspeccaoListasRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
