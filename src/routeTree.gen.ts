@@ -13,6 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
+import { Route as AppAtendimentoInboxRouteImport } from './routes/_app/atendimento/inbox'
+import { Route as AppAtendimentoRadarRouteImport } from './routes/_app/atendimento/radar'
+import { Route as AppAtendimentoRespostasRouteImport } from './routes/_app/atendimento/respostas'
 import { Route as AppConfiguracoesOrganizacaoRouteImport } from './routes/_app/configuracoes/organizacao'
 import { Route as AppConfiguracoesPermissoesRouteImport } from './routes/_app/configuracoes/permissoes'
 import { Route as AppConfiguracoesUsuariosRouteImport } from './routes/_app/configuracoes/usuarios'
@@ -20,7 +23,12 @@ import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
 import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
 import { Route as AppCrmPipelineRouteImport } from './routes/_app/crm/pipeline'
 import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
+import { Route as AppOperacoesIndexRouteImport } from './routes/_app/operacoes/index'
+import { Route as AppOperacoesIdRouteImport } from './routes/_app/operacoes/$id'
 import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospeccao/buscar'
+import { Route as AppProspeccaoCadenciasRouteImport } from './routes/_app/prospeccao/cadencias'
+import { Route as AppProspeccaoCampanhasRouteImport } from './routes/_app/prospeccao/campanhas'
+import { Route as AppProspeccaoListasRouteImport } from './routes/_app/prospeccao/listas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,6 +47,21 @@ const LoginRoute = LoginRouteImport.update({
 const AppVisaoGeralRoute = AppVisaoGeralRouteImport.update({
   id: '/visao-geral',
   path: '/visao-geral',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoInboxRoute = AppAtendimentoInboxRouteImport.update({
+  id: '/atendimento/inbox',
+  path: '/atendimento/inbox',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoRadarRoute = AppAtendimentoRadarRouteImport.update({
+  id: '/atendimento/radar',
+  path: '/atendimento/radar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAtendimentoRespostasRoute = AppAtendimentoRespostasRouteImport.update({
+  id: '/atendimento/respostas',
+  path: '/atendimento/respostas',
   getParentRoute: () => AppRoute,
 } as any)
 const AppConfiguracoesOrganizacaoRoute =
@@ -79,9 +102,34 @@ const AppCrmTarefasRoute = AppCrmTarefasRouteImport.update({
   path: '/crm/tarefas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppOperacoesIndexRoute = AppOperacoesIndexRouteImport.update({
+  id: '/operacoes/',
+  path: '/operacoes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOperacoesIdRoute = AppOperacoesIdRouteImport.update({
+  id: '/operacoes/$id',
+  path: '/operacoes/$id',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProspeccaoBuscarRoute = AppProspeccaoBuscarRouteImport.update({
   id: '/prospeccao/buscar',
   path: '/prospeccao/buscar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoCadenciasRoute = AppProspeccaoCadenciasRouteImport.update({
+  id: '/prospeccao/cadencias',
+  path: '/prospeccao/cadencias',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoCampanhasRoute = AppProspeccaoCampanhasRouteImport.update({
+  id: '/prospeccao/campanhas',
+  path: '/prospeccao/campanhas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProspeccaoListasRoute = AppProspeccaoListasRouteImport.update({
+  id: '/prospeccao/listas',
+  path: '/prospeccao/listas',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -89,6 +137,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -96,12 +147,20 @@ export interface FileRoutesByFullPath {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -109,7 +168,12 @@ export interface FileRoutesByTo {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/operacoes': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -117,6 +181,9 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/visao-geral': typeof AppVisaoGeralRoute
+  '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
+  '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
+  '/_app/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/_app/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/_app/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/_app/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
@@ -124,7 +191,12 @@ export interface FileRoutesById {
   '/_app/crm/empresas': typeof AppCrmEmpresasRoute
   '/_app/crm/pipeline': typeof AppCrmPipelineRoute
   '/_app/crm/tarefas': typeof AppCrmTarefasRoute
+  '/_app/operacoes/$id': typeof AppOperacoesIdRoute
   '/_app/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/_app/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
+  '/_app/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
+  '/_app/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/_app/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -132,6 +204,9 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/visao-geral'
+    | '/atendimento/inbox'
+    | '/atendimento/radar'
+    | '/atendimento/respostas'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/usuarios'
@@ -139,12 +214,20 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/operacoes/$id'
     | '/prospeccao/buscar'
+    | '/prospeccao/cadencias'
+    | '/prospeccao/campanhas'
+    | '/prospeccao/listas'
+    | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/visao-geral'
+    | '/atendimento/inbox'
+    | '/atendimento/radar'
+    | '/atendimento/respostas'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/usuarios'
@@ -152,13 +235,21 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/operacoes/$id'
     | '/prospeccao/buscar'
+    | '/prospeccao/cadencias'
+    | '/prospeccao/campanhas'
+    | '/prospeccao/listas'
+    | '/operacoes'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/login'
     | '/_app/visao-geral'
+    | '/_app/atendimento/inbox'
+    | '/_app/atendimento/radar'
+    | '/_app/atendimento/respostas'
     | '/_app/configuracoes/organizacao'
     | '/_app/configuracoes/permissoes'
     | '/_app/configuracoes/usuarios'
@@ -166,7 +257,12 @@ export interface FileRouteTypes {
     | '/_app/crm/empresas'
     | '/_app/crm/pipeline'
     | '/_app/crm/tarefas'
+    | '/_app/operacoes/$id'
     | '/_app/prospeccao/buscar'
+    | '/_app/prospeccao/cadencias'
+    | '/_app/prospeccao/campanhas'
+    | '/_app/prospeccao/listas'
+    | '/_app/operacoes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -203,6 +299,27 @@ declare module '@tanstack/react-router' {
       path: '/visao-geral'
       fullPath: '/visao-geral'
       preLoaderRoute: typeof AppVisaoGeralRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/inbox': {
+      id: '/_app/atendimento/inbox'
+      path: '/atendimento/inbox'
+      fullPath: '/atendimento/inbox'
+      preLoaderRoute: typeof AppAtendimentoInboxRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/radar': {
+      id: '/_app/atendimento/radar'
+      path: '/atendimento/radar'
+      fullPath: '/atendimento/radar'
+      preLoaderRoute: typeof AppAtendimentoRadarRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/atendimento/respostas': {
+      id: '/_app/atendimento/respostas'
+      path: '/atendimento/respostas'
+      fullPath: '/atendimento/respostas'
+      preLoaderRoute: typeof AppAtendimentoRespostasRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/configuracoes/organizacao': {
@@ -254,6 +371,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCrmTarefasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/operacoes/': {
+      id: '/_app/operacoes/'
+      path: '/operacoes'
+      fullPath: '/operacoes/'
+      preLoaderRoute: typeof AppOperacoesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/operacoes/$id': {
+      id: '/_app/operacoes/$id'
+      path: '/operacoes/$id'
+      fullPath: '/operacoes/$id'
+      preLoaderRoute: typeof AppOperacoesIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/prospeccao/buscar': {
       id: '/_app/prospeccao/buscar'
       path: '/prospeccao/buscar'
@@ -261,11 +392,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProspeccaoBuscarRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prospeccao/cadencias': {
+      id: '/_app/prospeccao/cadencias'
+      path: '/prospeccao/cadencias'
+      fullPath: '/prospeccao/cadencias'
+      preLoaderRoute: typeof AppProspeccaoCadenciasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/campanhas': {
+      id: '/_app/prospeccao/campanhas'
+      path: '/prospeccao/campanhas'
+      fullPath: '/prospeccao/campanhas'
+      preLoaderRoute: typeof AppProspeccaoCampanhasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/prospeccao/listas': {
+      id: '/_app/prospeccao/listas'
+      path: '/prospeccao/listas'
+      fullPath: '/prospeccao/listas'
+      preLoaderRoute: typeof AppProspeccaoListasRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
+  AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
+  AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
+  AppAtendimentoRespostasRoute: typeof AppAtendimentoRespostasRoute
   AppConfiguracoesOrganizacaoRoute: typeof AppConfiguracoesOrganizacaoRoute
   AppConfiguracoesPermissoesRoute: typeof AppConfiguracoesPermissoesRoute
   AppConfiguracoesUsuariosRoute: typeof AppConfiguracoesUsuariosRoute
@@ -273,11 +428,19 @@ interface AppRouteChildren {
   AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
   AppCrmPipelineRoute: typeof AppCrmPipelineRoute
   AppCrmTarefasRoute: typeof AppCrmTarefasRoute
+  AppOperacoesIdRoute: typeof AppOperacoesIdRoute
   AppProspeccaoBuscarRoute: typeof AppProspeccaoBuscarRoute
+  AppProspeccaoCadenciasRoute: typeof AppProspeccaoCadenciasRoute
+  AppProspeccaoCampanhasRoute: typeof AppProspeccaoCampanhasRoute
+  AppProspeccaoListasRoute: typeof AppProspeccaoListasRoute
+  AppOperacoesIndexRoute: typeof AppOperacoesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppVisaoGeralRoute: AppVisaoGeralRoute,
+  AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
+  AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
+  AppAtendimentoRespostasRoute: AppAtendimentoRespostasRoute,
   AppConfiguracoesOrganizacaoRoute: AppConfiguracoesOrganizacaoRoute,
   AppConfiguracoesPermissoesRoute: AppConfiguracoesPermissoesRoute,
   AppConfiguracoesUsuariosRoute: AppConfiguracoesUsuariosRoute,
@@ -285,7 +448,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppCrmEmpresasRoute: AppCrmEmpresasRoute,
   AppCrmPipelineRoute: AppCrmPipelineRoute,
   AppCrmTarefasRoute: AppCrmTarefasRoute,
+  AppOperacoesIdRoute: AppOperacoesIdRoute,
   AppProspeccaoBuscarRoute: AppProspeccaoBuscarRoute,
+  AppProspeccaoCadenciasRoute: AppProspeccaoCadenciasRoute,
+  AppProspeccaoCampanhasRoute: AppProspeccaoCampanhasRoute,
+  AppProspeccaoListasRoute: AppProspeccaoListasRoute,
+  AppOperacoesIndexRoute: AppOperacoesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
