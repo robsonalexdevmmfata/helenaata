@@ -11,6 +11,7 @@ import { HelenaCardView, ThinkingIndicator } from "./HelenaCards";
 import { HelenaOrb } from "./HelenaOrb";
 
 export const HELENA_SUGGESTIONS = [
+  "Helena, precisamos faturar R$ 15.000 esta semana.",
   "Boa noite Helena. Preciso que você ative o time comercial e comece a prospectar clientes para a agência Info Tech Ltda.",
   "Helena, varra o Google Maps e busque 10 clínicas sem site em São Paulo.",
   "Agende uma reunião no Google Calendar com o cliente.",

@@ -9,6 +9,7 @@ import { brl, greeting, normalize, pct } from "@/lib/format";
 import { computeSummary, needsApproval, pushHelenaMessage, requestApproval, runTool, toolRisk, updateHelenaCard } from "./engine";
 import { getToolDef } from "./registry";
 import { callGroqOrchestrator } from "./groq";
+import { computeRevenuePlan, parseDeadline, parseRevenueGoal } from "./revenue-goal";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
@@ -52,7 +53,8 @@ export async function sendToHelena(text: string) {
   }));
 
   // Orquestração inteligente via Groq Cloud
-  const groqRes = await callGroqOrchestrator(clean, history);
+  // Revenue goals always use the deterministic plan so the math and approval card are guaranteed.
+  const groqRes = parseRevenueGoal(clean) ? null : await callGroqOrchestrator(clean, history);
 
   if (groqRes && groqRes.toolCalls && groqRes.toolCalls.length > 0) {
     helenaUi.set({ state: "planejando" });
@@ -258,6 +260,29 @@ export function interpret(text: string): Reply[] {
         `Reunião agendada com sucesso no Google Calendar e Cal.com para ${contact?.name}! O convite com link de videoconferência foi gerado e o lead foi movido para a etapa de Reunião Agendada no pipeline.`
       ),
     ];
+  }
+
+  // Revenue goal (Jarvis executiva): "precisamos faturar R$ 15.000 esta semana"
+  const revenueGoal = parseRevenueGoal(text);
+  if (revenueGoal) {
+    const plan = computeRevenuePlan(revenueGoal, {}, parseDeadline(text));
+    const sdrNames = sdrs.map((a) => a.name).join(" e ") || "SDR 01 e SDR 02";
+    const perSdr = Math.ceil(plan.leads / Math.max(1, sdrs.length));
+    return planOperation({
+      intro: `${greeting()}, ${first}. Meta recebida: ${brl(plan.goal)} ${plan.deadline}.\n\nMatemática de vendas da ${db.organization.name}:\n• Ticket médio site/sistema: ${brl(plan.ticket)} → ${plan.sales} clientes fechados\n• Conversão do Closer: ${Math.round(plan.closeRate * 100)}% → ${plan.meetings} reuniões agendadas\n• Agendamento dos SDRs: ${Math.round(plan.meetingRate * 100)}% → ${plan.leads} leads abordados`,
+      title: `Meta ${brl(plan.goal)} · ${plan.deadline}`,
+      objective: `Faturar ${brl(plan.goal)} ${plan.deadline}: abordar ${plan.leads} leads sem site, agendar ${plan.meetings} reuniões e fechar ${plan.sales} vendas.`,
+      total: plan.leads,
+      listId: "l2",
+      agentIds: [...sdrs.map((a) => a.id), "a_qual", "a_closer", "a_supcom"],
+      suggestions: [
+        `Caçador / Scraper: filtrar ${plan.leads} leads da região sem site no Google Maps (#sem-site)`,
+        `${sdrNames}: disparar abordagens pelo WhatsApp de forma espaçada (~${perSdr} por SDR, evitando bloqueios)`,
+        `Qualificador: de prontidão para agendar no Google Calendar / Cal.com assim que o dono responder "Sim, quero ver a demonstração"`,
+        `Closer: conduzir as ${plan.meetings} reuniões com meta de ${plan.sales} fechamentos`,
+        "Supervisor Comercial: acompanhar o funil e me alertar se a taxa de resposta cair",
+      ],
+    });
   }
 
   // Strategy
