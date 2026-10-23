@@ -20,6 +20,8 @@ import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
 import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
 import { Route as AppCrmPipelineRouteImport } from './routes/_app/crm/pipeline'
 import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
+import { Route as AppOperacoesIndexRouteImport } from './routes/_app/operacoes/index'
+import { Route as AppOperacoesIdRouteImport } from './routes/_app/operacoes/$id'
 import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospeccao/buscar'
 
 const IndexRoute = IndexRouteImport.update({
@@ -79,6 +81,16 @@ const AppCrmTarefasRoute = AppCrmTarefasRouteImport.update({
   path: '/crm/tarefas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppOperacoesIndexRoute = AppOperacoesIndexRouteImport.update({
+  id: '/operacoes/',
+  path: '/operacoes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOperacoesIdRoute = AppOperacoesIdRouteImport.update({
+  id: '/operacoes/$id',
+  path: '/operacoes/$id',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProspeccaoBuscarRoute = AppProspeccaoBuscarRouteImport.update({
   id: '/prospeccao/buscar',
   path: '/prospeccao/buscar',
@@ -96,7 +108,9 @@ export interface FileRoutesByFullPath {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -109,7 +123,9 @@ export interface FileRoutesByTo {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/operacoes/$id': typeof AppOperacoesIdRoute
   '/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/operacoes': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,7 +140,9 @@ export interface FileRoutesById {
   '/_app/crm/empresas': typeof AppCrmEmpresasRoute
   '/_app/crm/pipeline': typeof AppCrmPipelineRoute
   '/_app/crm/tarefas': typeof AppCrmTarefasRoute
+  '/_app/operacoes/$id': typeof AppOperacoesIdRoute
   '/_app/prospeccao/buscar': typeof AppProspeccaoBuscarRoute
+  '/_app/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -139,7 +157,9 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/operacoes/$id'
     | '/prospeccao/buscar'
+    | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -152,7 +172,9 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/operacoes/$id'
     | '/prospeccao/buscar'
+    | '/operacoes'
   id:
     | '__root__'
     | '/'
@@ -166,7 +188,9 @@ export interface FileRouteTypes {
     | '/_app/crm/empresas'
     | '/_app/crm/pipeline'
     | '/_app/crm/tarefas'
+    | '/_app/operacoes/$id'
     | '/_app/prospeccao/buscar'
+    | '/_app/operacoes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -254,6 +278,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCrmTarefasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/operacoes/': {
+      id: '/_app/operacoes/'
+      path: '/operacoes'
+      fullPath: '/operacoes/'
+      preLoaderRoute: typeof AppOperacoesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/operacoes/$id': {
+      id: '/_app/operacoes/$id'
+      path: '/operacoes/$id'
+      fullPath: '/operacoes/$id'
+      preLoaderRoute: typeof AppOperacoesIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/prospeccao/buscar': {
       id: '/_app/prospeccao/buscar'
       path: '/prospeccao/buscar'
@@ -273,7 +311,9 @@ interface AppRouteChildren {
   AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
   AppCrmPipelineRoute: typeof AppCrmPipelineRoute
   AppCrmTarefasRoute: typeof AppCrmTarefasRoute
+  AppOperacoesIdRoute: typeof AppOperacoesIdRoute
   AppProspeccaoBuscarRoute: typeof AppProspeccaoBuscarRoute
+  AppOperacoesIndexRoute: typeof AppOperacoesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -285,7 +325,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppCrmEmpresasRoute: AppCrmEmpresasRoute,
   AppCrmPipelineRoute: AppCrmPipelineRoute,
   AppCrmTarefasRoute: AppCrmTarefasRoute,
+  AppOperacoesIdRoute: AppOperacoesIdRoute,
   AppProspeccaoBuscarRoute: AppProspeccaoBuscarRoute,
+  AppOperacoesIndexRoute: AppOperacoesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
