@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/_app/automacoes")({
   component: AutomacoesPage,
 });
 
-const TRIGGERS: Record<string, { label: string; icon: JSX.Element; color: string }> = {
+const TRIGGERS: Record<string, { label: string; icon: ReactElement; color: string }> = {
   lead_criado:          { label: "Lead Criado",          icon: <Play className="size-3" />,         color: "bg-green-500/10 text-green-600 border-green-200" },
   mensagem_recebida:    { label: "Mensagem Recebida",    icon: <MessageSquare className="size-3" />, color: "bg-blue-500/10 text-blue-600 border-blue-200" },
   deal_movido:          { label: "Deal Movido de Etapa", icon: <GitBranch className="size-3" />,    color: "bg-purple-500/10 text-purple-600 border-purple-200" },

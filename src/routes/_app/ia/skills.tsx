@@ -94,7 +94,7 @@ function SkillsPage() {
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard label="Skills Ativas" value={enabled} icon={<CheckCircle2 />} tone="success" />
         <StatCard label="Desativadas" value={disabled} icon={<Wrench />} tone="warning" />
-        <StatCard label="Risco Alto" value={highRisk} hint="Requerem aprovação manual" icon={<Shield />} tone="destructive" />
+        <StatCard label="Risco Alto" value={highRisk} hint="Requerem aprovação manual" icon={<Shield />} tone="danger" />
       </div>
 
       <div className="relative max-w-sm">

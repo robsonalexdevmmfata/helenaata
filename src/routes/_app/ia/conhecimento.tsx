@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/_app/ia/conhecimento")({
   component: ConhecimentoPage,
 });
 
-const TYPE_ICON: Record<string, JSX.Element> = {
+const TYPE_ICON: Record<string, ReactElement> = {
   PDF:  <FileText className="size-4 text-red-400" />,
   DOCX: <FileText className="size-4 text-blue-400" />,
   TXT:  <FileText className="size-4 text-muted-foreground" />,

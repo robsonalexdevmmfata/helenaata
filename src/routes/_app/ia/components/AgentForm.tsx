@@ -19,7 +19,6 @@ import {
 import { useDB, update } from "@/lib/store";
 import { runTool } from "@/lib/helena/engine";
 import { toast } from "sonner";
-import type { FreeLLMModel } from "@/lib/helena/freellmapi";
 import {
   FREE_LLM_MODELS, getFreeLLMConfig, FREE_LLM_PROVIDERS_LIST,
 } from "@/lib/helena/freellmapi";

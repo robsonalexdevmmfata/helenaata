@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import type { Team } from "@/lib/types";
 import { Users, Sparkles, Zap, Globe, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,17 +50,15 @@ export function TeamForm({ open, onOpenChange }: TeamFormProps) {
         organizationId: d.organization.id,
         name: formData.name,
         objective: formData.objective,
-        supervisorId: formData.supervisorId || undefined,
+        supervisorId: formData.supervisorId || "",
         agentIds: [],
-        goals: [],
+        goals: "",
         schedule: "Seg–Sex, 08:00–18:00",
-        channels: formData.channels,
+        channels: formData.channels as Team["channels"],
         budget: Number(formData.budget),
         spent: 0,
         status: "ativo",
         metrics: { leads: 0, meetings: 0, conversions: 0 },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       });
     });
 
