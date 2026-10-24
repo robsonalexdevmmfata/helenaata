@@ -1,6 +1,7 @@
 // Groq Cloud & FreeLLMAPI Integration for HELENA AI Orchestrator
 import { getDB } from "@/lib/store";
 import { callFreeLLMOrchestrator, getFreeLLMConfig } from "./freellmapi";
+import { serverChatCompletion } from "@/lib/backend";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -164,19 +165,25 @@ export const GROQ_TOOLS = [
   },
 ];
 
+function parseChoice(choice: any): GroqResponse {
+  const toolCalls: GroqToolCall[] = [];
+  if (choice.tool_calls && Array.isArray(choice.tool_calls)) {
+    for (const tc of choice.tool_calls) {
+      try {
+        toolCalls.push({ id: tc.id, name: tc.function.name, arguments: JSON.parse(tc.function.arguments || "{}") });
+      } catch {
+        // ignore argument parse error
+      }
+    }
+  }
+  return { text: choice.content || "", toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+}
+
 export async function callGroqOrchestrator(
   userMessage: string,
   history: Array<{ role: "user" | "assistant" | "system"; content: string }> = [],
 ): Promise<GroqResponse | null> {
   const apiKey = getGroqApiKey();
-  if (!apiKey) {
-    const freeConfig = getFreeLLMConfig();
-    if (freeConfig.enabled) {
-      const freeReply = await callFreeLLMOrchestrator(userMessage, history);
-      if (freeReply) return { text: freeReply };
-    }
-    return null;
-  }
 
   const db = getDB();
   const org = db.organization.name;
@@ -209,6 +216,19 @@ Quando o usuário pedir algo que requer ferramenta, use a Tool Call apropriada. 
     { role: "user", content: userMessage },
   ];
 
+  if (!apiKey) {
+    // Sem chave no navegador: usa a IA do servidor (chave fica guardada lá).
+    const viaServer = await serverChatCompletion({ messages, tools: GROQ_TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 1024 });
+    const serverChoice = viaServer?.choices?.[0]?.message;
+    if (serverChoice) return parseChoice(serverChoice);
+    const freeConfig = getFreeLLMConfig();
+    if (freeConfig.enabled) {
+      const freeReply = await callFreeLLMOrchestrator(userMessage, history);
+      if (freeReply) return { text: freeReply };
+    }
+    return null;
+  }
+
   try {
     const res = await fetch(GROQ_API_URL, {
       method: "POST",
@@ -234,26 +254,7 @@ Quando o usuário pedir algo que requer ferramenta, use a Tool Call apropriada. 
     const data = await res.json();
     const choice = data.choices?.[0]?.message;
     if (!choice) return null;
-
-    const toolCalls: GroqToolCall[] = [];
-    if (choice.tool_calls && Array.isArray(choice.tool_calls)) {
-      for (const tc of choice.tool_calls) {
-        try {
-          toolCalls.push({
-            id: tc.id,
-            name: tc.function.name,
-            arguments: JSON.parse(tc.function.arguments || "{}"),
-          });
-        } catch {
-          // ignore argument parse error
-        }
-      }
-    }
-
-    return {
-      text: choice.content || "",
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-    };
+    return parseChoice(choice);
   } catch (err) {
     console.warn("Failed to contact Groq Cloud, attempting FreeLLMAPI failover:", err);
     try {
