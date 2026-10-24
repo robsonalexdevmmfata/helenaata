@@ -4,7 +4,7 @@ import { ArrowRight, Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { login } from "@/lib/auth";
+import { loginWithServer } from "@/lib/auth";
 import { pageHead } from "@/lib/head";
 import { HelenaOrb } from "@/components/helena/HelenaOrb";
 
@@ -20,18 +20,16 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      if (login(username, password)) {
-        navigate({ to: "/visao-geral" });
-      } else {
-        setError("Usuário ou senha inválidos.");
-        setLoading(false);
-      }
-    }, 350);
+    if (await loginWithServer(username, password)) {
+      navigate({ to: "/visao-geral" });
+    } else {
+      setError("Usuário ou senha inválidos.");
+      setLoading(false);
+    }
   };
 
   return (
