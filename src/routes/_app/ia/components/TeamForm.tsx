@@ -59,7 +59,6 @@ export function TeamForm({ open, onOpenChange }: TeamFormProps) {
         spent: 0,
         status: "ativo",
         metrics: { leads: 0, meetings: 0, conversions: 0 },
-        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
     });
