@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -28,7 +29,7 @@ export const Route = createFileRoute("/_app/ia/agentes")({
   component: AgentesPage,
 });
 
-const STATUS_ICON: Record<AgentStatus, JSX.Element> = {
+const STATUS_ICON: Record<AgentStatus, ReactElement> = {
   trabalhando: <CheckCircle2 className="size-3.5 text-success" />,
   aguardando: <Clock className="size-3.5 text-muted-foreground" />,
   pausado: <AlertTriangle className="size-3.5 text-warning" />,

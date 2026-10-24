@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -30,7 +31,7 @@ const REQUEST_TYPE_LABEL: Record<string, string> = {
   exclusao: "Exclusão",
 };
 
-const REQUEST_TYPE_ICON: Record<string, JSX.Element> = {
+const REQUEST_TYPE_ICON: Record<string, ReactElement> = {
   exportacao: <Download className="size-3.5" />,
   anonimizacao: <Eye className="size-3.5" />,
   exclusao: <UserX className="size-3.5" />,
