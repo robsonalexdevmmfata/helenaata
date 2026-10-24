@@ -4,10 +4,11 @@
 
 export interface FreeLLMConfig {
   endpoint: string;
-  apiKey: string; // Optional if running locally, or personal secret token
+  apiKey: string;
   defaultModel: string;
   autoFailover: boolean;
   enabled: boolean;
+  monthlyBudget: number; // R$ 0 = sem limite; com FreeLLMAPI é sempre gratuito
 }
 
 export const FREE_LLM_MODELS = [
@@ -37,6 +38,7 @@ export function getFreeLLMConfig(): FreeLLMConfig {
       defaultModel: "freellm/llama-3.3-70b",
       autoFailover: true,
       enabled: true,
+      monthlyBudget: 0,
     };
   }
 
@@ -53,6 +55,7 @@ export function getFreeLLMConfig(): FreeLLMConfig {
     defaultModel: "freellm/llama-3.3-70b",
     autoFailover: true,
     enabled: true,
+    monthlyBudget: 0,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
@@ -71,31 +74,33 @@ export function saveFreeLLMConfig(config: Partial<FreeLLMConfig>): FreeLLMConfig
 
 export async function testFreeLLMConnection(endpointUrl?: string): Promise<{ ok: boolean; message: string; latencyMs: number }> {
   const url = (endpointUrl || getFreeLLMConfig().endpoint).replace(/\/$/, "");
-  const target = `${url}/models`;
   const start = Date.now();
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(target, {
-      method: "GET",
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    const latencyMs = Date.now() - start;
+  // Tenta /models primeiro (padrão OpenAI-compatible), depois /health como fallback
+  const targets = [`${url}/models`, `${url}/health`, url];
 
-    if (res.ok) {
-      return { ok: true, message: `Conectado com sucesso! Latência: ${latencyMs}ms`, latencyMs };
+  for (const target of targets) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(target, { method: "GET", signal: controller.signal });
+      clearTimeout(timer);
+      const latencyMs = Date.now() - start;
+      if (res.ok || res.status === 404) {
+        // 404 em /models ainda indica que o servidor está no ar
+        return { ok: true, message: `Conectado! Latência: ${latencyMs}ms`, latencyMs };
+      }
+    } catch {
+      // Tenta o próximo endpoint
     }
-    return { ok: false, message: `Servidor retornou status HTTP ${res.status}`, latencyMs };
-  } catch (err: any) {
-    const latencyMs = Date.now() - start;
-    return {
-      ok: false,
-      message: err.name === "AbortError" ? "Timeout: Servidor demorou mais de 4s para responder" : "Não foi possível conectar ao endpoint local (verifique se o FreeLLMAPI está rodando na porta 8000)",
-      latencyMs,
-    };
   }
+
+  const latencyMs = Date.now() - start;
+  return {
+    ok: false,
+    message: `Servidor offline ou inacessível em ${url}. Rode: git clone https://github.com/tashfeenahmed/freellmapi && python main.py`,
+    latencyMs,
+  };
 }
 
 export async function callFreeLLMOrchestrator(

@@ -21,6 +21,7 @@ import {
   FREE_LLM_MODELS, FREE_LLM_PROVIDERS_LIST, getFreeLLMConfig, saveFreeLLMConfig,
   testFreeLLMConnection,
 } from "@/lib/helena/freellmapi";
+import { AgentForm } from "./components/AgentForm";
 
 export const Route = createFileRoute("/_app/ia/agentes")({
   head: () => pageHead("Agentes IA · FreeLLMAPI", "Gerencie os agentes autônomos com suporte gratuito ao repositório tashfeenahmed/freellmapi."),
@@ -43,6 +44,7 @@ function AgentesPage() {
   const [freeConfig, setFreeConfig] = useState(getFreeLLMConfig());
   const [showHubModal, setShowHubModal] = useState(false);
   const [selectedAgentForModel, setSelectedAgentForModel] = useState<string | null>(null);
+  const [showCreateAgentModal, setShowCreateAgentModal] = useState(false);
   const [testingPing, setTestingPing] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; message: string; latencyMs: number } | null>(null);
 
@@ -183,6 +185,9 @@ function AgentesPage() {
           <Input placeholder="Buscar agente..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <div className="flex gap-1.5 flex-wrap">
+          <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setShowCreateAgentModal(true)}>
+            <Plus className="size-3.5" /> Novo Agente
+          </Button>
           {roles.map((r) => (
             <Button key={r} size="sm" variant={filter === r ? "default" : "outline"} className="h-9 text-xs capitalize" onClick={() => setFilter(r)}>
               {r}
@@ -334,6 +339,13 @@ function AgentesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal: Criar Novo Agente */}
+      <AgentForm
+        open={showCreateAgentModal}
+        onOpenChange={setShowCreateAgentModal}
+        initialTeamId={db.teams.length > 0 ? db.teams[0].id : undefined}
+      />
+
       {/* Modal: FreeLLMAPI Hub Configuration & Directory */}
       <Dialog open={showHubModal} onOpenChange={setShowHubModal}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
@@ -375,9 +387,14 @@ function AgentesPage() {
                 </Button>
               </div>
               {pingResult && (
-                <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${pingResult.ok ? "bg-success/10 text-success border border-success/30" : "bg-warning/10 text-warning border border-warning/30"}`}>
+                <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${pingResult.ok ? "bg-success/10 text-success border border-success/30" : "bg-muted/60 text-muted-foreground border border-border"}`}>
                   {pingResult.ok ? <CheckCircle2 className="size-4 shrink-0" /> : <AlertTriangle className="size-4 shrink-0" />}
                   <span>{pingResult.message}</span>
+                  {!pingResult.ok && (
+                    <span className="ml-auto shrink-0 text-[10px]">
+                      O FreeLLMAPI roda localmente — inicie com <code className="font-mono bg-muted px-1 rounded">python main.py</code>
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -395,6 +412,37 @@ function AgentesPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* API Key (opcional para instâncias públicas) */}
+            <div className="space-y-2">
+              <label className="font-semibold text-foreground">API Key (opcional)</label>
+              <Input
+                type="password"
+                value={freeConfig.apiKey ?? ""}
+                onChange={(e) => setFreeConfig({ ...freeConfig, apiKey: e.target.value })}
+                placeholder="Deixe em branco se rodando localmente"
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Para instâncias locais não é necessário. Para endpoints públicos ou hospedados, informe o token de acesso.
+              </p>
+            </div>
+
+            {/* Orçamento */}
+            <div className="space-y-2">
+              <label className="font-semibold text-foreground">Orçamento mensal de IA (R$)</label>
+              <Input
+                type="number"
+                min={0}
+                value={freeConfig.monthlyBudget ?? 0}
+                onChange={(e) => setFreeConfig({ ...freeConfig, monthlyBudget: Number(e.target.value) })}
+                placeholder="0 = sem limite"
+                className="text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Com FreeLLMAPI o custo é sempre R$ 0,00. Este campo serve para registrar eventual custo de instância hospedada.
+              </p>
             </div>
 
             <div className="space-y-1.5 pt-2">

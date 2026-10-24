@@ -7,6 +7,9 @@ import type {
 import { can, currentUser, getDB, nowISO, uid, update } from "@/lib/store";
 import { getToolDef } from "./registry";
 import { normalize } from "@/lib/format";
+import { brl } from "@/lib/format";
+import { formatForWhatsApp, evaluateHandoff } from "./whatsapp-formatter";
+import type { HandoffStage } from "./whatsapp-formatter";
 import {
   checkDuplicateContact,
   isLeadHandledByAnotherSdr,
@@ -187,22 +190,93 @@ const handlers: Record<string, Handler> = {
     });
     return ok("Tarefa criada", { id });
   },
-  "messages.send": (p) => {
+  "messages.send": (p, ctx) => {
     const db = getDB();
     const conv = db.conversations.find((c) => c.id === p.conversationId);
     if (!conv) return fail("conversa não encontrada");
     const problem = conv.channel === "whatsapp" ? connectionCheck(db, conv.connectionId) : null;
     if (problem) return fail(problem);
+
+    // Limpa emojis e markdown do texto que vai para o WhatsApp
+    const rawText = String(p.text ?? "");
+    const outText = conv.channel === "whatsapp" ? formatForWhatsApp(rawText) : rawText;
+
+    // Determina o estágio atual com base no handler da conversa
+    const stageMap: Record<string, HandoffStage> = {
+      SDR: "sdr", Qualificador: "qualificador", Closer: "closer",
+    };
+    const currentAgent = db.agents.find((a) => a.id === conv.handlerId);
+    const currentStage: HandoffStage = (currentAgent ? (stageMap[currentAgent.role] ?? "sdr") : "sdr");
+
+    // Detecta a última mensagem do cliente para avaliar handoff
+    const lastClientMsg = [...conv.messages].reverse().find((m) => m.from === "contact")?.text ?? "";
+    const handoff = evaluateHandoff(lastClientMsg, currentStage, db);
+
     update((d) => {
       const c = d.conversations.find((x) => x.id === conv.id)!;
-      c.messages.push({ id: uid("m_"), from: p.from ?? "human", authorName: p.authorName ?? currentUser(d).name, text: p.text, at: nowISO(), kind: "text" });
+
+      // Registra a mensagem enviada pelo agente
+      c.messages.push({
+        id: uid("m_"),
+        from: p.from ?? "agent",
+        authorName: p.authorName ?? (currentAgent?.name ?? ctx.actor),
+        text: outText,
+        at: nowISO(),
+        kind: "text",
+      });
       c.lastMessageAt = nowISO();
       c.unread = 0;
+
+      // Atualiza métricas do contato
       const ct = d.contacts.find((x) => x.id === c.contactId);
       if (ct) ct.lastContactAt = nowISO();
       const wa = d.connections.find((x) => x.id === c.connectionId);
       if (wa && c.channel === "whatsapp") wa.sentToday += 1;
+
+      // ── Handoff transparente ───────────────────────────────────────────────
+      if (handoff) {
+        const nextAgent = d.agents.find((a) => a.id === handoff.nextAgentId);
+        if (nextAgent) {
+          // Troca o handler da conversa SEM avisar o cliente
+          c.handlerType = handoff.nextStage === "humano" ? "human" : "agent";
+          c.handlerId = nextAgent.id;
+
+          // Incrementa métricas do agente anterior
+          if (currentAgent) {
+            const prev = d.agents.find((a) => a.id === currentAgent.id);
+            if (prev) prev.metrics.conversations += 1;
+          }
+
+          // Registra handoff na auditoria (invisível para o cliente)
+          d.activities.unshift({
+            id: uid("ac_"),
+            organizationId: d.organization.id,
+            contactId: c.contactId,
+            type: "handoff",
+            text: `Handoff transparente: ${currentAgent?.name ?? "SDR"} → ${nextAgent.name}. Motivo: ${handoff.reason}`,
+            actor: "Sistema HELENA",
+            createdAt: nowISO(),
+          });
+
+          // Se for para humano, cria tarefa de follow-up urgente
+          if (handoff.nextStage === "humano") {
+            d.tasks.unshift({
+              id: uid("tk_"),
+              organizationId: d.organization.id,
+              title: `Atender ${d.contacts.find((x) => x.id === c.contactId)?.name ?? "cliente"} — solicitou humano`,
+              contactId: c.contactId,
+              assigneeId: nextAgent.id,
+              assigneeType: "agent",
+              dueAt: nowISO(),
+              done: false,
+              priority: "alta",
+              type: "follow-up",
+            });
+          }
+        }
+      }
     });
+
     return ok("Mensagem enviada");
   },
   "messages.search": (p) => {
@@ -270,6 +344,20 @@ const handlers: Record<string, Handler> = {
       setAgentsStatus(d, [t.supervisorId, ...t.agentIds], "trabalhando");
     });
     return ok(`Time ${team.name} ativado`);
+  },
+  "teams.create": (p) => {
+    if (!p.name) return fail("nome do time é obrigatório");
+    const id = uid("t_");
+    update((d) => {
+      d.teams.push({
+        id, organizationId: d.organization.id, name: p.name, objective: p.objective ?? "",
+        supervisorId: p.supervisorId || undefined, agentIds: p.agentIds ?? [],
+        goals: p.goals ?? "", schedule: p.schedule ?? "Seg–Sex, 08:00–18:00",
+        channels: p.channels ?? ["whatsapp"], budget: Number(p.budget ?? 200), spent: 0,
+        status: p.status ?? "ativo", metrics: p.metrics ?? { leads: 0, meetings: 0, conversions: 0 },
+      });
+    });
+    return ok(`Time ${p.name} criado`, { id });
   },
   "teams.pause": (p) => {
     const team = getDB().teams.find((t) => t.id === p.teamId);
@@ -568,7 +656,7 @@ const handlers: Record<string, Handler> = {
               id: uid("m_"),
               from: "agent",
               authorName: sdr.name,
-              text: `Olá ${contactName}! Sou o ${sdr.name} da Info Tech Ltda. Encontrei a ${compName} no Google Maps em ${city} e notei que vocês ainda não possuem um site institucional oficial para receber os pacientes e clientes que buscam no Google. Criamos páginas de alta conversão para dobrar o agendamento no seu segmento. Podemos te apresentar uma prévia sem compromisso?`,
+              text: formatForWhatsApp(`Olá ${contactName}! Sou o ${sdr.name} da Info Tech Ltda. Encontrei a ${compName} no Google Maps em ${city} e notei que vocês ainda não possuem um site institucional oficial para receber os pacientes e clientes que buscam no Google. Criamos páginas de alta conversão para dobrar o agendamento no seu segmento. Podemos te apresentar uma prévia sem compromisso?`),
               at: nowISO(),
               kind: "text",
             },
@@ -643,7 +731,7 @@ const handlers: Record<string, Handler> = {
         id: uid("m_"),
         from: "agent",
         authorName: "Helena AI (Sales Brain)",
-        text: responseText,
+        text: formatForWhatsApp(responseText),
         at: nowISO(),
         kind: "text",
       });
@@ -654,7 +742,7 @@ const handlers: Record<string, Handler> = {
           id: uid("m_media_"),
           from: "agent",
           authorName: "Helena AI (Sales Brain)",
-          text: `📸 ${objDef.demoMockMedia.title}\n${objDef.demoMockMedia.preview}\n\n👉 Demonstração ao vivo: ${objDef.demoMockMedia.url}`,
+          text: formatForWhatsApp(`${objDef.demoMockMedia.title}\n${objDef.demoMockMedia.preview}\n\nDemonstração ao vivo: ${objDef.demoMockMedia.url}`),
           at: nowISO(),
           kind: "image",
         });
@@ -709,7 +797,7 @@ const handlers: Record<string, Handler> = {
       // 1. Injeta cobrança Pix na conversa do WhatsApp
       let conv = d.conversations.find((c) => c.contactId === contact.id);
       if (conv) {
-        const pixMsg = `Perfeito, ${contact.name}! Criei a cobrança com condição especial da Info Tech Ltda no valor de ${pixData.formattedValue}.\n\n🔑 Chave Pix Copia e Cola:\n\`${pixData.copyPasteKey}\`\n\n💳 Link de Pagamento / Cartão de Crédito:\n${pixData.checkoutUrl}\n\nAssim que o pagamento for identificado, liberamos seu domínio e o time técnico inicia imediatamente!`;
+        const pixMsg = formatForWhatsApp(`Perfeito, ${contact.name}! Criei a cobrança com condição especial da Info Tech Ltda no valor de ${pixData.formattedValue}.\n\nChave Pix Copia e Cola:\n${pixData.copyPasteKey}\n\nLink de Pagamento / Cartao de Credito:\n${pixData.checkoutUrl}\n\nAssim que o pagamento for identificado, liberamos seu dominio e o time tecnico inicia imediatamente!`);
         conv.messages.push({
           id: uid("msg_pix_"),
           from: "agent",

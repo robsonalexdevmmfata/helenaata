@@ -3,6 +3,7 @@
 import type { Contact, DB, Deal, Task, Activity } from "@/lib/types";
 import { getDB, nowISO, uid, update } from "@/lib/store";
 import { brl } from "@/lib/format";
+import { formatForWhatsApp } from "./whatsapp-formatter";
 
 // ============================================================================
 // 1. AS 3 TRAVAS ANTI-DUPLICIDADE DA HELENA
@@ -300,7 +301,7 @@ export function evaluateBant(contact: Contact, deal?: Deal, lastText = ""): Bant
   // 4. Timeline (Urgência)
   const isUrgent =
     /fechar|pagamento|pix|come[cç]ar|agendar|hoje|amanh[aã]|urgente/i.test(lastText) ||
-    (deal && (deal.stageId === "st_reun" || deal.stageId === "st_prop" || deal.stageId === "st_neg"));
+    !!(deal && (deal.stageId === "st_reun" || deal.stageId === "st_prop" || deal.stageId === "st_neg"));
   const timelineScore = isUrgent ? 25 : 15;
   const timelineLabel = isUrgent ? "Urgência Alta (Janela de 24h a 7 dias)" : "Janela Normal de 15 a 30 dias";
 
@@ -435,7 +436,7 @@ export function executeRescueColdLeads(db: DB, actorName = "Helena"): { rescuedC
 
       // 2. Dispara mensagem de resgate no WhatsApp
       const conv = d.conversations.find((c) => c.contactId === stale.contactId);
-      const rescueText = `Olá ${contact?.name || "amigo(a)"}! Passando para te avisar que conversei com o time técnico da Info Tech Ltda e consegui uma condição especial de parcelamento com liberação de domínio e SEO grátis se fecharmos a criação do seu site esta semana. Gostaria de aproveitar essa condição?`;
+      const rescueText = formatForWhatsApp(`Olá ${contact?.name || "amigo(a)"}! Passando para te avisar que conversei com o time técnico da Info Tech Ltda e consegui uma condição especial de parcelamento com liberação de domínio e SEO grátis se fecharmos a criação do seu site esta semana. Gostaria de aproveitar essa condição?`);
 
       if (conv) {
         conv.messages.push({

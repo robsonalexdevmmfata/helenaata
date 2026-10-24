@@ -20,8 +20,11 @@ import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
 import { Route as AppAtendimentoInboxRouteImport } from './routes/_app/atendimento/inbox'
 import { Route as AppAtendimentoRadarRouteImport } from './routes/_app/atendimento/radar'
 import { Route as AppAtendimentoRespostasRouteImport } from './routes/_app/atendimento/respostas'
+import { Route as AppConfiguracoesBillingRouteImport } from './routes/_app/configuracoes/billing'
+import { Route as AppConfiguracoesLgpdRouteImport } from './routes/_app/configuracoes/lgpd'
 import { Route as AppConfiguracoesOrganizacaoRouteImport } from './routes/_app/configuracoes/organizacao'
 import { Route as AppConfiguracoesPermissoesRouteImport } from './routes/_app/configuracoes/permissoes'
+import { Route as AppConfiguracoesSegurancaRouteImport } from './routes/_app/configuracoes/seguranca'
 import { Route as AppConfiguracoesUsuariosRouteImport } from './routes/_app/configuracoes/usuarios'
 import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
 import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
@@ -100,6 +103,16 @@ const AppAtendimentoRespostasRoute = AppAtendimentoRespostasRouteImport.update({
   path: '/atendimento/respostas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppConfiguracoesBillingRoute = AppConfiguracoesBillingRouteImport.update({
+  id: '/configuracoes/billing',
+  path: '/configuracoes/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConfiguracoesLgpdRoute = AppConfiguracoesLgpdRouteImport.update({
+  id: '/configuracoes/lgpd',
+  path: '/configuracoes/lgpd',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppConfiguracoesOrganizacaoRoute =
   AppConfiguracoesOrganizacaoRouteImport.update({
     id: '/configuracoes/organizacao',
@@ -110,6 +123,12 @@ const AppConfiguracoesPermissoesRoute =
   AppConfiguracoesPermissoesRouteImport.update({
     id: '/configuracoes/permissoes',
     path: '/configuracoes/permissoes',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppConfiguracoesSegurancaRoute =
+  AppConfiguracoesSegurancaRouteImport.update({
+    id: '/configuracoes/seguranca',
+    path: '/configuracoes/seguranca',
     getParentRoute: () => AppRoute,
   } as any)
 const AppConfiguracoesUsuariosRoute =
@@ -241,8 +260,11 @@ export interface FileRoutesByFullPath {
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
+  '/configuracoes/billing': typeof AppConfiguracoesBillingRoute
+  '/configuracoes/lgpd': typeof AppConfiguracoesLgpdRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
+  '/configuracoes/seguranca': typeof AppConfiguracoesSegurancaRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
   '/crm/contatos': typeof AppCrmContatosRoute
   '/crm/empresas': typeof AppCrmEmpresasRoute
@@ -277,8 +299,11 @@ export interface FileRoutesByTo {
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
+  '/configuracoes/billing': typeof AppConfiguracoesBillingRoute
+  '/configuracoes/lgpd': typeof AppConfiguracoesLgpdRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
+  '/configuracoes/seguranca': typeof AppConfiguracoesSegurancaRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
   '/crm/contatos': typeof AppCrmContatosRoute
   '/crm/empresas': typeof AppCrmEmpresasRoute
@@ -316,8 +341,11 @@ export interface FileRoutesById {
   '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/_app/atendimento/respostas': typeof AppAtendimentoRespostasRoute
+  '/_app/configuracoes/billing': typeof AppConfiguracoesBillingRoute
+  '/_app/configuracoes/lgpd': typeof AppConfiguracoesLgpdRoute
   '/_app/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/_app/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
+  '/_app/configuracoes/seguranca': typeof AppConfiguracoesSegurancaRoute
   '/_app/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
   '/_app/crm/contatos': typeof AppCrmContatosRoute
   '/_app/crm/empresas': typeof AppCrmEmpresasRoute
@@ -355,8 +383,11 @@ export interface FileRouteTypes {
     | '/atendimento/inbox'
     | '/atendimento/radar'
     | '/atendimento/respostas'
+    | '/configuracoes/billing'
+    | '/configuracoes/lgpd'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
+    | '/configuracoes/seguranca'
     | '/configuracoes/usuarios'
     | '/crm/contatos'
     | '/crm/empresas'
@@ -391,8 +422,11 @@ export interface FileRouteTypes {
     | '/atendimento/inbox'
     | '/atendimento/radar'
     | '/atendimento/respostas'
+    | '/configuracoes/billing'
+    | '/configuracoes/lgpd'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
+    | '/configuracoes/seguranca'
     | '/configuracoes/usuarios'
     | '/crm/contatos'
     | '/crm/empresas'
@@ -429,8 +463,11 @@ export interface FileRouteTypes {
     | '/_app/atendimento/inbox'
     | '/_app/atendimento/radar'
     | '/_app/atendimento/respostas'
+    | '/_app/configuracoes/billing'
+    | '/_app/configuracoes/lgpd'
     | '/_app/configuracoes/organizacao'
     | '/_app/configuracoes/permissoes'
+    | '/_app/configuracoes/seguranca'
     | '/_app/configuracoes/usuarios'
     | '/_app/crm/contatos'
     | '/_app/crm/empresas'
@@ -541,6 +578,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtendimentoRespostasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/configuracoes/billing': {
+      id: '/_app/configuracoes/billing'
+      path: '/configuracoes/billing'
+      fullPath: '/configuracoes/billing'
+      preLoaderRoute: typeof AppConfiguracoesBillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracoes/lgpd': {
+      id: '/_app/configuracoes/lgpd'
+      path: '/configuracoes/lgpd'
+      fullPath: '/configuracoes/lgpd'
+      preLoaderRoute: typeof AppConfiguracoesLgpdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/configuracoes/organizacao': {
       id: '/_app/configuracoes/organizacao'
       path: '/configuracoes/organizacao'
@@ -553,6 +604,13 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes/permissoes'
       fullPath: '/configuracoes/permissoes'
       preLoaderRoute: typeof AppConfiguracoesPermissoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracoes/seguranca': {
+      id: '/_app/configuracoes/seguranca'
+      path: '/configuracoes/seguranca'
+      fullPath: '/configuracoes/seguranca'
+      preLoaderRoute: typeof AppConfiguracoesSegurancaRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/configuracoes/usuarios': {
@@ -742,8 +800,11 @@ interface AppRouteChildren {
   AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
   AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
   AppAtendimentoRespostasRoute: typeof AppAtendimentoRespostasRoute
+  AppConfiguracoesBillingRoute: typeof AppConfiguracoesBillingRoute
+  AppConfiguracoesLgpdRoute: typeof AppConfiguracoesLgpdRoute
   AppConfiguracoesOrganizacaoRoute: typeof AppConfiguracoesOrganizacaoRoute
   AppConfiguracoesPermissoesRoute: typeof AppConfiguracoesPermissoesRoute
+  AppConfiguracoesSegurancaRoute: typeof AppConfiguracoesSegurancaRoute
   AppConfiguracoesUsuariosRoute: typeof AppConfiguracoesUsuariosRoute
   AppCrmContatosRoute: typeof AppCrmContatosRoute
   AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
@@ -776,8 +837,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
   AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
   AppAtendimentoRespostasRoute: AppAtendimentoRespostasRoute,
+  AppConfiguracoesBillingRoute: AppConfiguracoesBillingRoute,
+  AppConfiguracoesLgpdRoute: AppConfiguracoesLgpdRoute,
   AppConfiguracoesOrganizacaoRoute: AppConfiguracoesOrganizacaoRoute,
   AppConfiguracoesPermissoesRoute: AppConfiguracoesPermissoesRoute,
+  AppConfiguracoesSegurancaRoute: AppConfiguracoesSegurancaRoute,
   AppConfiguracoesUsuariosRoute: AppConfiguracoesUsuariosRoute,
   AppCrmContatosRoute: AppCrmContatosRoute,
   AppCrmEmpresasRoute: AppCrmEmpresasRoute,

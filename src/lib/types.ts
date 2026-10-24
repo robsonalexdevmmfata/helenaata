@@ -615,9 +615,11 @@ export interface LgpdRequest {
   id: ID;
   organizationId: ID;
   contactName: string;
+  contactEmail?: string;
   type: "exportacao" | "anonimizacao" | "exclusao";
   status: "aberta" | "concluida";
   requestedAt: string;
+  completedAt?: string;
 }
 
 export interface SessionInfo {
@@ -634,7 +636,7 @@ export interface Invoice {
   number: string;
   date: string;
   amount: number;
-  status: "paga" | "aberta";
+  status: "paga" | "aberta" | "vencida" | "cancelada";
 }
 
 export interface DB {
@@ -683,4 +685,5 @@ export interface DB {
   sessions: SessionInfo[];
   invoices: Invoice[];
   retentionDays: number;
+  organizationSettings?: { retentionDays: number; mfaEnabled: boolean; ipWhitelist: string[] };
 }

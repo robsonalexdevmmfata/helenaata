@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { useDB } from "@/lib/store";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
+import { TeamForm } from "./components/TeamForm";
 
 export const Route = createFileRoute("/_app/ia/times")({
   head: () => pageHead("Times de IA", "Equipes autônomas de agentes coordenadas pela Helena para missões e operações."),
@@ -28,6 +29,7 @@ const TEAM_STATUS_MAP: Record<string, { label: string; color: string }> = {
 function TimesPage() {
   const db = useDB();
   const [search, setSearch] = useState("");
+  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
 
   const filtered = db.teams.filter((t) =>
     `${t.name} ${t.objective}`.toLowerCase().includes(search.toLowerCase())
@@ -51,9 +53,14 @@ function TimesPage() {
         <StatCard label="Reuniões Geradas" value={totalMeetings} icon={<Activity />} tone="helena" />
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-        <Input placeholder="Buscar time..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex gap-3 flex-wrap">
+        <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setShowCreateTeamModal(true)}>
+          <Plus className="size-3.5" /> Novo Time
+        </Button>
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <Input placeholder="Buscar time..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -118,6 +125,12 @@ function TimesPage() {
           );
         })}
       </div>
+
+      {/* Modal: Criar Novo Time */}
+      <TeamForm
+        open={showCreateTeamModal}
+        onOpenChange={setShowCreateTeamModal}
+      />
     </div>
   );
 }

@@ -492,5 +492,12 @@ export function createSeed(now = new Date()): DB {
       { id: "in4", number: "HEL-2026-11", date: ahead(10), amount: 1490, status: "aberta" },
     ],
     retentionDays: 730,
+    autonomyLevel: 3 as const,
+    killSwitchActive: false,
+    missions: [],
+    missionTasks: [],
+    missionEvents: [],
+    abExperiments: [],
+    organizationSettings: { retentionDays: 730, mfaEnabled: false, ipWhitelist: [] },
   };
 }

@@ -1,0 +1,135 @@
+/**
+ * whatsapp-formatter.ts
+ *
+ * Funções para preparar texto para envio REAL pelo WhatsApp.
+ *
+ * Regras:
+ *  - Remove emojis: o WhatsApp os exibe mas os agentes não devem "falar" emoji
+ *    (parece robótico e prejudica a taxa de resposta)
+ *  - Remove pontuação markdown: **, __, ~~, ##, etc.
+ *  - Mantém quebras de linha naturais
+ *  - Mantém "•" como bullet (funciona bem no WhatsApp)
+ *  - Mantém "→" e "·" que são caracteres comuns
+ *
+ * A Helena e os cards da interface CONTINUAM mostrando emojis e formatação
+ * rich — este módulo só é chamado quando o texto vai para o canal externo real.
+ */
+
+/** Regex que captura o range Unicode de emojis e símbolos */
+const EMOJI_REGEX =
+  /[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
+
+/** Remove emojis de uma string */
+export function stripEmojis(text: string): string {
+  return text
+    .replace(EMOJI_REGEX, "")
+    .replace(/\s{2,}/g, " ") // colapsa espaços duplos deixados pela remoção
+    .trim();
+}
+
+/** Remove formatação markdown (negrito **, itálico __, riscado ~~, headers ##) */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")  // **negrito** -> negrito
+    .replace(/__(.*?)__/g, "$1")       // __itálico__ -> itálico
+    .replace(/~~(.*?)~~/g, "$1")       // ~~riscado~~ -> riscado
+    .replace(/^#+\s+/gm, "")          // ## Header -> Header
+    .replace(/`([^`]+)`/g, "$1")      // `código` -> código
+    .trim();
+}
+
+/**
+ * Prepara texto para envio pelo WhatsApp:
+ * remove emojis e markdown, preserva quebras de linha e bullets naturais.
+ */
+export function formatForWhatsApp(text: string): string {
+  return stripMarkdown(stripEmojis(text))
+    // Remove espaços antes de pontuação
+    .replace(/ ([.,!?;:])/g, "$1")
+    // Colapsa linhas em branco extras (mantém no máx 2 quebras)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Regras de handoff transparente entre agentes no mesmo número.
+ *
+ * O cliente NUNCA vê "Agora vou te transferir para o Closer".
+ * Internamente, quem responde muda — mas a conversa continua fluindo
+ * como se fosse a mesma pessoa.
+ *
+ * Ordem natural:
+ *   SDR → (interesse detectado) → Qualificador → (BANT aprovado) → Closer → (fechar) → humano
+ */
+
+export type HandoffStage = "sdr" | "qualificador" | "closer" | "humano";
+
+export interface HandoffDecision {
+  nextStage: HandoffStage;
+  nextAgentId: string;
+  reason: string;
+  /** Mensagem de transição suave — continua a conversa sem revelar a troca */
+  bridgeText?: string;
+}
+
+/** Palavras/padrões que indicam interesse e disparam handoff SDR → Qualificador */
+const INTEREST_TRIGGERS =
+  /\b(quero|queria|me interess|sim|pode ser|gostei|me mostra|que horas|quanto custa|valor|pre[cç]o|qual seria|tenho interesse|me conta mais|quero saber|me fala|pode apresentar|demonstra[cç][aã]o|ver como funciona|como [eé] feito)\b/i;
+
+/** Padrões que indicam qualificação aprovada → Closer */
+const QUALIFIED_TRIGGERS =
+  /\b(fechar|vamos fechar|quero contratar|como pago|pagamento|boleto|pix|cart[aã]o|parcela|assinar|contrato|quando come[cç]a|come[cç]ar logo|quero come[cç]ar|podemos come[cç]ar|bora|confirma|confirmado|aceito|topo)\b/i;
+
+/** Padrões que indicam que o cliente quer falar com humano */
+const HUMAN_TRIGGERS =
+  /\b(falar com (pessoa|humano|atendente|gerente|responsavel|s[oó]cio|dono)|humano|pessoa real|algu[eé]m de carne|quero uma pessoa|n[aã]o quero (bot|ia|rob[oô]|m[aá]quina))\b/i;
+
+/**
+ * Analisa a última mensagem do cliente e decide se deve fazer handoff.
+ * Retorna null se não há necessidade de trocar de agente.
+ */
+export function evaluateHandoff(
+  lastClientMessage: string,
+  currentStage: HandoffStage,
+  db: { agents: { id: string; role: string; status: string }[] }
+): HandoffDecision | null {
+  const msg = lastClientMessage.toLowerCase();
+
+  // Pedido explícito de humano — sempre tem prioridade
+  if (HUMAN_TRIGGERS.test(msg)) {
+    const manager = db.agents.find((a) => a.role === "Supervisor" || a.role === "Closer") ?? db.agents[0];
+    return {
+      nextStage: "humano",
+      nextAgentId: manager?.id ?? "",
+      reason: "Cliente solicitou atendimento humano",
+      // Sem bridgeText — a notificação vai para o humano, não para o cliente
+    };
+  }
+
+  // SDR detecta interesse → passa para Qualificador (invisível)
+  if (currentStage === "sdr" && INTEREST_TRIGGERS.test(msg)) {
+    const qual = db.agents.find((a) => a.role === "Qualificador");
+    if (!qual) return null;
+    return {
+      nextStage: "qualificador",
+      nextAgentId: qual.id,
+      reason: "Interesse detectado — BANT iniciado",
+      // Qualificador continua a conversa sem revelar a troca
+      bridgeText: undefined,
+    };
+  }
+
+  // Qualificador detecta intenção de compra → passa para Closer (invisível)
+  if (currentStage === "qualificador" && QUALIFIED_TRIGGERS.test(msg)) {
+    const closer = db.agents.find((a) => a.role === "Closer");
+    if (!closer) return null;
+    return {
+      nextStage: "closer",
+      nextAgentId: closer.id,
+      reason: "Lead qualificado — encaminhado para fechamento",
+      bridgeText: undefined,
+    };
+  }
+
+  return null;
+}
