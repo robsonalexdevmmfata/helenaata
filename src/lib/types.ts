@@ -174,6 +174,63 @@ export interface Conversation {
   sentiment: "positivo" | "neutro" | "negativo";
   lastMessageAt: string;
   messages: Message[];
+  /** Acompanhamento do funil no número comercial compartilhado. */
+  flow?: ConversationFlow;
+}
+
+/** Estado da conversa iniciada pela prospecção no número compartilhado. */
+export type FlowState = "abordado" | "visualizou" | "respondeu" | "closer" | "reuniao_agendada" | "esfriou";
+
+export interface ConversationFlow {
+  origin: "prospeccao" | "inbound";
+  state: FlowState;
+  campaignId?: ID;
+  lastOutboundAt: string;
+  readAt?: string;
+  repliedAt?: string;
+  closerAttempts: number;
+  closerSince?: string;
+  /** Horários oferecidos pela Closer na última mensagem (ISO). */
+  proposedSlots?: string[];
+}
+
+/** Regras do número único usado por todo o time comercial. */
+export interface SalesFlowSettings {
+  enabled: boolean;
+  sharedConnectionId: ID;
+  teamUserIds: ID[];
+  onlyAfterProspecting: boolean;
+  noReplyHours: number;
+  readNoReplyHours: number;
+  maxCloserAttempts: number;
+  closerAgentId: ID;
+  respectBusinessHours: boolean;
+  businessStart: number;
+  businessEnd: number;
+  meetingDurationMin: number;
+  autoBookMeetings: boolean;
+}
+
+export type MeetingStatus = "agendada" | "confirmada" | "realizada" | "cancelada" | "nao_compareceu";
+export type MeetingLocation = "google_meet" | "whatsapp" | "telefone" | "presencial";
+
+export interface Meeting {
+  id: ID;
+  organizationId: ID;
+  title: string;
+  contactId?: ID;
+  dealId?: ID;
+  ownerId: ID;
+  ownerType: OwnerType;
+  startAt: string;
+  durationMin: number;
+  location: MeetingLocation;
+  link?: string;
+  status: MeetingStatus;
+  source: "closer" | "helena" | "manual" | "sdr";
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface QuickReply {
