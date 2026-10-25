@@ -2,9 +2,13 @@
 // the UI goes through runTool(), which checks permission/enablement, mutates the
 // data store and writes an Execution record. Nothing is "pretended".
 import type {
-  Agent, Approval, Automation, DB, Execution, HelenaCard, HelenaMessage, Operation, RiskLevel, Task,
+  Agent, Approval, Automation, DB, Execution, HelenaCard, HelenaMessage, Meeting, Operation, RiskLevel, SalesFlowSettings, Task,
 } from "@/lib/types";
-import { can, currentUser, getDB, nowISO, uid, update } from "@/lib/store";
+import { can, currentUser, getDB, nowISO, ownerName, uid, update } from "@/lib/store";
+import {
+  closerFollowupText, evaluateFollowup, FOLLOWUP_REASON_LABEL, hasConflict, parseWhen, pickProposedSlot, slotLabel, suggestSlots,
+  type FollowupReason,
+} from "./sales-flow";
 import { getToolDef } from "./registry";
 import { normalize } from "@/lib/format";
 import { brl } from "@/lib/format";
@@ -226,6 +230,7 @@ const handlers: Record<string, Handler> = {
       });
       c.lastMessageAt = nowISO();
       c.unread = 0;
+      if (c.flow) c.flow.lastOutboundAt = nowISO();
 
       // Atualiza métricas do contato
       const ct = d.contacts.find((x) => x.id === c.contactId);
@@ -825,6 +830,8 @@ const handlers: Record<string, Handler> = {
           organizationId: d.organization.id,
           contactId,
           channel: "whatsapp",
+          connectionId: d.salesFlow?.sharedConnectionId ?? "wa1",
+          flow: { origin: "prospeccao", state: "abordado", lastOutboundAt: nowISO(), closerAttempts: 0 },
           status: "aberta",
           handlerType: "agent",
           handlerId: sdr.id,
@@ -1319,4 +1326,41 @@ export function tickOperations() {
       { type: "operation", operationId: o.id },
     );
   });
+}
+
+/**
+ * Vigia o número comercial compartilhado: quando um lead da prospecção não
+ * responde (ou visualiza e não responde) no prazo, a Closer entra sozinha.
+ * Chamado em intervalo pelo layout do app; o servidor faz o mesmo com mensagens reais.
+ */
+export function tickSalesFlow(now = new Date()) {
+  const db = getDB();
+  const s = db.salesFlow;
+  if (!s?.enabled || db.killSwitchActive) return;
+  const closer = db.agents.find((a) => a.id === s.closerAgentId);
+  if (!closer || closer.status === "pausado" || closer.status === "erro") return;
+  const conn = db.connections.find((c) => c.id === s.sharedConnectionId);
+  if (!conn || conn.status !== "online") return;
+
+  const cooled: string[] = [];
+  db.conversations.forEach((conv) => {
+    if ((conv.connectionId ?? s.sharedConnectionId) !== s.sharedConnectionId) return;
+    const decision = evaluateFollowup(conv, s, now);
+    if (decision.action === "closer") {
+      runTool("sales.closer_takeover", { conversationId: conv.id, reason: decision.reason }, { actor: closer.name, actorType: "agent", requestedBy: "Automação do número comercial" });
+    } else if (decision.action === "esfriou") {
+      cooled.push(conv.id);
+    }
+  });
+  if (cooled.length) {
+    update((d) => {
+      cooled.forEach((id) => {
+        const c = d.conversations.find((x) => x.id === id);
+        if (!c?.flow) return;
+        c.flow.state = "esfriou";
+        c.status = "pendente";
+        d.activities.unshift({ id: uid("ac_"), organizationId: d.organization.id, contactId: c.contactId, type: "ia", text: `Lead esfriou depois de ${c.flow.closerAttempts} tentativas da Closer sem resposta`, actor: "Automação do número comercial", createdAt: nowISO() });
+      });
+    });
+  }
 }
