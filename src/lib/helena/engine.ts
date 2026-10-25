@@ -491,58 +491,238 @@ const handlers: Record<string, Handler> = {
   },
   "analytics.query": () => ok("Métricas consultadas", computeSummary(getDB()) as unknown as Record<string, unknown>),
   "calendar.create_event": (p, ctx) => {
-    if (!p.contactId) return fail("contato é obrigatório");
     const db = getDB();
-    const contact = db.contacts.find((c) => c.id === p.contactId);
-    const closer = db.agents.find((a) => a.role === "Closer") || db.agents[0];
-    const meetingTitle = p.title || `Reunião Apresentação de Site · ${contact?.name || "Cliente"}`;
-    const meetDate = p.at || p.date || new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-    const calLink = `https://cal.com/infotech/${uid("meet-")}`;
+    const contact = p.contactId ? db.contacts.find((c) => c.id === p.contactId) : undefined;
+    if (p.contactId && !contact) return fail("contato não encontrado");
+    if (!contact && !p.title) return fail("informe o cliente ou o título da reunião");
+    const flow = db.salesFlow;
+    const ownerId: string = p.ownerId || flow?.closerAgentId || db.agents.find((a) => a.role === "Closer")?.id || db.currentUserId;
+    const ownerIsAgent = db.agents.some((a) => a.id === ownerId);
+    if (!ownerIsAgent && !db.users.some((u) => u.id === ownerId)) return fail("responsável pela reunião não encontrado");
+    const durationMin = Math.max(15, Number(p.durationMin) || flow?.meetingDurationMin || 30);
+
+    const raw = p.startAt || p.at || p.date;
+    let start: Date | undefined;
+    if (raw) {
+      start = new Date(String(raw).replace(" ", "T"));
+      if (Number.isNaN(start.getTime())) return fail("data da reunião inválida");
+    } else {
+      start = suggestSlots(db.meetings, ownerId, new Date(), flow, 1)[0];
+      if (!start) return fail("não encontrei horário livre nos próximos dias");
+    }
+    const startAt = start.toISOString();
+    const owner = ownerName(db, ownerId);
+    if (hasConflict(db.meetings, ownerId, startAt, durationMin)) return fail(`${owner} já tem uma reunião nesse horário`);
+
+    const location: Meeting["location"] = p.location ?? "google_meet";
+    const code = uid("").slice(0, 3) + "-" + uid("").slice(0, 4) + "-" + uid("").slice(0, 3);
+    const link = location === "google_meet" ? `https://meet.google.com/${code}` : undefined;
+    const title = p.title || `Apresentação de site · ${contact?.name ?? "Cliente"}`;
+    const id = uid("mt_");
+    const dealId: string | undefined = p.dealId || (contact ? db.deals.find((x) => x.contactId === contact.id && x.status === "aberto")?.id : undefined);
+    const when = slotLabel(start);
 
     update((d) => {
-      d.tasks.unshift({
-        id: uid("tk_"),
-        organizationId: d.organization.id,
-        title: meetingTitle,
-        contactId: p.contactId,
-        dealId: p.dealId,
-        assigneeId: closer?.id || d.currentUserId,
-        assigneeType: closer ? "agent" : "user",
-        dueAt: meetDate,
-        done: false,
-        priority: "alta",
-        type: "reuniao",
+      d.meetings.push({
+        id, organizationId: d.organization.id, title, contactId: contact?.id, dealId, ownerId, ownerType: ownerIsAgent ? "agent" : "user",
+        startAt, durationMin, location, link, status: "agendada",
+        source: p.source ?? (ctx.actorType === "helena" ? "helena" : ctx.actorType === "agent" ? "closer" : "manual"),
+        notes: p.notes || undefined, createdBy: ctx.actor, createdAt: nowISO(),
       });
 
-      // Se tiver dealId ou encontrar deal do contato, move para Reunião Agendada
-      const dealId = p.dealId || d.deals.find((x) => x.contactId === p.contactId)?.id;
       if (dealId) {
         const deal = d.deals.find((x) => x.id === dealId);
-        const reunStage = d.pipelines[0]?.stages.find((s) => s.id === "st_reun" || /reuni/i.test(s.name));
+        const reunStage = d.pipelines.find((pl) => pl.id === deal?.pipelineId)?.stages.find((s) => s.id === "st_reun" || /reuni/i.test(s.name));
         if (deal && reunStage) {
           deal.stageId = reunStage.id;
           deal.probability = reunStage.probability;
-          if (closer) {
-            deal.ownerId = closer.id;
-            deal.ownerType = "agent";
-          }
           deal.updatedAt = nowISO();
         }
       }
-
-      d.activities.unshift({
-        id: uid("ac_"),
-        organizationId: d.organization.id,
-        contactId: p.contactId,
-        dealId,
-        type: "reuniao",
-        text: `Reunião confirmada no Google Calendar / Cal.com: ${meetingTitle}. Link: ${calLink}`,
-        actor: ctx.actor,
-        createdAt: nowISO(),
-      });
+      if (contact) {
+        const conv = d.conversations.find((c) => c.contactId === contact.id && c.flow);
+        if (conv?.flow) conv.flow.state = "reuniao_agendada";
+        d.activities.unshift({
+          id: uid("ac_"), organizationId: d.organization.id, contactId: contact.id, dealId, type: "reuniao",
+          text: `Reunião marcada para ${when} com ${owner}: ${title}${link ? `. Link: ${link}` : ""}`,
+          actor: ctx.actor, createdAt: nowISO(),
+        });
+      }
     });
 
-    return ok(`Reunião agendada com sucesso no Google Calendar / Cal.com para ${contact?.name || "o cliente"}. Link de acesso: ${calLink}`, { calLink });
+    return ok(`Reunião marcada para ${when} com ${contact?.name ?? title} (responsável: ${owner})`, { meetingId: id, calLink: link ?? "", startAt });
+  },
+  "calendar.list_events": (p) => {
+    const db = getDB();
+    const from = p.from ? new Date(p.from).getTime() : Date.now() - 3_600_000;
+    const to = p.to ? new Date(p.to).getTime() : Date.now() + 7 * 86_400_000;
+    const found = db.meetings
+      .filter((m) => m.status !== "cancelada")
+      .filter((m) => { const t = new Date(m.startAt).getTime(); return t >= from && t <= to; })
+      .filter((m) => !p.ownerId || m.ownerId === p.ownerId)
+      .sort((a, b) => a.startAt.localeCompare(b.startAt));
+    return ok(`${found.length} reunião(ões) no período`, { ids: found.map((m) => m.id) });
+  },
+  "calendar.update_event": (p, ctx) => {
+    const db = getDB();
+    const m = db.meetings.find((x) => x.id === p.meetingId);
+    if (!m) return fail("reunião não encontrada");
+    if (m.status === "cancelada") return fail("essa reunião foi cancelada");
+    let startAt = m.startAt;
+    if (p.startAt) {
+      const s = new Date(String(p.startAt).replace(" ", "T"));
+      if (Number.isNaN(s.getTime())) return fail("data da reunião inválida");
+      startAt = s.toISOString();
+      if (hasConflict(db.meetings, m.ownerId, startAt, m.durationMin, m.id)) return fail(`${ownerName(db, m.ownerId)} já tem uma reunião nesse horário`);
+    }
+    const statusLabel: Record<string, string> = { agendada: "agendada", confirmada: "confirmada", realizada: "realizada", nao_compareceu: "marcada como não compareceu" };
+    update((d) => {
+      const x = d.meetings.find((y) => y.id === m.id)!;
+      if (p.startAt) { x.startAt = startAt; if (x.status === "nao_compareceu") x.status = "agendada"; }
+      if (p.status) x.status = p.status;
+      if (p.notes !== undefined) x.notes = p.notes;
+      if (x.contactId) {
+        d.activities.unshift({
+          id: uid("ac_"), organizationId: d.organization.id, contactId: x.contactId, dealId: x.dealId, type: "reuniao",
+          text: p.startAt ? `Reunião remarcada para ${slotLabel(new Date(startAt))}` : `Reunião ${statusLabel[p.status] ?? "atualizada"}`,
+          actor: ctx.actor, createdAt: nowISO(),
+        });
+      }
+    });
+    return ok(p.startAt ? `Reunião remarcada para ${slotLabel(new Date(startAt))}` : `Reunião ${statusLabel[p.status] ?? "atualizada"}`, { meetingId: m.id });
+  },
+  "calendar.cancel_event": (p, ctx) => {
+    const db = getDB();
+    const m = db.meetings.find((x) => x.id === p.meetingId);
+    if (!m) return fail("reunião não encontrada");
+    if (m.status === "cancelada") return fail("essa reunião já estava cancelada");
+    update((d) => {
+      const x = d.meetings.find((y) => y.id === m.id)!;
+      x.status = "cancelada";
+      if (p.reason) x.notes = `${x.notes ? `${x.notes}\n` : ""}Cancelada: ${p.reason}`;
+      if (x.contactId) {
+        d.activities.unshift({ id: uid("ac_"), organizationId: d.organization.id, contactId: x.contactId, dealId: x.dealId, type: "reuniao", text: `Reunião cancelada${p.reason ? `: ${p.reason}` : ""}`, actor: ctx.actor, createdAt: nowISO() });
+      }
+    });
+    return ok(`Reunião "${m.title}" cancelada`, { meetingId: m.id });
+  },
+  "sales.closer_takeover": (p, ctx) => {
+    const db = getDB();
+    const s = db.salesFlow;
+    const conv = db.conversations.find((c) => c.id === p.conversationId);
+    if (!conv) return fail("conversa não encontrada");
+    if (!conv.flow) return fail("essa conversa não veio da prospecção");
+    if (conv.handlerType === "human") return fail("um atendente do time já assumiu essa conversa");
+    const closer = db.agents.find((a) => a.id === s.closerAgentId);
+    if (!closer) return fail("a agente Closer configurada não existe");
+    if (closer.status === "pausado" || closer.status === "erro") return fail(`${closer.name} está ${closer.status === "erro" ? "com erro" : "pausada"}`);
+    const problem = connectionCheck(db, conv.connectionId ?? s.sharedConnectionId);
+    if (problem) return fail(problem);
+    const contact = db.contacts.find((c) => c.id === conv.contactId);
+    const reason: FollowupReason = p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : (conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt ? "visualizou_sem_responder" : "sem_resposta");
+    const attempt = conv.flow.closerAttempts + 1;
+    const slots = suggestSlots(db.meetings, closer.id, new Date(), s, 2);
+    const text = formatForWhatsApp(closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots }));
+    const previous = ownerName(db, conv.handlerId);
+
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv.id)!;
+      const f = c.flow!;
+      c.handlerType = "agent";
+      c.handlerId = closer.id;
+      c.status = "aberta";
+      c.messages.push({ id: uid("m_"), from: "agent", authorName: closer.name, text, at: nowISO(), kind: "text" });
+      c.lastMessageAt = nowISO();
+      f.state = "closer";
+      f.closerAttempts = attempt;
+      f.closerSince ??= nowISO();
+      f.lastOutboundAt = nowISO();
+      f.proposedSlots = slots.map((x) => x.toISOString());
+      const wa = d.connections.find((x) => x.id === (c.connectionId ?? d.salesFlow.sharedConnectionId));
+      if (wa) wa.sentToday += 1;
+      const ag = d.agents.find((a) => a.id === closer.id);
+      if (ag) { ag.metrics.tasks += 1; if (attempt === 1) ag.metrics.conversations += 1; ag.currentTask = `Resgatando ${contact?.name ?? "lead"}`; }
+      const deal = d.deals.find((x) => x.contactId === c.contactId && x.status === "aberto");
+      if (deal) { deal.ownerId = closer.id; deal.ownerType = "agent"; deal.updatedAt = nowISO(); }
+      d.activities.unshift({
+        id: uid("ac_"), organizationId: d.organization.id, contactId: c.contactId, dealId: deal?.id, type: "handoff",
+        text: attempt === 1
+          ? `${closer.name} assumiu no lugar de ${previous}: o cliente ${FOLLOWUP_REASON_LABEL[reason]}`
+          : `${closer.name} fez a ${attempt}ª tentativa de fechamento`,
+        actor: ctx.actor, createdAt: nowISO(),
+      });
+    });
+    return ok(`${closer.name} entrou na conversa com ${contact?.name ?? "o cliente"} e ofereceu ${slots.map((x) => slotLabel(x)).join(" ou ")}`, { conversationId: conv.id, attempt });
+  },
+  "sales.update_flow_settings": (p) => {
+    const db = getDB();
+    const patch = (p.patch ?? {}) as Partial<SalesFlowSettings>;
+    const hours = ["noReplyHours", "readNoReplyHours"] as const;
+    for (const k of hours) if (patch[k] !== undefined && !(Number(patch[k]) > 0 && Number(patch[k]) <= 720)) return fail("o tempo de espera precisa ficar entre 1 e 720 horas");
+    if (patch.maxCloserAttempts !== undefined && !(patch.maxCloserAttempts >= 1 && patch.maxCloserAttempts <= 5)) return fail("a Closer pode tentar de 1 a 5 vezes");
+    if (patch.closerAgentId && !db.agents.some((a) => a.id === patch.closerAgentId)) return fail("agente não encontrado");
+    if (patch.sharedConnectionId && !db.connections.some((c) => c.id === patch.sharedConnectionId)) return fail("número de WhatsApp não encontrado");
+    if (patch.businessStart !== undefined && patch.businessEnd !== undefined && patch.businessStart >= patch.businessEnd) return fail("o horário de início precisa ser antes do fim");
+    update((d) => { Object.assign(d.salesFlow, patch); });
+    return ok("Regras do número comercial atualizadas");
+  },
+  "messages.register_event": (p, ctx) => {
+    const db = getDB();
+    const conv = db.conversations.find((c) => c.id === p.conversationId);
+    if (!conv) return fail("conversa não encontrada");
+    const contact = db.contacts.find((c) => c.id === conv.contactId);
+    if (p.event === "read") {
+      update((d) => {
+        const c = d.conversations.find((x) => x.id === conv.id)!;
+        if (c.flow) {
+          c.flow.readAt = nowISO();
+          if (c.flow.state === "abordado") c.flow.state = "visualizou";
+        }
+      });
+      return ok(`${contact?.name ?? "Cliente"} visualizou a mensagem`);
+    }
+    if (p.event !== "reply") return fail("evento desconhecido");
+    const text = String(p.text ?? "").trim();
+    if (!text) return fail("mensagem vazia");
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv.id)!;
+      c.messages.push({ id: uid("m_"), from: "contact", authorName: contact?.name ?? "Cliente", text, at: nowISO(), kind: "text" });
+      c.lastMessageAt = nowISO();
+      c.unread += 1;
+      c.status = "aberta";
+      if (c.flow) {
+        c.flow.repliedAt = nowISO();
+        c.flow.readAt ??= nowISO();
+        if (c.flow.state !== "closer" && c.flow.state !== "reuniao_agendada") c.flow.state = "respondeu";
+      }
+      const ct = d.contacts.find((x) => x.id === c.contactId);
+      if (ct) ct.lastContactAt = nowISO();
+    });
+
+    // Closer em ação: se o cliente aceitou um horário, ela já marca na Agenda.
+    const fresh = getDB().conversations.find((c) => c.id === conv.id)!;
+    const s = getDB().salesFlow;
+    if (fresh.flow?.state === "closer" && fresh.handlerType === "agent" && fresh.handlerId === s.closerAgentId && s.autoBookMeetings) {
+      const parsed = parseWhen(text);
+      const picked = parsed?.hasTime ? parsed.date.toISOString() : pickProposedSlot(text, fresh.flow.proposedSlots);
+      if (picked) {
+        const closer = getDB().agents.find((a) => a.id === s.closerAgentId)!;
+        const booked = runTool("calendar.create_event", { contactId: fresh.contactId, startAt: picked, ownerId: closer.id, source: "closer" }, { actor: closer.name, actorType: "agent", requestedBy: ctx.actor });
+        const when = slotLabel(new Date(picked));
+        const reply = booked.ok
+          ? `Perfeito, ficou reservado ${when}. Vou te mandar o link um pouco antes. Até lá!`
+          : `Esse horário acabou de ser ocupado. Consigo ${(fresh.flow.proposedSlots ?? []).filter((x) => x !== picked).map((x) => slotLabel(new Date(x))).join(" ou ") || "outro horário"}, pode ser?`;
+        update((d) => {
+          const c = d.conversations.find((x) => x.id === conv.id)!;
+          c.messages.push({ id: uid("m_"), from: "agent", authorName: closer.name, text: formatForWhatsApp(reply), at: nowISO(), kind: "text" });
+          c.lastMessageAt = nowISO();
+          c.unread = 0;
+          if (c.flow) c.flow.lastOutboundAt = nowISO();
+        });
+        return ok(booked.ok ? `Cliente respondeu e ${closer.name} marcou a reunião para ${when}` : `Cliente respondeu, mas o horário ${when} estava ocupado`, { meetingId: booked.data?.meetingId });
+      }
+    }
+    return ok(`${contact?.name ?? "Cliente"} respondeu`);
   },
   "prospect.scan_maps": (p, ctx) => {
     const segment = String(p.segment || "Clínicas odontológicas");
