@@ -57,6 +57,18 @@ export function createSeed(now = new Date()): DB {
     mkAgent({ id: "a_sdr2", name: "SDR 02", role: "SDR", teamId: "t_com", supervisorId: "a_supcom", objective: "Prospectar clínicas e consultórios sem presença digital.", status: "trabalhando", color: "chart-3", spent: 61.9, tools: ["crm.search_contacts", "crm.create_lead", "messages.send", "crm.create_task"], currentTask: "Prospecção Outubro · 37 contatos", knowledgeIds: ["k1", "k2", "k3"], metrics: { tasks: 198, conversations: 131, responseRate: 31.6, conversions: 12 } }),
     mkAgent({ id: "a_qual", name: "Qualificador", role: "Qualificador", teamId: "t_com", supervisorId: "a_supcom", objective: "Qualificar respostas (BANT) e encaminhar interessados ao Closer.", status: "aguardando", color: "chart-4", spent: 12.3, model: "google/gemini-flash", metrics: { tasks: 89, conversations: 54, responseRate: 0, conversions: 21 } }),
     mkAgent({ id: "a_closer", name: "Closer", role: "Closer", teamId: "t_com", supervisorId: "a_supcom", objective: "Conduzir reuniões, propostas e negociação até o fechamento.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-5", spent: 44.0, budget: 250, knowledgeIds: ["k1", "k4", "k5"], tools: ["crm.move_lead", "calendar.create_event", "messages.send"], metrics: { tasks: 46, conversations: 38, responseRate: 0, conversions: 7 } }),
+    mkAgent({
+      id: "a_valentina", name: "Valentina", role: "Closer", teamId: "t_com", supervisorId: "a_supcom",
+      description: "Closer do número comercial compartilhado. Entra quando o lead da prospecção some.",
+      objective: "Quando o lead da prospecção não responde ou visualiza e não responde, retomar a conversa, agendar a reunião e fechar a venda.",
+      personality: "Confiante, direta e persistente sem ser chata. Frases curtas, tom de gente, sempre fecha com dois horários.",
+      prompt: "Você é a Valentina, closer da empresa. Você só entra em conversas iniciadas pela prospecção em que o cliente não respondeu ou visualizou e não respondeu. Seu único foco é transformar o silêncio em reunião agendada e venda fechada. Seja curta, humana, sem emojis e sem markdown. Mostre o que o cliente perde sem site, gere urgência real e termine sempre oferecendo dois horários concretos. Quando o cliente aceitar um horário, marque na Agenda na hora. Nunca diga que é uma IA.",
+      model: "anthropic/claude-sonnet", temperature: 0.5, status: "trabalhando", color: "chart-5", spent: 6.4, budget: 250,
+      knowledgeIds: ["k1", "k4", "k5"], channels: ["whatsapp"], schedule: "Seg–Sex, 09:00–18:00",
+      tools: ["messages.send", "sales.closer_takeover", "calendar.create_event", "calendar.list_events", "calendar.update_event", "sales.handle_objection", "sales.generate_checkout_pix", "crm.move_lead"],
+      permissions: ["crm.view", "crm.edit", "inbox.reply"], currentTask: "Vigiando leads sem resposta no WhatsApp Comercial",
+      metrics: { tasks: 18, conversations: 14, responseRate: 42.0, conversions: 3 },
+    }),
     mkAgent({ id: "a_supat", name: "Supervisor Atendimento", role: "Supervisor", teamId: "t_at", objective: "Garantir SLA de resposta e qualidade do atendimento.", model: "anthropic/claude-sonnet", status: "trabalhando", color: "chart-1", spent: 21.0, metrics: { tasks: 31, conversations: 0, responseRate: 0, conversions: 0 } }),
     mkAgent({ id: "a_at", name: "Atendimento Geral", role: "Atendimento", teamId: "t_at", supervisorId: "a_supat", objective: "Responder dúvidas de clientes e leads em até 2 minutos.", status: "trabalhando", color: "chart-2", spent: 33.7, channels: ["whatsapp", "instagram", "webchat"], knowledgeIds: ["k6", "k7"], currentTask: "4 conversas abertas", metrics: { tasks: 340, conversations: 290, responseRate: 98.2, conversions: 4 } }),
     mkAgent({ id: "a_sup", name: "Suporte", role: "Suporte", teamId: "t_at", supervisorId: "a_supat", objective: "Resolver chamados técnicos de clientes ativos.", status: "pausado", color: "chart-4", spent: 9.1, channels: ["email", "webchat"], knowledgeIds: ["k6"], metrics: { tasks: 77, conversations: 70, responseRate: 91.4, conversions: 0 } }),
@@ -65,7 +77,7 @@ export function createSeed(now = new Date()): DB {
   ];
 
   const teams: Team[] = [
-    { id: "t_com", organizationId: ORG, name: "Comercial", objective: "Gerar 40 reuniões qualificadas por mês para venda de sites e tráfego.", supervisorId: "a_supcom", agentIds: ["a_sdr1", "a_sdr2", "a_qual", "a_closer"], goals: "40 reuniões · R$ 120 mil em propostas", schedule: "Seg–Sex, 08:00–19:00", channels: ["whatsapp", "email"], budget: 900, spent: 208.8, status: "ativo", metrics: { leads: 183, meetings: 27, conversions: 9 } },
+    { id: "t_com", organizationId: ORG, name: "Comercial", objective: "Gerar 40 reuniões qualificadas por mês para venda de sites e tráfego.", supervisorId: "a_supcom", agentIds: ["a_sdr1", "a_sdr2", "a_qual", "a_closer", "a_valentina"], goals: "40 reuniões · R$ 120 mil em propostas", schedule: "Seg–Sex, 08:00–19:00", channels: ["whatsapp", "email"], budget: 900, spent: 208.8, status: "ativo", metrics: { leads: 183, meetings: 27, conversions: 9 } },
     { id: "t_at", organizationId: ORG, name: "Atendimento", objective: "Responder 100% dos contatos em até 2 minutos com resolução no primeiro contato.", supervisorId: "a_supat", agentIds: ["a_at", "a_sup", "a_cs"], goals: "SLA 2 min · CSAT 4,7", schedule: "Todos os dias, 07:00–22:00", channels: ["whatsapp", "instagram", "webchat", "email"], budget: 400, spent: 82.4, status: "ativo", metrics: { leads: 64, meetings: 3, conversions: 4 } },
   ];
 
@@ -271,6 +283,39 @@ export function createSeed(now = new Date()): DB {
     conv("cv9", "p11", "messenger", "agent", "a_at", "pendente", "negativo", 1, [
       ["contact", "Aline Ribeiro", "Mandei mensagem ontem e ninguém respondeu.", 240],
     ]),
+    // Número comercial compartilhado: conversas iniciadas pela prospecção.
+    ...[
+      ["cv10", "p2", "a_sdr1", "Carlos, tudo bem? Vi a clínica de vocês no Google Maps e notei que ainda não tem site próprio. Quem procura atendimento na região acaba indo para a concorrência. Posso te mostrar como resolvemos isso para outra clínica?", 27 * 60, undefined, undefined],
+      ["cv11", "p8", "a_sdr2", "Dr. André, boa tarde. Encontrei o consultório no Google e reparei que os pacientes não têm onde agendar online. Faz sentido eu te mostrar um exemplo rápido?", 6 * 60, 5 * 60, undefined],
+      ["cv12", "p10", "a_sdr1", "Marcelo, tudo certo? Vi que o site da empresa está fora do ar no celular. Isso costuma derrubar os contatos pela metade. Quer que eu te mande um diagnóstico gratuito?", 2 * 60, 60, undefined],
+      ["cv15", "p16", "a_sdr2", "Vinícius, tudo bem? Trabalhamos com sites e sistemas para empresas de tecnologia. Posso te mostrar em 15 minutos como gerar mais pedidos de orçamento pelo site?", 50, undefined, undefined],
+    ].map(([id, contactId, sdr, text, sentMin, readMin]) => ({
+      ...conv(id as string, contactId as string, "whatsapp", "agent", sdr as string, "aberta", "neutro", 0, [["agent", sdr === "a_sdr1" ? "SDR 01" : "SDR 02", text as string, sentMin as number]]),
+      flow: { origin: "prospeccao" as const, state: (readMin ? "visualizou" : "abordado") as "visualizou" | "abordado", lastOutboundAt: ago(sentMin as number), readAt: readMin ? ago(readMin as number) : undefined, closerAttempts: 0 },
+    })),
+    {
+      ...conv("cv13", "p12", "whatsapp", "agent", "a_valentina", "aberta", "neutro", 0, [
+        ["agent", "SDR 01", "Gustavo, tudo bem? Vi que a empresa ainda não aparece no Google para quem procura o serviço de vocês. Posso te mostrar como mudar isso?", 30 * 60],
+        ["system", "Sistema", "Cliente não respondeu em 24h. Valentina assumiu a conversa.", 3 * 60],
+        ["agent", "Valentina", "Gustavo, tudo bem? Aqui é a Valentina, da Info Tech. Não quero que vocês percam mais clientes para quem já aparece no Google. Separei dois horários para uma conversa rápida de 15 minutos: amanhã às 10h ou depois de amanhã às 15h. Qual fica melhor para você?", 3 * 60],
+      ]),
+      flow: { origin: "prospeccao" as const, state: "closer" as const, lastOutboundAt: ago(3 * 60), closerAttempts: 1, closerSince: ago(3 * 60), proposedSlots: [atDay(1, 10), atDay(2, 15)] },
+    },
+    {
+      ...conv("cv14", "p14", "whatsapp", "agent", "a_valentina", "aberta", "positivo", 0, [
+        ["agent", "SDR 02", "Rodrigo, tudo bem? Vi que a imobiliária não tem busca de imóveis no site. Posso te mostrar um modelo que aumentou os contatos de outra imobiliária?", 52 * 60],
+        ["contact", "Rodrigo Saldanha", "", 50 * 60],
+        ["agent", "Valentina", "Rodrigo, vi que você chegou a ver a mensagem. Em 15 minutos te mostro como colocamos a imobiliária na frente no Google. Fica melhor amanhã às 14h ou quinta às 10h?", 26 * 60],
+        ["contact", "Rodrigo Saldanha", "Pode ser amanhã às 14h", 25 * 60],
+        ["agent", "Valentina", "Perfeito, ficou reservado amanhã às 14h. Vou te mandar o link um pouco antes. Até lá!", 25 * 60],
+      ]).messages && conv("cv14", "p14", "whatsapp", "agent", "a_valentina", "aberta", "positivo", 0, [
+        ["agent", "SDR 02", "Rodrigo, tudo bem? Vi que a imobiliária não tem busca de imóveis no site. Posso te mostrar um modelo que aumentou os contatos de outra imobiliária?", 52 * 60],
+        ["agent", "Valentina", "Rodrigo, vi que você chegou a ver a mensagem. Em 15 minutos te mostro como colocamos a imobiliária na frente no Google. Fica melhor amanhã às 14h ou quinta às 10h?", 26 * 60],
+        ["contact", "Rodrigo Saldanha", "Pode ser amanhã às 14h", 25 * 60],
+        ["agent", "Valentina", "Perfeito, ficou reservado amanhã às 14h. Vou te mandar o link um pouco antes. Até lá!", 25 * 60],
+      ]),
+      flow: { origin: "prospeccao" as const, state: "reuniao_agendada" as const, lastOutboundAt: ago(25 * 60), readAt: ago(48 * 60), repliedAt: ago(25 * 60), closerAttempts: 1, closerSince: ago(26 * 60) },
+    },
   ];
 
   const opSteps = (labels: string[], doneUpTo: number, running = true) => labels.map((label, i) => ({
