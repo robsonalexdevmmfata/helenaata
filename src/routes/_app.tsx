@@ -18,6 +18,7 @@ import { isAuthenticated, logout } from "@/lib/auth";
 import { currentUser, resetDB, useDB } from "@/lib/store";
 import { helenaUi } from "@/lib/helena/orchestrator";
 import { tickOperations } from "@/lib/helena/engine";
+import { startEvolutionInboxPoller } from "@/lib/evolution/inboxPoller";
 import { applyTheme, getTheme } from "@/lib/theme";
 import { ROLE_LABEL } from "@/lib/helena/registry";
 import { toast } from "sonner";
@@ -125,7 +126,7 @@ function Topbar() {
         <DropdownMenuContent align="end" className="w-56">
           <div className="px-2 py-1.5 text-xs"><div className="font-medium">{user.name}</div><div className="text-muted-foreground">{user.email}</div></div>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => { resetDB(); toast.success("Dados de demonstração restaurados"); }}><RotateCcw /> Restaurar dados de demonstração</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { resetDB(); toast.success("Base local reiniciada (métricas zeradas)"); }}><RotateCcw /> Reiniciar base local</DropdownMenuItem>
           <DropdownMenuItem onClick={() => { logout(); router.history.push("/login"); }}><LogOut /> Sair</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -136,6 +137,7 @@ function Topbar() {
 function AppLayout() {
   useEffect(() => {
     const id = setInterval(tickOperations, 3000);
+    const stopPoll = startEvolutionInboxPoller(10000);
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -143,7 +145,7 @@ function AppLayout() {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => { clearInterval(id); window.removeEventListener("keydown", onKey); };
+    return () => { clearInterval(id); stopPoll(); window.removeEventListener("keydown", onKey); };
   }, []);
   return (
     <SidebarProvider>

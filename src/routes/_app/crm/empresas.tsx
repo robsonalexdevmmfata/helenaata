@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Building2, Globe, MapPin, Plus, Search, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -165,8 +165,17 @@ function CompaniesPage() {
         })}
 
         {companies.length === 0 && (
-          <div className="col-span-full py-12 text-center text-sm text-muted-foreground">
-            Nenhuma empresa encontrada.
+          <div className="col-span-full space-y-3 py-12 text-center text-sm text-muted-foreground">
+            {db.companies.length === 0 ? (
+              <>
+                <p>Ainda não há empresas reais. Importe pelo Maps ou cadastre uma conta.</p>
+                <Button asChild>
+                  <Link to="/prospeccao/buscar">Caçar leads</Link>
+                </Button>
+              </>
+            ) : (
+              "Nenhuma empresa encontrada."
+            )}
           </div>
         )}
       </div>

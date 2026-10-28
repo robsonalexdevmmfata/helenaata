@@ -5,12 +5,11 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Button } from "@/components/ui/button";
 import { Dot } from "@/components/app/kit";
 import { HELENA_STATE_LABEL, helenaUi } from "@/lib/helena/orchestrator";
-import { update, useDB } from "@/lib/store";
+import { update } from "@/lib/store";
 import { HelenaChat } from "./HelenaChat";
 import { HelenaOrb } from "./HelenaOrb";
 import {
-  helenaMusic, playHappyNation, pauseHappyNation, toggleHappyNation,
-  registerMusicIframe, setMusicVolume,
+  helenaMusic, toggleHappyNation, registerMusicIframe,
 } from "@/lib/helena/music";
 import { getBriefingConfig, extractYouTubeId } from "@/lib/helena/briefing";
 import { cn } from "@/lib/utils";
@@ -92,6 +91,7 @@ export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onC
 
 export function HelenaPanel() {
   const ui = helenaUi.use();
+  const music = helenaMusic.use();
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -103,45 +103,24 @@ export function HelenaPanel() {
     return () => registerMusicIframe(null);
   }, []);
 
-  // When balloon opens, automatically start Happy Nation if configured
-  useEffect(() => {
-    if (ui.open) {
-      const cfg = getBriefingConfig();
-      if (cfg.autoPlayMusic) {
-        // Give the iframe postMessage time to be received (it's always mounted now)
-        setTimeout(() => {
-          playHappyNation(cfg.musicVolume);
-        }, 800);
-      }
-    } else {
-      pauseHappyNation();
-    }
-  }, [ui.open]);
-
   const cfg = getBriefingConfig();
   const ytId = extractYouTubeId(cfg.musicUrl);
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8081";
 
   return (
     <>
-      {/* YouTube iframe always mounted outside Sheet so browser allows audio playback */}
+      {/* Player visível no viewport: Chrome silencia iframe fora da tela. */}
       <div
-        style={{
-          position: "fixed",
-          left: "-9999px",
-          top: "-9999px",
-          width: 1,
-          height: 1,
-          overflow: "hidden",
-          pointerEvents: "none",
-          zIndex: -1,
-        }}
-        aria-hidden="true"
+        className={cn(
+          "fixed bottom-[4.5rem] right-5 z-40 overflow-hidden rounded-lg border bg-black shadow-lg transition-all",
+          ui.open || music.playing ? "h-[72px] w-[128px] opacity-100" : "h-[72px] w-[128px] opacity-70",
+        )}
       >
         <iframe
           ref={iframeRef}
-          width="320"
-          height="180"
-          src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"}&loop=1&playlist=${ytId}&autoplay=0`}
+          width="128"
+          height="72"
+          src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&origin=${origin}&loop=1&playlist=${ytId}&playsinline=1&rel=0&modestbranding=1`}
           title="Happy Nation Player"
           allow="autoplay; encrypted-media"
           allowFullScreen

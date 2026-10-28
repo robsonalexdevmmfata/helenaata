@@ -152,6 +152,23 @@ export interface Task {
   type: "follow-up" | "ligacao" | "reuniao" | "proposta" | "outro";
 }
 
+export type CalendarEventStatus = "agendada" | "confirmada" | "realizada" | "cancelada" | "no_show";
+
+export interface CalendarEvent {
+  id: ID;
+  organizationId: ID;
+  leadId: ID;
+  agenteId: ID;
+  dataHora: string;
+  titulo: string;
+  resumo: string;
+  status: CalendarEventStatus;
+  dealId?: ID;
+  conversationId?: ID;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Message {
   id: ID;
   from: "contact" | "human" | "agent" | "helena" | "system";
@@ -639,6 +656,23 @@ export interface Invoice {
   status: "paga" | "aberta" | "vencida" | "cancelada";
 }
 
+export type ServiceBilling = "unico" | "mensal" | "campanha" | "a_partir";
+
+export interface ServiceOffer {
+  id: ID;
+  organizationId: ID;
+  category: string;
+  name: string;
+  description: string;
+  price: number;
+  priceNote: string;
+  setupFee: number;
+  billing: ServiceBilling;
+  active: boolean;
+  pitch: string;
+  updatedAt: string;
+}
+
 export interface DB {
   version: number;
   organization: Organization;
@@ -651,6 +685,7 @@ export interface DB {
   deals: Deal[];
   activities: Activity[];
   tasks: Task[];
+  calendarEvents: CalendarEvent[];
   conversations: Conversation[];
   quickReplies: QuickReply[];
   agents: Agent[];
@@ -671,6 +706,7 @@ export interface DB {
   campaigns: Campaign[];
   cadences: Cadence[];
   automations: Automation[];
+  serviceOffers: ServiceOffer[];
   connections: WhatsAppConnection[];
   templates: WaTemplate[];
   webhooks: Webhook[];

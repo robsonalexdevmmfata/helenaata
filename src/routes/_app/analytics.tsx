@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  BarChart3, Bot, CircleDollarSign, MessageCircle, Repeat, Target, TrendingUp, Users, Zap,
+  BarChart3, Bot, CircleDollarSign, MessageCircle, Target, TrendingUp, Zap,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useDB } from "@/lib/store";
+import { computeAnalytics } from "@/lib/analytics";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 
@@ -16,35 +17,10 @@ export const Route = createFileRoute("/_app/analytics")({
 
 function AnalyticsPage() {
   const db = useDB();
-
-  const openDeals = db.deals.filter((d) => d.status === "aberto");
-  const wonDeals = db.deals.filter((d) => d.status === "ganho");
-  const lostDeals = db.deals.filter((d) => d.status === "perdido");
-  const totalRevenue = wonDeals.reduce((s, d) => s + d.value, 0);
-  const pipelineValue = openDeals.reduce((s, d) => s + d.value, 0);
-  const convRate = (db.deals.length > 0) ? Math.round((wonDeals.length / db.deals.length) * 100) : 0;
-
-  const totalConversations = db.conversations.length;
-  const resolvedConvs = db.conversations.filter((c) => c.status === "resolvida").length;
-  const csat = totalConversations > 0 ? Math.round((resolvedConvs / totalConversations) * 100) : 0;
-
-  const totalCampaignSent = db.campaigns.reduce((s, c) => s + c.sent, 0);
-  const totalCampaignMeetings = db.campaigns.reduce((s, c) => s + c.meetings, 0);
-  const campaignConv = totalCampaignSent > 0 ? ((totalCampaignMeetings / totalCampaignSent) * 100).toFixed(1) : "0";
-
-  const topAgents = [...db.agents]
-    .sort((a, b) => b.metrics.conversions - a.metrics.conversions)
-    .slice(0, 5);
-
-  const dealsByStage = (() => {
-    const pipeline = db.pipelines[0];
-    if (!pipeline) return [];
-    return pipeline.stages.map((stage) => {
-      const stageDeals = openDeals.filter((d) => d.stageId === stage.id);
-      const value = stageDeals.reduce((s, d) => s + d.value, 0);
-      return { stage, count: stageDeals.length, value };
-    });
-  })();
+  const {
+    openDeals, wonDeals, lostDeals, totalRevenue, pipelineValue, convRate, totalLeads,
+    totalConversations, csat, campaignSent, meetings, campaignConv, dealsByStage, topAgents,
+  } = computeAnalytics(db);
 
   const maxStageCount = Math.max(...dealsByStage.map((s) => s.count), 1);
 
@@ -53,13 +29,13 @@ function AnalyticsPage() {
       <PageHeader
         eyebrow="Relatórios"
         title="Analytics"
-        description="KPIs executivos da operação — receita, funil, conversão e performance dos agentes IA."
+        description="KPIs calculados ao vivo do CRM, da Agenda e dos disparos Evolution — sem números de demonstração."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Receita Fechada" value={brl(totalRevenue)} hint={`${wonDeals.length} deals ganhos`} icon={<CircleDollarSign />} tone="success" />
         <StatCard label="Pipeline Ativo" value={brl(pipelineValue)} hint={`${openDeals.length} deals em aberto`} icon={<TrendingUp />} tone="info" />
-        <StatCard label="Taxa de Conversão" value={`${convRate}%`} hint="Deals ganhos / total" icon={<Target />} tone="helena" />
+        <StatCard label="Taxa de Conversão" value={`${convRate}%`} hint={`${wonDeals.length} ganhos / ${totalLeads} leads`} icon={<Target />} tone="helena" />
         <StatCard label="CSAT" value={`${csat}%`} hint="Conversas resolvidas" icon={<MessageCircle />} tone="warning" />
       </div>
 
@@ -81,12 +57,12 @@ function AnalyticsPage() {
           <h3 className="font-semibold text-sm flex items-center gap-2"><Zap className="size-4" /> Performance de Campanhas</h3>
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="rounded-xl bg-muted/30 p-3">
-              <div className="text-2xl font-bold">{totalCampaignSent.toLocaleString("pt-BR")}</div>
-              <div className="text-[11px] text-muted-foreground">Disparos</div>
+              <div className="text-2xl font-bold">{campaignSent.toLocaleString("pt-BR")}</div>
+              <div className="text-[11px] text-muted-foreground">Disparos Evolution</div>
             </div>
             <div className="rounded-xl bg-muted/30 p-3">
-              <div className="text-2xl font-bold text-primary">{totalCampaignMeetings}</div>
-              <div className="text-[11px] text-muted-foreground">Reuniões</div>
+              <div className="text-2xl font-bold text-primary">{meetings}</div>
+              <div className="text-[11px] text-muted-foreground">Reuniões (Agenda)</div>
             </div>
             <div className="rounded-xl bg-muted/30 p-3">
               <div className="text-2xl font-bold text-success">{campaignConv}%</div>
@@ -109,8 +85,8 @@ function AnalyticsPage() {
         <h3 className="font-semibold text-sm flex items-center gap-2"><Bot className="size-4" /> Top Agentes por Conversão</h3>
         <div className="space-y-3">
           {topAgents.map((agent, i) => {
-            const maxConv = topAgents[0]?.metrics.conversions ?? 1;
-            const pct = maxConv > 0 ? Math.round((agent.metrics.conversions / maxConv) * 100) : 0;
+            const maxConv = Math.max(topAgents[0]?.conversions ?? 0, topAgents[0]?.meetings ?? 0, 1);
+            const pct = Math.round(((agent.conversions || agent.meetings) / maxConv) * 100);
             return (
               <div key={agent.id} className="flex items-center gap-3">
                 <span className="w-4 text-xs font-bold text-muted-foreground">{i + 1}</span>
@@ -120,7 +96,7 @@ function AnalyticsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between text-xs mb-1">
                     <span className="font-medium truncate">{agent.name}</span>
-                    <span className="text-muted-foreground">{agent.metrics.conversions} conv.</span>
+                    <span className="text-muted-foreground">{agent.conversions} conv. · {agent.meetings} reun.</span>
                   </div>
                   <Progress value={pct} className="h-1.5" />
                 </div>

@@ -4,6 +4,7 @@ import {
   CheckCircle2, ChevronRight, Edit2, Play, Plus, Search, Tag, Trash2, Workflow, Zap,
   ArrowRight, Clock, Users, MessageSquare, GitBranch,
 } from "lucide-react";
+import type { ReactElement } from "react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +24,8 @@ export const Route = createFileRoute("/_app/automacoes")({
   component: AutomacoesPage,
 });
 
-const TRIGGERS: Record<string, { label: string; icon: JSX.Element; color: string }> = {
-  lead_criado:          { label: "Lead Criado",          icon: <Play className="size-3" />,         color: "bg-green-500/10 text-green-600 border-green-200" },
+const TRIGGERS: Record<string, { label: string; icon: ReactElement; color: string }> = {
+  lead_criado:          { label: "Lead do Maps (sem site)", icon: <Play className="size-3" />,      color: "bg-green-500/10 text-green-600 border-green-200" },
   mensagem_recebida:    { label: "Mensagem Recebida",    icon: <MessageSquare className="size-3" />, color: "bg-blue-500/10 text-blue-600 border-blue-200" },
   deal_movido:          { label: "Deal Movido de Etapa", icon: <GitBranch className="size-3" />,    color: "bg-purple-500/10 text-purple-600 border-purple-200" },
   sem_resposta_48h:     { label: "Sem Resposta (48h)",   icon: <Clock className="size-3" />,        color: "bg-orange-500/10 text-orange-600 border-orange-200" },
@@ -129,7 +130,7 @@ function AutomacoesPage() {
       <PageHeader
         eyebrow="Operações"
         title="Automações"
-        description="Fluxos de trabalho automáticos — gatilho → condições → ações encadeadas sem código."
+        description="Varredura no mapa: empresa sem site entra no CRM e o time de IA age no WhatsApp."
         actions={
           <Button className="gap-2" onClick={openNew}>
             <Plus className="size-4" /> Nova Automação

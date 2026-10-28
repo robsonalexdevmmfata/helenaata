@@ -4,6 +4,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, Download, Eye, FileText, Plus, Scale, Shield,
   Trash2, UserX,
 } from "lucide-react";
+import type { ReactElement } from "react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ const REQUEST_TYPE_LABEL: Record<string, string> = {
   exclusao: "Exclusão",
 };
 
-const REQUEST_TYPE_ICON: Record<string, JSX.Element> = {
+const REQUEST_TYPE_ICON: Record<string, ReactElement> = {
   exportacao: <Download className="size-3.5" />,
   anonimizacao: <Eye className="size-3.5" />,
   exclusao: <UserX className="size-3.5" />,
@@ -46,9 +47,9 @@ function LgpdPage() {
   const done = requests.filter((r) => r.status === "concluida").length;
   const retentionDays = db.organizationSettings?.retentionDays ?? 730;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (!form.name || !form.email) return toast.error("Nome e e-mail são obrigatórios.");
+    if (!form.name || !form.email) { toast.error("Nome e e-mail são obrigatórios."); return; }
     update((d) => {
       if (!d.lgpdRequests) d.lgpdRequests = [];
       d.lgpdRequests.unshift({

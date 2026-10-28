@@ -64,6 +64,8 @@ export function useHelenaVoice(opts?: {
   });
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const resumeWatchRef = useRef<number | null>(null);
+  const speakTimerRef = useRef<number | null>(null);
   const hasRecognitionSupport =
     typeof window !== "undefined" &&
     (Boolean(window.SpeechRecognition) || Boolean(window.webkitSpeechRecognition));
@@ -81,64 +83,89 @@ export function useHelenaVoice(opts?: {
     });
   }, []);
 
-  // Text-To-Speech: Female Brazilian Portuguese
+  const clearSpeechTimers = useCallback(() => {
+    if (resumeWatchRef.current) {
+      window.clearInterval(resumeWatchRef.current);
+      resumeWatchRef.current = null;
+    }
+    if (speakTimerRef.current) {
+      window.clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = null;
+    }
+  }, []);
+
+  // Text-To-Speech: Female Brazilian Portuguese (keeps YouTube as background)
   const speak = useCallback(
     (text: string) => {
       if (typeof window === "undefined" || !window.speechSynthesis || !voiceEnabled) {
         return;
       }
 
-      window.speechSynthesis.cancel();
       const clean = cleanTextForSpeech(text);
       if (!clean) return;
 
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = "pt-BR";
-      utterance.rate = 1.02; // natural pace
-      utterance.pitch = 1.08; // slightly higher feminine pitch
+      clearSpeechTimers();
+      window.speechSynthesis.cancel();
 
-      const selectFemaleVoice = () => {
-        const voices = window.speechSynthesis.getVoices();
-        const ptVoices = voices.filter(
-          (v) => v.lang === "pt-BR" || v.lang === "pt_BR" || v.lang.startsWith("pt"),
-        );
+      const start = () => {
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.lang = "pt-BR";
+        utterance.rate = 1.02;
+        utterance.pitch = 1.08;
 
-        // Find female Brazilian voices by known names or keywords
-        const femaleVoice =
-          ptVoices.find((v) =>
-            /maria|francisca|luciana|leticia|female|feminina|google português do brasil/i.test(
-              v.name,
-            ),
-          ) ||
-          ptVoices.find((v) => !/felipe|ricardo|male|masculino/i.test(v.name)) ||
-          ptVoices[0];
+        const selectFemaleVoice = () => {
+          const voices = window.speechSynthesis.getVoices();
+          const ptVoices = voices.filter(
+            (v) => v.lang === "pt-BR" || v.lang === "pt_BR" || v.lang.startsWith("pt"),
+          );
+          const femaleVoice =
+            ptVoices.find((v) =>
+              /maria|francisca|luciana|leticia|female|feminina|google português do brasil/i.test(
+                v.name,
+              ),
+            ) ||
+            ptVoices.find((v) => !/felipe|ricardo|male|masculino/i.test(v.name)) ||
+            ptVoices[0];
+          if (femaleVoice) utterance.voice = femaleVoice;
+        };
 
-        if (femaleVoice) {
-          utterance.voice = femaleVoice;
+        if (window.speechSynthesis.getVoices().length > 0) {
+          selectFemaleVoice();
+        } else {
+          window.speechSynthesis.onvoiceschanged = selectFemaleVoice;
         }
+
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => {
+          clearSpeechTimers();
+          setIsSpeaking(false);
+        };
+        utterance.onerror = () => {
+          clearSpeechTimers();
+          setIsSpeaking(false);
+        };
+
+        window.speechSynthesis.speak(utterance);
+        // Chrome pausa o TTS quando outro áudio (YouTube) começa — retoma em loop.
+        resumeWatchRef.current = window.setInterval(() => {
+          if (window.speechSynthesis.speaking && window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        }, 180);
       };
 
-      if (window.speechSynthesis.getVoices().length > 0) {
-        selectFemaleVoice();
-      } else {
-        window.speechSynthesis.onvoiceschanged = selectFemaleVoice;
-      }
-
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-
-      window.speechSynthesis.speak(utterance);
+      speakTimerRef.current = window.setTimeout(start, 140);
     },
-    [voiceEnabled],
+    [voiceEnabled, clearSpeechTimers],
   );
 
   const stopSpeaking = useCallback(() => {
+    clearSpeechTimers();
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
     }
-  }, []);
+  }, [clearSpeechTimers]);
 
   // Speech-To-Text (Microphone)
   const startListening = useCallback(() => {
@@ -222,6 +249,8 @@ export function useHelenaVoice(opts?: {
           // ignore
         }
       }
+      if (resumeWatchRef.current) window.clearInterval(resumeWatchRef.current);
+      if (speakTimerRef.current) window.clearTimeout(speakTimerRef.current);
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }

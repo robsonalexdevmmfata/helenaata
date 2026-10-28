@@ -55,7 +55,7 @@ export const BRAZIL_STATES = [
 ];
 
 export const TOP_CITIES_BY_UF: Record<string, string[]> = {
-  SP: ["São Paulo", "Campinas", "Santos", "Ribeirão Preto", "Sorocaba", "São José dos Campos", "Santo André", "Osasco"],
+  SP: ["São Paulo", "Campinas", "Presidente Prudente", "Santos", "Ribeirão Preto", "Sorocaba", "São José dos Campos", "Santo André", "Osasco"],
   RJ: ["Rio de Janeiro", "Niterói", "Petrópolis", "Nova Iguaçu", "Duque de Caxias", "Cabo Frio"],
   MG: ["Belo Horizonte", "Uberlândia", "Juiz de Fora", "Contagem", "Betim", "Montes Claros"],
   PR: ["Curitiba", "Londrina", "Maringá", "Cascavel", "Ponta Grossa", "Foz do Iguaçu"],

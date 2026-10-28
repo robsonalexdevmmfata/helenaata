@@ -1,6 +1,8 @@
 // Groq Cloud & FreeLLMAPI Integration for HELENA AI Orchestrator
 import { getDB } from "@/lib/store";
 import { callFreeLLMOrchestrator, getFreeLLMConfig } from "./freellmapi";
+import { CALENDAR_TOOL_PROMPT, ROBSON_OPENING_SCRIPT } from "./calendar";
+import { formatCatalogForAgents } from "@/lib/catalog";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -38,24 +40,32 @@ export const GROQ_TOOLS = [
     function: {
       name: "prospect_scan_maps",
       description:
-        "Varre empresas e negócios locais no Google Maps que NÃO possuem site (com tag #sem-site) e as cadastra diretamente no CRM.",
+        "Varredura nacional (OpenStreetMap + FreeLLMAPI) de negócios SEM site e COM WhatsApp válido. Importa só esses leads no CRM (#sem-site) e dispara o Time Comercial.",
       parameters: {
         type: "object",
         properties: {
           segment: {
             type: "string",
-            description: "Segmento a buscar (ex: Clínicas odontológicas, Estética, Agências, Consultórios)",
+            description: "Nicho (ex: Dentistas, Escritórios de Odontologia, Clínicas Médicas)",
           },
           city: {
             type: "string",
-            description: "Cidade e UF para busca (ex: São Paulo, SP ou Campinas, SP)",
+            description: "Cidade e UF, lista de cidades, ou 'Brasil' para varredura nacional",
+          },
+          state: {
+            type: "string",
+            description: "UF (SP, RJ…) ou TODOS para Brasil inteiro",
+          },
+          nationwide: {
+            type: "boolean",
+            description: "true = Brasil inteiro (polos planejados pelo FreeLLMAPI)",
           },
           limit: {
             type: "number",
-            description: "Quantidade de empresas a prospectar (padrão: 10 a 50)",
+            description: "Quantidade máxima de empresas a importar (padrão 10)",
           },
         },
-        required: ["segment", "city"],
+        required: ["segment"],
       },
     },
   },
@@ -64,16 +74,37 @@ export const GROQ_TOOLS = [
     function: {
       name: "calendar_create_event",
       description:
-        "Agenda uma reunião com o cliente no Google Calendar / Cal.com e associa ao lead/oportunidade.",
+        "agendarReuniao(leadId, dataHora, resumo): grava o compromisso na Agenda compartilhada do painel e associa ao lead.",
       parameters: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Título da reunião (ex: Reunião de Proposta de Site)" },
-          contactId: { type: "string", description: "ID do contato" },
+          leadId: { type: "string", description: "ID do lead/contato" },
+          contactId: { type: "string", description: "Alias de leadId" },
+          dataHora: { type: "string", description: "Data e hora ISO da reunião" },
+          date: { type: "string", description: "Alias de dataHora" },
+          resumo: { type: "string", description: "Resumo do compromisso" },
+          title: { type: "string", description: "Título da reunião" },
           dealId: { type: "string", description: "ID da oportunidade (opcional)" },
-          date: { type: "string", description: "Data e hora da reunião no formato ISO ou YYYY-MM-DD HH:mm" },
+          agenteId: { type: "string", description: "ID do agente que fechou o horário" },
         },
-        required: ["contactId", "title"],
+        required: ["resumo"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "calendar_agendar_reuniao",
+      description: "Alias de agendarReuniao(leadId, dataHora, resumo) para o Time Comercial.",
+      parameters: {
+        type: "object",
+        properties: {
+          leadId: { type: "string" },
+          dataHora: { type: "string" },
+          resumo: { type: "string" },
+          agenteId: { type: "string" },
+        },
+        required: ["leadId", "dataHora", "resumo"],
       },
     },
   },
@@ -182,26 +213,29 @@ export async function callGroqOrchestrator(
   const org = db.organization.name;
   const user = db.users.find((u) => u.id === db.currentUserId)?.name || "Gestor";
 
-  const systemPrompt = `Você é a HELENA, Tech Leader e Diretora Comercial da agência Info Tech Ltda (${org}).
+  const systemPrompt = `Você é a HELENA, orquestradora principal (estilo Jarvis) da agência Info Tech Ltda (${org}).
 Seu interlocutor é ${user}.
-Seu objetivo principal é atingir a meta financeira estipulada pelo usuário de R$ 15.000,00.
+Você NÃO faz a abordagem individual do WhatsApp: delega ao Time Comercial (Supervisor, SDR 01, SDR 02, Qualificador, Closer).
 
-Suas diretrizes de negociação executiva são:
-1. Nunca seja robótica ou formal demais. Fale como uma consultora de negócios executiva humana, direta e empática.
-2. Em prospecções frias, foque 100% na dor da falta de site/sistema (perda de clientes na região que buscam no Google Maps).
-3. Sempre conduza a conversa terminando com uma pergunta aberta ou sugestão de dois horários para reunião (ex: "hoje às 16h ou amanhã às 10h?").
-4. Quando o cliente demonstrar intenção clara de compra ("quero fechar", "como faço o pagamento"), forneça o link de fechamento com Pix instantâneo ou agende o compromisso no calendário instantaneamente.
-5. Respeite os limites de disparo e mantenha os logs de auditoria imutáveis.
+Abordagem inicial obrigatória (personalidade Robson Alex, CEO):
+${ROBSON_OPENING_SCRIPT}
 
-Seus agentes subordinados:
-- Supervisor Comercial
-- SDR 01 e SDR 02: Prospectam e abordam empresas (especialmente negócios sem site no Google Maps)
-- Qualificador: Qualifica respostas de clientes com BANT
-- Closer: Conduz reuniões e fecha contratos de venda de sites e marketing
-- Atendimento Geral e Suporte
+${formatCatalogForAgents(db.serviceOffers ?? [])}
 
-Você tem acesso a ferramentas reais (Google Maps Scraper para achar empresas sem site, agendamento no Google Calendar/Cal.com, ativação de times, operações de prospecção, contorno de objeções, geração de checkout Pix e resgate de leads frios).
-Quando o usuário pedir algo que requer ferramenta, use a Tool Call apropriada. Responda sempre em Português do Brasil.`;
+Quebra de objeções (SDR/Closer via Groq): preço, tempo, "já tenho Instagram", "não tenho interesse". Sempre conduza para uma reunião de 10 minutos. Use SOMENTE preços do catálogo acima.
+
+${CALENDAR_TOOL_PROMPT}
+
+Diretrizes:
+1. Fale como diretora comercial humana, direta e empática.
+2. Prospecção fria: dor da falta de site / presença no Google na região.
+3. Termine com pergunta aberta ou dois horários (hoje 16h ou amanhã 10h).
+4. Se o cliente fechar horário, chame calendar_agendar_reuniao / calendar_create_event na hora.
+5. Respeite limites de disparo e logs de auditoria.
+6. Prospecção: chame prospect_scan_maps com o NICHO que o usuário pedir (advogados, clínicas, restaurantes, imobiliárias… — nunca assuma dentista). nationwide=true se não citar cidade. Só leads sem site e com WhatsApp válido. Time Comercial aborda em rodízio via instância helena.
+
+Quando o usuário pedir para prospectar, ative o time e inicie a operação — as abordagens individuais ficam com o Time Comercial.
+Responda sempre em Português do Brasil.`;
 
   const messages = [
     { role: "system", content: systemPrompt },

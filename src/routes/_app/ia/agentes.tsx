@@ -8,11 +8,13 @@ import {
 import { PageHeader, StatCard, Status } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { useDB, update } from "@/lib/store";
+import { agentStats } from "@/lib/analytics";
 import { runTool } from "@/lib/helena/engine";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
@@ -44,6 +46,8 @@ function AgentesPage() {
   const [freeConfig, setFreeConfig] = useState(getFreeLLMConfig());
   const [showHubModal, setShowHubModal] = useState(false);
   const [selectedAgentForModel, setSelectedAgentForModel] = useState<string | null>(null);
+  const [promptAgentId, setPromptAgentId] = useState<string | null>(null);
+  const [promptDraft, setPromptDraft] = useState("");
   const [showCreateAgentModal, setShowCreateAgentModal] = useState(false);
   const [testingPing, setTestingPing] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; message: string; latencyMs: number } | null>(null);
@@ -58,7 +62,7 @@ function AgentesPage() {
 
   const working = db.agents.filter((a) => a.status === "trabalhando").length;
   const errors = db.agents.filter((a) => a.status === "erro").length;
-  const totalTasks = db.agents.reduce((s, a) => s + a.metrics.tasks, 0);
+  const totalTasks = db.agents.reduce((s, a) => s + agentStats(db, a).outbound, 0);
   const freeAgentsCount = db.agents.filter((a) => a.model.startsWith("freellm/")).length;
 
   const handlePause = (id: string) => {
@@ -226,11 +230,11 @@ function AgentesPage() {
 
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div className="rounded-lg bg-muted/30 p-2">
-                    <div className="text-sm font-bold">{agent.metrics.tasks}</div>
-                    <div className="text-[10px] text-muted-foreground">Tarefas</div>
+                    <div className="text-sm font-bold">{agentStats(db, agent).outbound}</div>
+                    <div className="text-[10px] text-muted-foreground">Disparos</div>
                   </div>
                   <div className="rounded-lg bg-muted/30 p-2">
-                    <div className="text-sm font-bold text-success">{agent.metrics.conversions}</div>
+                    <div className="text-sm font-bold text-success">{agentStats(db, agent).conversions}</div>
                     <div className="text-[10px] text-muted-foreground">Conversões</div>
                   </div>
                 </div>
@@ -275,6 +279,15 @@ function AgentesPage() {
                   title="Alterar modelo do agente"
                 >
                   <Cpu className="size-3.5" /> Modelo
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2.5 text-xs gap-1"
+                  onClick={() => { setPromptAgentId(agent.id); setPromptDraft(agent.prompt || ""); }}
+                  title="Editar prompt de abordagem"
+                >
+                  <Edit2 className="size-3.5" /> Prompt
                 </Button>
               </div>
             </div>
@@ -462,6 +475,30 @@ function AgentesPage() {
             <Button size="sm" className="bg-helena text-helena-foreground hover:bg-helena/90" onClick={handleSaveConfig}>
               Salvar Configuração
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(promptAgentId)} onOpenChange={(v) => !v && setPromptAgentId(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Prompt · {db.agents.find((a) => a.id === promptAgentId)?.name}</DialogTitle>
+            <DialogDescription>
+              Texto de abordagem. Preços oficiais ficam em Prospecção → Orçamentos; este prompt não deve inventar valor.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea rows={14} value={promptDraft} onChange={(e) => setPromptDraft(e.target.value)} className="font-mono text-xs" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPromptAgentId(null)}>Cancelar</Button>
+            <Button onClick={() => {
+              if (!promptAgentId) return;
+              update((d) => {
+                const a = d.agents.find((x) => x.id === promptAgentId);
+                if (a) a.prompt = promptDraft;
+              });
+              toast.success("Prompt atualizado");
+              setPromptAgentId(null);
+            }}>Salvar prompt</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

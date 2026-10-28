@@ -27,11 +27,22 @@ import { toast } from "sonner";
 import {
   BRAZIL_STATES,
   exportLeadsToCsv,
-  generateLeads,
   type HunterLead,
 } from "@/lib/leads-hunter";
-import { getDB, nowISO, uid, update, useDB } from "@/lib/store";
+import { placesToHunterLeads, searchBusinessesWithoutWebsite } from "@/lib/prospect/mapsSearch";
+import { insertPlacesAsLeads, sendOpeningNow } from "@/lib/prospect/runProspecting";
+import { isValidBrazilWhatsApp } from "@/lib/prospect/mapsSearch";
+import { useDB } from "@/lib/store";
 import { pageHead } from "@/lib/head";
+
+const NICHOS = [
+  "Dentistas",
+  "Escritórios de Odontologia",
+  "Consultórios Odontológicos",
+  "Clínicas Médicas",
+  "Clínicas de estética",
+  "Advogados",
+];
 
 export const Route = createFileRoute("/_app/prospeccao/buscar")({
   head: () =>
@@ -46,33 +57,26 @@ function CacarLeadsPage() {
   const db = useDB();
 
   // Estados da Busca
-  const [nicho, setNicho] = useState("Advogado");
-  const [palavrasChave, setPalavrasChave] = useState("civil, criminal, trabalhista");
-  const [cidades, setCidades] = useState("São Paulo, Campinas");
-  const [estado, setEstado] = useState("SP");
-  const [quantidade, setQuantidade] = useState(50);
+  const [nicho, setNicho] = useState("Dentistas");
+  const [palavrasChave, setPalavrasChave] = useState("consultório, odontologia, sem site");
+  const [cidades, setCidades] = useState("");
+  const [estado, setEstado] = useState("TODOS");
+  const [quantidade, setQuantidade] = useState(12);
   const [isSearching, setIsSearching] = useState(false);
 
   // Leads e Logs
-  const [leads, setLeads] = useState<HunterLead[]>(() =>
-    generateLeads({
-      niche: "Advogado",
-      state: "SP",
-      cities: "São Paulo, Campinas",
-      limit: 15,
-    })
-  );
+  const [leads, setLeads] = useState<HunterLead[]>([]);
 
   const [logs, setLogs] = useState<string[]>([
-    "20:41:45 [OK] 15 leads carregados na sessão - 6 quentes (#sem-site) - 9 frios",
-    '20:41:48 [INFO] Conectado ao motor de varredura Google Maps + Enriquecimento Brasil',
+    "Varredura real: OpenStreetMap · empresas com telefone e SEM site.",
+    "Disparos saem pela instância Evolution helena (+55 18 98101-1186).",
   ]);
 
   // Filtros e Visualização
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<"todos" | "TUBARÃO" | "PREMIUM" | "quente" | "frio">("todos");
-  const [onlyCell, setOnlyCell] = useState(false);
-  const [onlyVerifiedWa, setOnlyVerifiedWa] = useState(false);
+  const [onlyCell, setOnlyCell] = useState(true);
+  const [onlyVerifiedWa, setOnlyVerifiedWa] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
   const addLog = (text: string) => {
@@ -83,130 +87,56 @@ function CacarLeadsPage() {
   // Disparar Varredura Real
   const handleStartSearch = async () => {
     setIsSearching(true);
-    addLog(`[INFO] Conectando ao motor de busca Google Maps (Brasil)...`);
-    addLog(`[INFO] Palavras-chave: ${palavrasChave || "todas"}`);
-    addLog(
-      `[INFO] Iniciando varredura - nicho "${nicho}" - ${cidades || "Todas as cidades"}/${estado} - meta=${quantidade}`
-    );
+    addLog(`[INFO] Buscando no mapa aberto (OpenStreetMap) empresas SEM site...`);
+    const nationwide = estado === "TODOS" || !cidades.trim();
+    addLog(`[INFO] Nicho "${nicho}" · ${nationwide ? "Brasil inteiro" : `${cidades}/${estado}`} · meta=${quantidade}`);
 
-    // Simula tempo de requisição de scraper de alta performance (1.2s)
-    await new Promise((r) => setTimeout(r, 1200));
-
-    const newLeads = generateLeads({
-      niche: nicho,
-      keywords: palavrasChave,
-      cities: cidades,
-      state: estado,
-      limit: quantidade,
-    });
-
-    setLeads(newLeads);
+    try {
+      const places = await searchBusinessesWithoutWebsite({
+        segment: `${nicho} ${palavrasChave}`,
+        city: cidades.trim() || "Brasil",
+        state: estado,
+        nationwide,
+        limit: quantidade,
+      });
+      const newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter(
+        (l) => !l.hasWebsite && l.isCellPhone,
+      );
+      setLeads(newLeads);
+      addLog(`[OK] ${newLeads.length} empresas sem site e com WhatsApp válido.`);
+      toast.success(newLeads.length ? `${newLeads.length} leads reais sem site` : "Nenhuma empresa sem site encontrada nessa região");
+    } catch (err) {
+      addLog(`[ERRO] Falha na varredura: ${err instanceof Error ? err.message : "rede"}`);
+      toast.error("Não foi possível consultar o mapa. Tente de novo em instantes.");
+    }
     setIsSearching(false);
-
-    const quentes = newLeads.filter((l) => l.type === "quente").length;
-    const frios = newLeads.length - quentes;
-    addLog(`[OK] ${newLeads.length} leads capturados com sucesso! (${quentes} sem site / quentes, ${frios} frios)`);
-    toast.success(`${newLeads.length} leads capturados no Google Maps para ${estado}!`);
   };
 
-  // Injetar lead único na Helena / CRM
   const handleSendToHelena = (lead: HunterLead) => {
-    const sdr = db.agents.find((a) => a.role === "SDR") || db.agents[0];
-    const compId = uid("c_maps_");
-    const contactId = uid("p_maps_");
-    const dealId = uid("d_maps_");
-
-    update((d) => {
-      // 1. Criar empresa
-      d.companies.unshift({
-        id: compId,
-        organizationId: d.organization.id,
+    if (lead.hasWebsite || !isValidBrazilWhatsApp(lead.phone)) {
+      toast.error("Só entram na base ativa leads sem site e com WhatsApp celular válido.");
+      return;
+    }
+    const ids = insertPlacesAsLeads(
+      [{
         name: lead.name,
-        segment: lead.niche,
-        city: `${lead.city}, ${lead.state}`,
-        size: lead.tag === "TUBARÃO" ? "11–50" : "1–10",
-        website: lead.website || "",
-        ownerId: sdr.id,
-        createdAt: nowISO(),
-      });
-
-      // 2. Criar contato
-      d.contacts.unshift({
-        id: contactId,
-        organizationId: d.organization.id,
-        name: lead.ownerContact || lead.name,
-        email: `contato@${lead.name.toLowerCase().replace(/[^a-z0-9]/g, "")}.com.br`,
         phone: lead.phone,
-        companyId: compId,
-        title: lead.niche,
-        tags: [
-          lead.hasWebsite ? "#tem-site" : "#sem-site",
-          "Google Maps",
-          lead.tag,
-          lead.niche.toLowerCase(),
-        ],
-        source: "Prospecção",
-        ownerId: sdr.id,
-        status: "lead",
-        score: lead.whatsappScore,
-        consent: true,
-        createdAt: nowISO(),
-        lastContactAt: nowISO(),
-      });
-
-      // 3. Criar Deal no Pipeline
-      const pipeline = d.pipelines[0];
-      const stage = pipeline?.stages[0];
-      if (pipeline && stage) {
-        d.deals.unshift({
-          id: dealId,
-          organizationId: d.organization.id,
-          pipelineId: pipeline.id,
-          stageId: stage.id,
-          title: `${lead.niche} · ${lead.name}`,
-          contactId,
-          companyId: compId,
-          value: lead.tag === "TUBARÃO" ? 6900 : 4900,
-          probability: stage.probability,
-          expectedClose: new Date(Date.now() + 15 * 86_400_000).toISOString(),
-          ownerId: sdr.id,
-          ownerType: "agent",
-          source: "Prospecção",
-          status: "aberto",
-          tags: [lead.hasWebsite ? "#tem-site" : "#sem-site", "Google Maps"],
-          createdAt: nowISO(),
-          updatedAt: nowISO(),
-        });
-      }
-
-      // 4. Iniciar conversa de WhatsApp com mensagem consultiva
-      d.conversations.unshift({
-        id: uid("cv_maps_"),
-        organizationId: d.organization.id,
-        contactId,
-        channel: "whatsapp",
-        status: "aberta",
-        handlerType: "agent",
-        handlerId: sdr.id,
-        unread: 0,
-        sentiment: "neutro",
-        lastMessageAt: nowISO(),
-        messages: [
-          {
-            id: uid("msg_"),
-            from: "agent",
-            authorName: sdr.name,
-            text: lead.hasWebsite
-              ? `Olá ${lead.ownerContact}, sou da equipe da ${d.organization.name}. Encontrei a ${lead.name} no Google e notei que vocês atendem em ${lead.city}. Gostaria de entender se já atendem clientes via WhatsApp integrado?`
-              : `Olá ${lead.ownerContact}, sou da ${d.organization.name}. Vi a ${lead.name} no Google Maps em ${lead.city} com excelentes avaliações (${lead.reviewCount} reviews), mas notei que vocês ainda não possuem um site institucional responsivo. Podemos conversar sobre como isso pode dobrar os clientes de vocês?`,
-            at: nowISO(),
-          },
-        ],
-      });
+        city: `${lead.city}, ${lead.state}`,
+        address: lead.address,
+        contactName: lead.ownerContact || lead.name,
+      }],
+      lead.niche,
+    );
+    if (!ids.length) {
+      toast.error("Lead já está na base ou não passou no filtro de WhatsApp.");
+      return;
+    }
+    void sendOpeningNow(lead.phone, lead.ownerContact || lead.name, lead.name).then((res) => {
+      if (res.ok) addLog(`[WA] Enviado para ${lead.phone} via instância helena`);
+      else addLog(`[WA] Falha ${lead.name}: ${res.error}`);
     });
-
-    addLog(`[SDR] Lead "${lead.name}" injetado no CRM e atribuído a ${sdr.name}`);
-    toast.success(`"${lead.name}" enviado para a Helena / ${sdr.name} no CRM!`);
+    addLog(`[TIME] Lead "${lead.name}" no CRM · rodízio comercial · WhatsApp helena`);
+    toast.success(`"${lead.name}" no CRM. Disparo pela instância helena.`);
   };
 
   // Enviar todos os selecionados em lote para a Helena
@@ -292,12 +222,16 @@ function CacarLeadsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Nicho</label>
-            <Input
-              value={nicho}
-              onChange={(e) => setNicho(e.target.value)}
-              placeholder="Ex: Dentista, Advogado, Clínica..."
-              className="bg-background"
-            />
+            <Select value={nicho} onValueChange={setNicho}>
+              <SelectTrigger className="bg-background">
+                <SelectValue placeholder="Selecione o nicho" />
+              </SelectTrigger>
+              <SelectContent>
+                {NICHOS.map((n) => (
+                  <SelectItem key={n} value={n}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
@@ -315,7 +249,7 @@ function CacarLeadsPage() {
             <Input
               value={cidades}
               onChange={(e) => setCidades(e.target.value)}
-              placeholder="Ex: São Paulo, Campinas..."
+              placeholder="Vazio = Brasil inteiro. Ex: Curitiba, Salvador"
               className="bg-background"
             />
           </div>

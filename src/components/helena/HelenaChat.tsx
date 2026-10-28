@@ -11,7 +11,7 @@ import { HelenaCardView, ThinkingIndicator } from "./HelenaCards";
 import { HelenaOrb } from "./HelenaOrb";
 import { Disc3, Play, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { generateBriefingScript, getBriefingConfig } from "@/lib/helena/briefing";
+import { generateBriefingScript, getBriefingConfig, isHelenaArrivalGreeting } from "@/lib/helena/briefing";
 import { playHappyNation, helenaMusic } from "@/lib/helena/music";
 
 export const HELENA_SUGGESTIONS = [
@@ -53,9 +53,13 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
     const last = messages[messages.length - 1];
     if (last && last.role === "helena" && last.id !== lastSpokenRef.current) {
       lastSpokenRef.current = last.id;
-      voice.speak(last.text);
+      const cfg = getBriefingConfig();
+      if (cfg.autoPlayMusic && !helenaMusic.get().playing) {
+        playHappyNation(cfg.musicVolume);
+      }
+      window.setTimeout(() => voice.speak(last.text), 380);
     }
-  }, [messages, voice]);
+  }, [messages, voice.voiceEnabled, voice.speak]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -68,8 +72,11 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     if (busy) return;
-    voice.stopSpeaking();
-    void sendToHelena(ui.draft);
+    const draft = ui.draft;
+    if (!isHelenaArrivalGreeting(draft)) {
+      voice.stopSpeaking();
+    }
+    void sendToHelena(draft);
   };
 
   const briefingCfg = getBriefingConfig();
@@ -110,7 +117,7 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
                   className="h-7 text-[11px] gap-1.5 border-helena/40 text-helena hover:bg-helena/10"
                   onClick={() => {
                     playHappyNation(briefingCfg.musicVolume);
-                    voice.speak(briefing.script);
+                    window.setTimeout(() => voice.speak(briefing.script), 400);
                   }}
                 >
                   <Play className="size-3 fill-current" /> Ouvir Helena com Happy Nation
@@ -216,7 +223,7 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
                 submit();
               }
             }}
-            placeholder={voice.isListening ? "Ouvindo você... fale agora" : "Fale com Helena..."}
+            placeholder={voice.isListening ? "Ouvindo você... fale agora" : "Olá Helena, cheguei / Bom dia..."}
             className="max-h-32 min-h-6 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
 

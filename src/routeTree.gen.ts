@@ -30,6 +30,7 @@ import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
 import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
 import { Route as AppCrmPipelineRouteImport } from './routes/_app/crm/pipeline'
 import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
+import { Route as AppIaAgendaRouteImport } from './routes/_app/ia/agenda'
 import { Route as AppIaAgentesRouteImport } from './routes/_app/ia/agentes'
 import { Route as AppIaConhecimentoRouteImport } from './routes/_app/ia/conhecimento'
 import { Route as AppIaCustosRouteImport } from './routes/_app/ia/custos'
@@ -48,6 +49,7 @@ import { Route as AppProspeccaoBuscarRouteImport } from './routes/_app/prospecca
 import { Route as AppProspeccaoCadenciasRouteImport } from './routes/_app/prospeccao/cadencias'
 import { Route as AppProspeccaoCampanhasRouteImport } from './routes/_app/prospeccao/campanhas'
 import { Route as AppProspeccaoListasRouteImport } from './routes/_app/prospeccao/listas'
+import { Route as AppProspeccaoOrcamentosRouteImport } from './routes/_app/prospeccao/orcamentos'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -157,6 +159,11 @@ const AppCrmTarefasRoute = AppCrmTarefasRouteImport.update({
   path: '/crm/tarefas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIaAgendaRoute = AppIaAgendaRouteImport.update({
+  id: '/ia/agenda',
+  path: '/ia/agenda',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIaAgentesRoute = AppIaAgentesRouteImport.update({
   id: '/ia/agentes',
   path: '/ia/agentes',
@@ -248,6 +255,11 @@ const AppProspeccaoListasRoute = AppProspeccaoListasRouteImport.update({
   path: '/prospeccao/listas',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProspeccaoOrcamentosRoute = AppProspeccaoOrcamentosRouteImport.update({
+  id: '/prospeccao/orcamentos',
+  path: '/prospeccao/orcamentos',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -270,6 +282,7 @@ export interface FileRoutesByFullPath {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/ia/agenda': typeof AppIaAgendaRoute
   '/ia/agentes': typeof AppIaAgentesRoute
   '/ia/conhecimento': typeof AppIaConhecimentoRoute
   '/ia/custos': typeof AppIaCustosRoute
@@ -287,6 +300,7 @@ export interface FileRoutesByFullPath {
   '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
   '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
   '/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/prospeccao/orcamentos': typeof AppProspeccaoOrcamentosRoute
   '/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -309,6 +323,7 @@ export interface FileRoutesByTo {
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
+  '/ia/agenda': typeof AppIaAgendaRoute
   '/ia/agentes': typeof AppIaAgentesRoute
   '/ia/conhecimento': typeof AppIaConhecimentoRoute
   '/ia/custos': typeof AppIaCustosRoute
@@ -326,6 +341,7 @@ export interface FileRoutesByTo {
   '/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
   '/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
   '/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/prospeccao/orcamentos': typeof AppProspeccaoOrcamentosRoute
   '/operacoes': typeof AppOperacoesIndexRoute
 }
 export interface FileRoutesById {
@@ -351,6 +367,7 @@ export interface FileRoutesById {
   '/_app/crm/empresas': typeof AppCrmEmpresasRoute
   '/_app/crm/pipeline': typeof AppCrmPipelineRoute
   '/_app/crm/tarefas': typeof AppCrmTarefasRoute
+  '/_app/ia/agenda': typeof AppIaAgendaRoute
   '/_app/ia/agentes': typeof AppIaAgentesRoute
   '/_app/ia/conhecimento': typeof AppIaConhecimentoRoute
   '/_app/ia/custos': typeof AppIaCustosRoute
@@ -368,6 +385,7 @@ export interface FileRoutesById {
   '/_app/prospeccao/cadencias': typeof AppProspeccaoCadenciasRoute
   '/_app/prospeccao/campanhas': typeof AppProspeccaoCampanhasRoute
   '/_app/prospeccao/listas': typeof AppProspeccaoListasRoute
+  '/_app/prospeccao/orcamentos': typeof AppProspeccaoOrcamentosRoute
   '/_app/operacoes/': typeof AppOperacoesIndexRoute
 }
 export interface FileRouteTypes {
@@ -393,6 +411,7 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/ia/agenda'
     | '/ia/agentes'
     | '/ia/conhecimento'
     | '/ia/custos'
@@ -410,6 +429,7 @@ export interface FileRouteTypes {
     | '/prospeccao/cadencias'
     | '/prospeccao/campanhas'
     | '/prospeccao/listas'
+    | '/prospeccao/orcamentos'
     | '/operacoes/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -432,6 +452,7 @@ export interface FileRouteTypes {
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
+    | '/ia/agenda'
     | '/ia/agentes'
     | '/ia/conhecimento'
     | '/ia/custos'
@@ -449,6 +470,7 @@ export interface FileRouteTypes {
     | '/prospeccao/cadencias'
     | '/prospeccao/campanhas'
     | '/prospeccao/listas'
+    | '/prospeccao/orcamentos'
     | '/operacoes'
   id:
     | '__root__'
@@ -473,6 +495,7 @@ export interface FileRouteTypes {
     | '/_app/crm/empresas'
     | '/_app/crm/pipeline'
     | '/_app/crm/tarefas'
+    | '/_app/ia/agenda'
     | '/_app/ia/agentes'
     | '/_app/ia/conhecimento'
     | '/_app/ia/custos'
@@ -490,6 +513,7 @@ export interface FileRouteTypes {
     | '/_app/prospeccao/cadencias'
     | '/_app/prospeccao/campanhas'
     | '/_app/prospeccao/listas'
+    | '/_app/prospeccao/orcamentos'
     | '/_app/operacoes/'
   fileRoutesById: FileRoutesById
 }
@@ -648,6 +672,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCrmTarefasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/ia/agenda': {
+      id: '/_app/ia/agenda'
+      path: '/ia/agenda'
+      fullPath: '/ia/agenda'
+      preLoaderRoute: typeof AppIaAgendaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/ia/agentes': {
       id: '/_app/ia/agentes'
       path: '/ia/agentes'
@@ -774,6 +805,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProspeccaoListasRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prospeccao/orcamentos': {
+      id: '/_app/prospeccao/orcamentos'
+      path: '/prospeccao/orcamentos'
+      fullPath: '/prospeccao/orcamentos'
+      preLoaderRoute: typeof AppProspeccaoOrcamentosRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -810,6 +848,7 @@ interface AppRouteChildren {
   AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
   AppCrmPipelineRoute: typeof AppCrmPipelineRoute
   AppCrmTarefasRoute: typeof AppCrmTarefasRoute
+  AppIaAgendaRoute: typeof AppIaAgendaRoute
   AppIaAgentesRoute: typeof AppIaAgentesRoute
   AppIaConhecimentoRoute: typeof AppIaConhecimentoRoute
   AppIaCustosRoute: typeof AppIaCustosRoute
@@ -826,6 +865,7 @@ interface AppRouteChildren {
   AppProspeccaoCadenciasRoute: typeof AppProspeccaoCadenciasRoute
   AppProspeccaoCampanhasRoute: typeof AppProspeccaoCampanhasRoute
   AppProspeccaoListasRoute: typeof AppProspeccaoListasRoute
+  AppProspeccaoOrcamentosRoute: typeof AppProspeccaoOrcamentosRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -847,6 +887,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCrmEmpresasRoute: AppCrmEmpresasRoute,
   AppCrmPipelineRoute: AppCrmPipelineRoute,
   AppCrmTarefasRoute: AppCrmTarefasRoute,
+  AppIaAgendaRoute: AppIaAgendaRoute,
   AppIaAgentesRoute: AppIaAgentesRoute,
   AppIaConhecimentoRoute: AppIaConhecimentoRoute,
   AppIaCustosRoute: AppIaCustosRoute,
@@ -863,6 +904,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProspeccaoCadenciasRoute: AppProspeccaoCadenciasRoute,
   AppProspeccaoCampanhasRoute: AppProspeccaoCampanhasRoute,
   AppProspeccaoListasRoute: AppProspeccaoListasRoute,
+  AppProspeccaoOrcamentosRoute: AppProspeccaoOrcamentosRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

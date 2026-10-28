@@ -2,14 +2,16 @@
 // the UI goes through runTool(), which checks permission/enablement, mutates the
 // data store and writes an Execution record. Nothing is "pretended".
 import type {
-  Agent, Approval, Automation, DB, Execution, HelenaCard, HelenaMessage, Operation, RiskLevel, Task,
+  Agent, Approval, Automation, CalendarEvent, CalendarEventStatus, DB, Execution, HelenaCard, HelenaMessage, Operation, RiskLevel, Task,
 } from "@/lib/types";
-import { can, currentUser, getDB, nowISO, uid, update } from "@/lib/store";
-import { getToolDef } from "./registry";
+import { bumpAutomation, can, currentUser, getDB, nowISO, uid, update } from "@/lib/store";
+import { getToolDef, withCalendarTools } from "./registry";
+import { buildCatalogOpening, formatCatalogForAgents } from "@/lib/catalog";
 import { normalize } from "@/lib/format";
 import { brl } from "@/lib/format";
 import { formatForWhatsApp, evaluateHandoff } from "./whatsapp-formatter";
 import type { HandoffStage } from "./whatsapp-formatter";
+import { evolutionSendText, getAgencyConnection, getEvolutionConfigUI } from "@/lib/evolution/evolutionapi";
 import {
   checkDuplicateContact,
   isLeadHandledByAnotherSdr,
@@ -75,9 +77,10 @@ export function updateHelenaCard(messageId: string, card: HelenaCard) {
 }
 
 function connectionCheck(db: DB, connectionId?: string): string | null {
-  if (!connectionId) return null;
-  const c = db.connections.find((x) => x.id === connectionId);
-  if (!c) return "a conexão de WhatsApp selecionada não existe";
+  const conn = db.connections.find((x) => x.id === connectionId) ?? getAgencyConnection(db);
+  if (!connectionId && !conn) return null;
+  const c = conn;
+  if (!c) return "a conexão de WhatsApp da agência não existe";
   if (c.status !== "online") return `a conexão ${c.name} está ${c.status}`;
   return null;
 }
@@ -92,6 +95,115 @@ function setAgentsStatus(db: DB, ids: string[], status: Agent["status"], task?: 
 }
 
 type Handler = (p: Record<string, any>, ctx: ToolContext) => ToolResult;
+
+function resolveAgentId(db: DB, ctx: ToolContext, explicit?: string) {
+  if (explicit && (db.agents.some((a) => a.id === explicit) || explicit === "helena")) return explicit;
+  const byName = db.agents.find((a) => a.name === ctx.actor);
+  if (byName) return byName.id;
+  if (ctx.actorType === "helena") return "helena";
+  return db.agents.find((a) => a.role === "Closer")?.id || db.agents[0]?.id || db.currentUserId;
+}
+
+function createCalendarEvent(p: Record<string, any>, ctx: ToolContext): ToolResult {
+  const leadId = String(p.leadId || p.contactId || "");
+  if (!leadId) return fail("leadId é obrigatório");
+  const db = getDB();
+  const contact = db.contacts.find((c) => c.id === leadId);
+  if (!contact) return fail("lead/contato não encontrado");
+
+  const agenteId = resolveAgentId(db, ctx, p.agenteId);
+  const meetingTitle = String(p.titulo || p.title || p.resumo || `Reunião 10 min · ${contact.name}`);
+  const resumo = String(p.resumo || meetingTitle);
+  const meetDate = String(p.dataHora || p.at || p.date || new Date(Date.now() + 24 * 3600 * 1000).toISOString());
+  const existing = (db.calendarEvents ?? []).find((e) => {
+    if (e.leadId !== leadId) return false;
+    if (e.status === "cancelada") return false;
+    return Math.abs(new Date(e.dataHora).getTime() - new Date(meetDate).getTime()) < 15 * 60_000;
+  });
+  if (existing) {
+    return ok(`Compromisso já existia na Agenda compartilhada com ${contact.name}.`, {
+      id: existing.id, leadId, agenteId: existing.agenteId, dataHora: existing.dataHora, calLink: `https://cal.com/infotech/${existing.id}`,
+    });
+  }
+  const eventId = uid("ev_");
+  const calLink = `https://cal.com/infotech/${eventId}`;
+  const closer = db.agents.find((a) => a.id === agenteId) || db.agents.find((a) => a.role === "Closer");
+
+  update((d) => {
+    if (!d.calendarEvents) d.calendarEvents = [];
+    const event: CalendarEvent = {
+      id: eventId,
+      organizationId: d.organization.id,
+      leadId,
+      agenteId,
+      dataHora: meetDate,
+      titulo: meetingTitle,
+      resumo,
+      status: "agendada",
+      dealId: p.dealId || d.deals.find((x) => x.contactId === leadId)?.id,
+      conversationId: p.conversationId,
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+    };
+    d.calendarEvents.unshift(event);
+
+    d.tasks.unshift({
+      id: uid("tk_"),
+      organizationId: d.organization.id,
+      title: meetingTitle,
+      contactId: leadId,
+      dealId: event.dealId,
+      assigneeId: closer?.id || d.currentUserId,
+      assigneeType: closer ? "agent" : "user",
+      dueAt: meetDate,
+      done: false,
+      priority: "alta",
+      type: "reuniao",
+    });
+
+    const dealId = event.dealId;
+    if (dealId) {
+      const deal = d.deals.find((x) => x.id === dealId);
+      const reunStage = d.pipelines[0]?.stages.find((s) => s.id === "st_reun" || /reuni/i.test(s.name));
+      if (deal && reunStage) {
+        deal.stageId = reunStage.id;
+        deal.probability = reunStage.probability;
+        if (closer) {
+          deal.ownerId = closer.id;
+          deal.ownerType = "agent";
+        }
+        deal.updatedAt = nowISO();
+      }
+    }
+
+    const team = d.teams.find((t) => t.agentIds.includes(agenteId) || t.supervisorId === agenteId);
+    if (team) team.metrics.meetings += 1;
+    const agent = d.agents.find((a) => a.id === agenteId);
+    if (agent) agent.metrics.conversions += 1;
+    const camp = d.campaigns.find((c) => c.status === "ativa");
+    if (camp) camp.meetings += 1;
+
+    d.activities.unshift({
+      id: uid("ac_"),
+      organizationId: d.organization.id,
+      contactId: leadId,
+      dealId,
+      type: "reuniao",
+      text: `Agenda compartilhada: ${meetingTitle} em ${meetDate}. Agente: ${closer?.name ?? ctx.actor}.`,
+      actor: ctx.actor,
+      createdAt: nowISO(),
+    });
+    bumpAutomation(d, "reuniao_agendada");
+  });
+
+  return ok(`Reunião agendada na Agenda compartilhada com ${contact.name}.`, {
+    id: eventId,
+    leadId,
+    agenteId,
+    dataHora: meetDate,
+    calLink,
+  });
+}
 
 const handlers: Record<string, Handler> = {
   "crm.search_contacts": (p) => {
@@ -277,6 +389,60 @@ const handlers: Record<string, Handler> = {
       }
     });
 
+    // ── Envio REAL via Evolution API (fire-and-forget) ────────────────────
+    // Roda em background sem bloquear o store/UI.
+    // Só dispara se for canal WhatsApp e houver número do contato.
+    if (conv.channel === "whatsapp") {
+      const contactPhone = getDB().contacts.find((c) => c.id === conv.contactId)?.phone ?? "";
+      if (contactPhone) {
+        evolutionSendText(contactPhone, outText)
+          .then((res) => {
+            if (!res.ok) {
+              // Registra falha de envio na auditoria sem interromper o fluxo
+              update((d) => {
+                d.executions.unshift({
+                  id: uid("ex_evo_"),
+                  organizationId: d.organization.id,
+                  at: nowISO(),
+                  actor: ctx.actor,
+                  actorType: ctx.actorType,
+                  action: "evolution.sendText",
+                  description: `Falha ao enviar via Evolution API: ${res.error}`,
+                  result: "falha",
+                  error: res.error,
+                  requestedBy: ctx.requestedBy ?? ctx.actor,
+                  durationMs: 0,
+                });
+              });
+              console.warn("[Evolution API] Falha ao enviar:", res.error);
+            } else {
+              update((d) => {
+                const wa = getAgencyConnection(d);
+                if (wa) wa.sentToday += 1;
+                d.executions.unshift({
+                  id: uid("ex_evo_"),
+                  organizationId: d.organization.id,
+                  at: nowISO(),
+                  actor: ctx.actor,
+                  actorType: ctx.actorType,
+                  action: "evolution.sendText",
+                  description: `Mensagem enviada via Evolution (${wa?.name ?? "agencia"}) para ${contactPhone}`,
+                  result: "sucesso",
+                  requestedBy: ctx.requestedBy ?? ctx.actor,
+                  durationMs: 0,
+                });
+                const camp = d.campaigns.find((x) => x.status === "ativa");
+                if (camp) camp.sent += 1;
+              });
+              console.log("[Evolution API] ✅ Enviado:", res.messageId);
+            }
+          })
+          .catch((err) => {
+            console.warn("[Evolution API] Erro inesperado:", err);
+          });
+      }
+    }
+
     return ok("Mensagem enviada");
   },
   "messages.search": (p) => {
@@ -292,9 +458,9 @@ const handlers: Record<string, Handler> = {
         id, organizationId: d.organization.id, name: p.name, role: p.role ?? "SDR", description: p.description ?? "",
         objective: p.objective ?? "", personality: p.personality ?? "Profissional, cordial e objetiva.", prompt: p.prompt ?? "",
         model: p.model ?? d.helenaSettings.agentsDefaultModel, temperature: p.temperature ?? 0.4, knowledgeIds: p.knowledgeIds ?? [],
-        tools: p.tools ?? [], channels: p.channels ?? ["whatsapp"], schedule: p.schedule ?? "Seg–Sex, 08:00–18:00",
+        tools: withCalendarTools(p.tools ?? ["crm.search_contacts", "messages.send"]), channels: p.channels ?? ["whatsapp"], schedule: p.schedule ?? "Seg–Sex, 08:00–18:00",
         supervisorId: p.supervisorId || undefined, teamId: p.teamId || undefined, budget: Number(p.budget ?? 150), spent: 0,
-        status: "aguardando", permissions: p.permissions ?? ["crm.view"], color: (["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] as const)[d.agents.length % 5],
+        status: "aguardando", permissions: p.permissions ?? ["crm.view", "crm.edit", "calendar.edit"], color: (["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] as const)[d.agents.length % 5],
         metrics: { tasks: 0, conversations: 0, responseRate: 0, conversions: 0 },
       });
       const team = d.teams.find((t) => t.id === p.teamId);
@@ -442,10 +608,16 @@ const handlers: Record<string, Handler> = {
       const op = newOperation(d, { title: p.title, objective: p.objective, total: Number(p.total) || 50, agentIds: p.agentIds ?? [], connectionId: p.connectionId, requestedBy: ctx.requestedBy ?? ctx.actor });
       op.status = "running";
       op.steps.forEach((s, i) => (s.status = i < 3 ? "done" : i === 3 ? "running" : "pending"));
-      op.events.unshift({ at: nowISO(), text: `Operação iniciada${ctx.approvedBy ? ` · aprovada por ${ctx.approvedBy}` : ""}`, kind: "success" });
+      op.events.unshift({ at: nowISO(), text: `Helena orquestrou a operação${ctx.approvedBy ? ` · aprovada por ${ctx.approvedBy}` : ""}. Time Comercial recebe as abordagens individuais (script Robson Alex).`, kind: "success" });
       d.operations.unshift(op);
       id = op.id;
-      setAgentsStatus(d, op.agentIds.slice(0, 2), "trabalhando", op.title);
+      const sdrIds = d.agents.filter((a) => a.role === "SDR" && (p.agentIds ?? []).includes(a.id)).map((a) => a.id);
+      setAgentsStatus(d, sdrIds.length ? sdrIds : op.agentIds.slice(0, 2), "trabalhando", `Abordagens individuais · ${op.title}`);
+      const closer = d.agents.find((a) => a.role === "Closer");
+      if (closer) {
+        closer.status = "trabalhando";
+        closer.currentTask = "Quebra de objeções e agendamento (Agenda compartilhada)";
+      }
       const list = d.lists.find((l) => l.id === p.listId);
       if (list) {
         d.campaigns.unshift({
@@ -486,67 +658,89 @@ const handlers: Record<string, Handler> = {
   },
   "knowledge.search": (p) => {
     const q = normalize(String(p.query ?? ""));
-    const docs = getDB().knowledge.filter((k) => normalize(`${k.name} ${k.collection}`).includes(q));
-    return ok(`${docs.length} documentos relevantes`, { ids: docs.map((k) => k.id) });
+    const db = getDB();
+    const docs = db.knowledge.filter((k) => normalize(`${k.name} ${k.collection}`).includes(q));
+    const offers = (db.serviceOffers ?? []).filter((o) =>
+      o.active && normalize(`${o.name} ${o.category} ${o.description} ${o.pitch}`).includes(q),
+    );
+    return ok(`${docs.length} documentos e ${offers.length} orçamentos relevantes`, {
+      ids: docs.map((k) => k.id),
+      catalog: formatCatalogForAgents(offers.length ? offers : db.serviceOffers ?? []),
+    });
   },
   "analytics.query": () => ok("Métricas consultadas", computeSummary(getDB()) as unknown as Record<string, unknown>),
-  "calendar.create_event": (p, ctx) => {
-    if (!p.contactId) return fail("contato é obrigatório");
+  "calendar.create_event": (p, ctx) => createCalendarEvent(p, ctx),
+  "calendar.agendar_reuniao": (p, ctx) => createCalendarEvent(p, ctx),
+  "calendar.list_events": (p) => {
     const db = getDB();
-    const contact = db.contacts.find((c) => c.id === p.contactId);
-    const closer = db.agents.find((a) => a.role === "Closer") || db.agents[0];
-    const meetingTitle = p.title || `Reunião Apresentação de Site · ${contact?.name || "Cliente"}`;
-    const meetDate = p.at || p.date || new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-    const calLink = `https://cal.com/infotech/${uid("meet-")}`;
-
+    const events = db.calendarEvents ?? [];
+    const leadId = p.leadId || p.contactId;
+    const filtered = leadId ? events.filter((e) => e.leadId === leadId) : events;
+    return ok(`${filtered.length} compromisso(s) na Agenda compartilhada`, {
+      ids: filtered.map((e) => e.id),
+      count: filtered.length,
+    });
+  },
+  "calendar.update_event": (p, ctx) => {
+    const db = getDB();
+    const ev = (db.calendarEvents ?? []).find((e) => e.id === p.id || e.id === p.eventId);
+    if (!ev) return fail("compromisso não encontrado");
+    const status = p.status as CalendarEventStatus | undefined;
     update((d) => {
-      d.tasks.unshift({
-        id: uid("tk_"),
-        organizationId: d.organization.id,
-        title: meetingTitle,
-        contactId: p.contactId,
-        dealId: p.dealId,
-        assigneeId: closer?.id || d.currentUserId,
-        assigneeType: closer ? "agent" : "user",
-        dueAt: meetDate,
-        done: false,
-        priority: "alta",
-        type: "reuniao",
-      });
-
-      // Se tiver dealId ou encontrar deal do contato, move para Reunião Agendada
-      const dealId = p.dealId || d.deals.find((x) => x.contactId === p.contactId)?.id;
-      if (dealId) {
-        const deal = d.deals.find((x) => x.id === dealId);
-        const reunStage = d.pipelines[0]?.stages.find((s) => s.id === "st_reun" || /reuni/i.test(s.name));
-        if (deal && reunStage) {
-          deal.stageId = reunStage.id;
-          deal.probability = reunStage.probability;
-          if (closer) {
-            deal.ownerId = closer.id;
-            deal.ownerType = "agent";
-          }
-          deal.updatedAt = nowISO();
-        }
-      }
-
+      const x = d.calendarEvents.find((e) => e.id === ev.id)!;
+      if (p.dataHora || p.at) x.dataHora = String(p.dataHora || p.at);
+      if (p.titulo || p.title) x.titulo = String(p.titulo || p.title);
+      if (p.resumo) x.resumo = String(p.resumo);
+      if (status) x.status = status;
+      x.updatedAt = nowISO();
       d.activities.unshift({
         id: uid("ac_"),
         organizationId: d.organization.id,
-        contactId: p.contactId,
-        dealId,
+        contactId: x.leadId,
+        dealId: x.dealId,
         type: "reuniao",
-        text: `Reunião confirmada no Google Calendar / Cal.com: ${meetingTitle}. Link: ${calLink}`,
+        text: `Agenda: ${x.titulo} atualizado (${x.status})`,
         actor: ctx.actor,
         createdAt: nowISO(),
       });
     });
-
-    return ok(`Reunião agendada com sucesso no Google Calendar / Cal.com para ${contact?.name || "o cliente"}. Link de acesso: ${calLink}`, { calLink });
+    return ok("Compromisso atualizado", { id: ev.id });
   },
   "prospect.scan_maps": (p, ctx) => {
-    const segment = String(p.segment || "Clínicas odontológicas");
-    const city = String(p.city || "São Paulo, SP");
+    const segment = String(p.segment || "negócios locais sem site");
+    const city = String(p.city || "Brasil");
+    const state = p.state != null ? String(p.state) : undefined;
+    const nationwide = p.nationwide === true || /brasil|nacional/i.test(city) || state === "TODOS";
+    const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
+    if (!isTest && p.simulate !== true) {
+      const limitLive = Math.min(Number(p.limit) || 10, 30);
+      import("@/lib/prospect/runProspecting").then(({ runRealProspecting }) => {
+        runRealProspecting({
+          segment,
+          city,
+          state,
+          nationwide,
+          limit: limitLive,
+          organizationId: getDB().organization.id,
+        }).then((r) => {
+          update((d) => {
+            d.executions.unshift({
+              id: uid("ex_scan_"),
+              organizationId: d.organization.id,
+              at: nowISO(),
+              actor: ctx.actor,
+              actorType: ctx.actorType,
+              action: "prospect.scan_maps",
+              description: `Varredura real: ${r.found} sem site + WhatsApp válido (${nationwide ? "Brasil inteiro" : city}). Instância helena: ${r.sent} enviados, ${r.failed} falhas.`,
+              result: r.found ? "sucesso" : "falha",
+              requestedBy: ctx.requestedBy ?? ctx.actor,
+              durationMs: 0,
+            });
+          });
+        }).catch((err) => console.warn("[scan_maps]", err));
+      });
+      return ok(`Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. FreeLLMAPI planeja as cidades; só entram leads sem site e com WhatsApp. Time Comercial dispara pela instância helena.`);
+    }
     const limit = Math.min(Number(p.limit) || 10, 50);
 
     const businessTemplates = [
@@ -562,7 +756,8 @@ const handlers: Record<string, Handler> = {
       { name: "Consultório Vida Mais", contact: "Dr. Gabriel Santos", role: "Clínico Geral" },
     ];
 
-    const sdr = getDB().agents.find((a) => a.role === "SDR") || getDB().agents[0];
+    const sdrs = getDB().agents.filter((a) => a.role === "SDR");
+    const sdr = sdrs[0] || getDB().agents[0];
     const createdCompanyIds: string[] = [];
     const createdContactIds: string[] = [];
     const createdDealIds: string[] = [];
@@ -576,6 +771,7 @@ const handlers: Record<string, Handler> = {
         const suffix = i >= businessTemplates.length ? ` ${Math.floor(i / businessTemplates.length) + 1}` : "";
         const compName = `${tmpl.name}${suffix}`;
         const contactName = `${tmpl.contact}${suffix}`;
+        const ownerSdr = sdrs[i % Math.max(1, sdrs.length)] || sdr;
         const compId = uid("c_maps_");
         const contactId = uid("p_maps_");
         const dealId = uid("d_maps_");
@@ -589,7 +785,7 @@ const handlers: Record<string, Handler> = {
           city,
           size: "1–10",
           website: "", // SEM SITE detectado no Google Maps
-          ownerId: sdr.id,
+          ownerId: ownerSdr.id,
           createdAt: nowISO(),
         });
         createdCompanyIds.push(compId);
@@ -606,7 +802,7 @@ const handlers: Record<string, Handler> = {
           title: tmpl.role,
           tags: ["#sem-site", "Google Maps", segment.toLowerCase()],
           source: "Prospecção",
-          ownerId: sdr.id,
+          ownerId: ownerSdr.id,
           status: "lead",
           score: 85, // Alta probabilidade de compra
           consent: true,
@@ -628,7 +824,7 @@ const handlers: Record<string, Handler> = {
             value: 4900,
             probability: stage.probability,
             expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
-            ownerId: sdr.id,
+            ownerId: ownerSdr.id,
             ownerType: "agent",
             source: "Prospecção",
             status: "aberto",
@@ -645,9 +841,10 @@ const handlers: Record<string, Handler> = {
           organizationId: d.organization.id,
           contactId,
           channel: "whatsapp",
+          connectionId: getAgencyConnection(d)?.id,
           status: "aberta",
           handlerType: "agent",
-          handlerId: sdr.id,
+          handlerId: ownerSdr.id,
           unread: 0,
           sentiment: "neutro",
           lastMessageAt: nowISO(),
@@ -655,8 +852,8 @@ const handlers: Record<string, Handler> = {
             {
               id: uid("m_"),
               from: "agent",
-              authorName: sdr.name,
-              text: formatForWhatsApp(`Olá ${contactName}! Sou o ${sdr.name} da Info Tech Ltda. Encontrei a ${compName} no Google Maps em ${city} e notei que vocês ainda não possuem um site institucional oficial para receber os pacientes e clientes que buscam no Google. Criamos páginas de alta conversão para dobrar o agendamento no seu segmento. Podemos te apresentar uma prévia sem compromisso?`),
+              authorName: ownerSdr.name,
+              text: formatForWhatsApp(buildCatalogOpening(contactName, compName, d.serviceOffers ?? [])),
               at: nowISO(),
               kind: "text",
             },
@@ -669,15 +866,48 @@ const handlers: Record<string, Handler> = {
           contactId,
           dealId,
           type: "ia",
-          text: `Agente ${sdr.name} identificou oportunidade no Google Maps (#sem-site) e iniciou abordagem via WhatsApp`,
-          actor: sdr.name,
+          text: `Helena delegou ao ${ownerSdr.name}: oportunidade Google Maps (#sem-site) com script Robson Alex via WhatsApp`,
+          actor: ownerSdr.name,
           createdAt: nowISO(),
         });
       }
     });
 
+    // ── Despacho REAL via Evolution API (fire-and-forget) ────────────────────
+    // Monta a lista de contatos que foram inseridos no store e dispara
+    // as mensagens em background com rate limiting anti-ban.
+    // Isso não bloqueia o retorno da ferramenta nem a UI.
+    {
+      const db2 = getDB();
+      const contacts4dispatch = createdContactIds.map((cid) => {
+        const c = db2.contacts.find((x) => x.id === cid);
+        const comp = db2.companies.find((x) => x.id === c?.companyId);
+        return c ? {
+          phone: c.phone,
+          name: c.name,
+          companyName: comp?.name ?? "empresa",
+          contactId: c.id,
+          agentName: "Robson Alex",
+        } : null;
+      }).filter(Boolean) as import("@/lib/evolution/prospectDispatcher").ProspectContact[];
+
+      if (contacts4dispatch.length > 0) {
+        import("@/lib/evolution/prospectDispatcher").then(({ dispatchProspectMessages, buildProspectMessage }) => {
+          dispatchProspectMessages(
+            contacts4dispatch,
+            buildProspectMessage,
+            getDB().organization.id,
+          ).then((res) => {
+            console.log(`[Prospect Dispatcher] Concluído: ${res.sent} enviados, ${res.failed} falhas`);
+          }).catch((err) => {
+            console.warn("[Prospect Dispatcher] Erro:", err);
+          });
+        });
+      }
+    }
+
     return ok(
-      `Varredura concluída no Google Maps: ${limit} empresas em ${city} identificadas SEM SITE. Injetadas diretamente no CRM com tag #sem-site e atribuídas ao ${sdr.name} para abordagem imediata.`,
+      `Helena orquestrou a varredura: ${limit} empresas em ${city} SEM SITE. Leads no CRM (#sem-site) e abordagens individuais delegadas ao Time Comercial (script Robson Alex).`,
       { count: limit, companyIds: createdCompanyIds, contactIds: createdContactIds, dealIds: createdDealIds }
     );
   },
@@ -965,7 +1195,7 @@ export function runTool(name: string, params: Record<string, unknown>, ctx: Tool
   let result: ToolResult;
   if (!def || !handlers[name]) result = fail(`a ferramenta ${name} não existe`);
   else if (db.toolSettings.find((t) => t.name === name)?.enabled === false) result = fail(`a ferramenta "${def.label}" está desativada em IA → Skills`);
-  else if (ctx.actorType !== "agent" && ctx.actorType !== "sistema" && !can(db, def.permission)) result = fail("seu perfil não tem permissão para essa ação");
+  else if (ctx.actorType !== "agent" && ctx.actorType !== "helena" && ctx.actorType !== "sistema" && !can(db, def.permission)) result = fail("seu perfil não tem permissão para essa ação");
   else {
     try {
       result = handlers[name](params as Record<string, any>, ctx);
@@ -1072,7 +1302,7 @@ export function computeSummary(db: DB): Summary {
     wonValue: won.reduce((s, d) => s + d.value, 0),
     lost: lost.length,
     conversion: won.length + lost.length ? (won.length / (won.length + lost.length + open.length)) * 100 : 0,
-    meetings: db.operations.reduce((s, o) => s + o.metrics.meetings, 0),
+    meetings: (db.calendarEvents ?? []).filter((e) => e.status !== "cancelada").length,
     staleDeals: open.filter((d) => now - new Date(d.updatedAt).getTime() > 48 * 3_600_000).length,
     followupsToday: db.tasks.filter((t) => !t.done && t.type === "follow-up" && new Date(t.dueAt) <= endOfDay).length,
     bestAgent: sdrs[0] ? { name: sdrs[0].name, rate: sdrs[0].metrics.responseRate } : null,
@@ -1083,60 +1313,7 @@ export function computeSummary(db: DB): Summary {
   };
 }
 
-/** Advances running operations. Called on an interval by the app shell. */
+/** Operations avançam só com disparos reais (Evolution) e reuniões na Agenda. */
 export function tickOperations() {
-  const db = getDB();
-  if (!db.operations.some((o) => o.status === "running")) return;
-  const finished: Operation[] = [];
-  update((d) => {
-    const leadNames = d.contacts.map((c) => c.name);
-    d.operations.forEach((o) => {
-      if (o.status !== "running") return;
-      const inc = Math.min(o.total - o.processed, 1 + Math.floor(Math.random() * 2));
-      o.processed += inc;
-      if (Math.random() < 0.35) o.metrics.responded += 1;
-      if (Math.random() < 0.15) o.metrics.interested += 1;
-      if (Math.random() < 0.08) o.metrics.qualified += 1;
-      if (Math.random() < 0.04) o.metrics.meetings += 1;
-      o.cost = Math.round((o.cost + inc * 0.06) * 100) / 100;
-      const frac = o.processed / o.total;
-      const runIdx = Math.max(o.steps.findIndex((s) => s.status === "running"), Math.min(o.steps.length - 2, Math.floor(frac * (o.steps.length - 1))));
-      o.steps.forEach((s, i) => {
-        if (s.status === "failed") return;
-        s.status = i < runIdx ? "done" : i === runIdx ? "running" : "pending";
-      });
-      if (Math.random() < 0.12) {
-        const n = leadNames[Math.floor(Math.random() * leadNames.length)];
-        o.events.unshift({ at: nowISO(), text: Math.random() < 0.5 ? `${o.processed} contatos processados` : `${n} demonstrou interesse`, kind: "info" });
-      }
-      d.campaigns.forEach((c) => {
-        if (c.name === o.title && c.status === "ativa") {
-          c.sent = Math.min(c.total, o.processed);
-          c.replies = o.metrics.responded;
-          c.interested = o.metrics.interested;
-          c.meetings = o.metrics.meetings;
-        }
-      });
-      o.agentIds.forEach((id) => {
-        const a = d.agents.find((x) => x.id === id);
-        if (a && a.status === "trabalhando") a.spent = Math.round((a.spent + 0.02) * 100) / 100;
-      });
-      if (o.processed >= o.total) {
-        o.status = "completed";
-        o.steps.forEach((s) => s.status !== "failed" && (s.status = "done"));
-        o.result = `${o.processed} contatos processados, ${o.metrics.responded} responderam, ${o.metrics.interested} interessados, ${o.metrics.meetings} reuniões.`;
-        o.events.unshift({ at: nowISO(), text: "Operação concluída", kind: "success" });
-        d.campaigns.forEach((c) => c.name === o.title && (c.status = "concluida"));
-        finished.push(structuredClone(o));
-      }
-      if (o.events.length > 40) o.events.length = 40;
-    });
-  });
-  finished.forEach((o) => {
-    logExecution({ actor: "Helena", actorType: "helena", action: "operations.complete", description: `${o.code} concluída: ${o.result}`, result: "sucesso", requestedBy: o.requestedBy, durationMs: 0 });
-    pushHelenaMessage(
-      `Atualização da operação ${o.title}:\n\n${o.processed} contatos processados.\n${o.metrics.responded} responderam.\n${o.metrics.interested} demonstraram interesse.\n${o.metrics.qualified} foram qualificados.\n${o.metrics.meetings} reuniões foram agendadas.\n${o.metrics.handoffs} solicitaram atendimento humano.\n\nQuer que eu aumente a operação amanhã?`,
-      { type: "operation", operationId: o.id },
-    );
-  });
+  return;
 }

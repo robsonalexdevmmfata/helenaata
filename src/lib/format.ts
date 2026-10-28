@@ -12,7 +12,15 @@ export const pct = (n: number, digits = 1) =>
 export const timeAgo = (iso: string) =>
   formatDistanceToNowStrict(new Date(iso), { locale: ptBR, addSuffix: true });
 
-export const fmtDate = (iso: string) => format(new Date(iso), "dd MMM yyyy", { locale: ptBR });
+export const fmtDate = (iso: string) => format(new Date(iso), "dd/MM/yyyy", { locale: ptBR });
+export const fmtLocalDate = (d: Date) => format(d, "dd/MM/yyyy", { locale: ptBR });
+export const fmtLocalDateLong = (d: Date) => format(d, "EEEE, dd/MM/yyyy", { locale: ptBR });
+
+/** Valor de <input type="datetime-local"> no fuso do navegador (não UTC). */
+export function toDatetimeLocalValue(d: Date) {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 export const fmtDateShort = (iso: string) => format(new Date(iso), "dd/MM", { locale: ptBR });
 export const fmtTime = (iso: string) => format(new Date(iso), "HH:mm");
 export const fmtDateTime = (iso: string) => format(new Date(iso), "dd/MM HH:mm", { locale: ptBR });

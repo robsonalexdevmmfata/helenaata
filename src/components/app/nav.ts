@@ -1,6 +1,6 @@
 import {
   Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact,
-  CreditCard, Gauge, Inbox, KeyRound, KanbanSquare, ListChecks, Lock, MessageSquareQuote, Network,
+  CreditCard, Gauge, Inbox, KeyRound, KanbanSquare, ListChecks, Lock, MessageSquareQuote, Network, Receipt,
   Radar, Repeat, Rocket, Scale, Settings2, ShieldCheck, Sparkles, Users, UsersRound, Webhook, Workflow,
   Wrench, Zap, Cpu, MessageCircle, List,
   type LucideIcon,
@@ -39,9 +39,11 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Listas", to: "/prospeccao/listas", icon: List },
     { label: "Campanhas", to: "/prospeccao/campanhas", icon: Zap },
     { label: "Cadências", to: "/prospeccao/cadencias", icon: Repeat },
+    { label: "Orçamentos", to: "/prospeccao/orcamentos", icon: Receipt },
   ] },
   { label: "IA", icon: Sparkles, items: [
     { label: "Helena", to: "/ia/helena", icon: Sparkles },
+    { label: "Agenda", to: "/ia/agenda", icon: CalendarClock },
     { label: "Times", to: "/ia/times", icon: Network },
     { label: "Agentes", to: "/ia/agentes", icon: Bot },
     { label: "Conhecimento", to: "/ia/conhecimento", icon: BookOpen },
@@ -87,5 +89,3 @@ export const ALL_NAV: NavItem[] = [
   ...NAV_BOTTOM,
   ...NAV_SETTINGS.items.map((i) => ({ ...i, label: `Configurações · ${i.label}` })),
 ];
-
-export const CalendarIcon = CalendarClock;

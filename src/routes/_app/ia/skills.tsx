@@ -4,6 +4,7 @@ import {
   AlertTriangle, BarChart2, Bot, CheckCircle2, Code2, DollarSign,
   Lock, MessageSquare, Network, RefreshCw, Search, Shield, Wrench, Zap,
 } from "lucide-react";
+import type { ReactElement } from "react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,8 +19,6 @@ export const Route = createFileRoute("/_app/ia/skills")({
   head: () => pageHead("Skills IA", "Ferramentas e capacidades disponíveis para os agentes executarem ações no mundo real."),
   component: SkillsPage,
 });
-
-import type { ReactElement } from "react";
 
 const RISK_LABEL: Record<string, string> = { baixo: "Baixo", medio: "Médio", alto: "Alto" };
 const RISK_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {

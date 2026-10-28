@@ -1,6 +1,6 @@
 // Helena AI - Modo Briefing Executivo / Entrada Diária
 import type { DB } from "@/lib/types";
-import { brl } from "@/lib/format";
+import { brl, greeting, isToday } from "@/lib/format";
 
 export interface BriefingConfig {
   enabled: boolean;
@@ -28,39 +28,52 @@ export function getBriefingConfig(): BriefingConfig {
   if (typeof window === "undefined") {
     return {
       enabled: true,
-      userTitle: "Sócio-Fundador",
-      userName: "Letícia",
+      userTitle: "CEO",
+      userName: "Robson Alex",
       triggerPhrase: "Olá Helena, cheguei",
       exitTriggerPhrase: "Helena, encerrando por hoje",
       voiceTone: "Executivo & Foco em Metas",
       musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o", // Happy Nation - Ace of Base
-      musicVolume: 18,
+      musicVolume: 36,
       autoPlayMusic: true,
       customOpening: "Olá, {titulo} {nome}! Que bom ter você aqui.",
     };
   }
 
-  try {
-    const raw = localStorage.getItem(BRIEFING_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-
   const defaults: BriefingConfig = {
     enabled: true,
-    userTitle: "Sócio-Fundador",
-    userName: "Letícia",
+    userTitle: "CEO",
+    userName: "Robson Alex",
     triggerPhrase: "Olá Helena, cheguei",
     exitTriggerPhrase: "Helena, encerrando por hoje",
     voiceTone: "Executivo & Foco em Metas",
-    musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o", // Happy Nation - Ace of Base
-    musicVolume: 18,
+    musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o",
+    musicVolume: 36,
     autoPlayMusic: true,
     customOpening: "Olá, {titulo} {nome}! Que bom ter você aqui.",
   };
   try {
+    const raw = localStorage.getItem(BRIEFING_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as BriefingConfig;
+      const migrated = migrateBriefingOwner({ ...defaults, ...saved });
+      if (JSON.stringify(migrated) !== JSON.stringify(saved)) {
+        localStorage.setItem(BRIEFING_KEY, JSON.stringify(migrated));
+      }
+      return migrated;
+    }
     localStorage.setItem(BRIEFING_KEY, JSON.stringify(defaults));
   } catch {}
   return defaults;
+}
+
+function migrateBriefingOwner(cfg: BriefingConfig): BriefingConfig {
+  if (/leticia/i.test(cfg.userName) || cfg.userTitle === "Letícia") {
+    cfg.userName = "Robson Alex";
+    cfg.userTitle = "CEO";
+  }
+  if (cfg.musicVolume < 24) cfg.musicVolume = 36;
+  return cfg;
 }
 
 export function saveBriefingConfig(cfg: Partial<BriefingConfig>): BriefingConfig {
@@ -70,6 +83,31 @@ export function saveBriefingConfig(cfg: Partial<BriefingConfig>): BriefingConfig
     localStorage.setItem(BRIEFING_KEY, JSON.stringify(updated));
   }
   return updated;
+}
+
+/** Saudação de entrada (cheguei / bom dia) sem pedido de operação. */
+export function isHelenaArrivalGreeting(text: string, triggerPhrase = "olá helena, cheguei") {
+  const n = text
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[?!.,]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const trigger = triggerPhrase
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[?!.,]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!n) return false;
+  if (n === trigger || n === "helena cheguei" || n === "ola helena" || n === "ola helena cheguei") return true;
+  if (n.includes("cheguei") || n.includes("iniciar expediente") || n.includes("abertura")) return true;
+  if (/(prospect|ativar|varra|agend|fatur|maps|cliente)/.test(n)) return false;
+  if (/^(ola\s+)?(helena\s+)?(bom dia|boa tarde|boa noite)(\s+helena)?$/.test(n)) return true;
+  return false;
 }
 
 export function extractYouTubeId(url: string): string {
@@ -85,25 +123,17 @@ export function generateBriefingScript(
   config: BriefingConfig,
   type: "entrada" | "encerramento" = "entrada"
 ): { title: string; script: string; highlights: Array<{ label: string; value: string }> } {
-  const today = new Date().toISOString().slice(0, 10);
   const pendingApprovals = db.approvals.filter((a) => a.status === "pendente").length;
-  
-  // Deals & Revenue
   const wonDeals = db.deals.filter((d) => d.status === "ganho");
   const monthWonTotal = wonDeals.reduce((sum, d) => sum + d.value, 0);
-  const todayWonTotal = wonDeals
-    .filter((d) => d.updatedAt && d.updatedAt.slice(0, 10) === today)
-    .reduce((sum, d) => sum + d.value, 0);
-
-  // SDRs & Leads
-  const semSiteLeads = db.contacts.filter((c) => c.tags.includes("sem-site")).length;
-  const activeSDRs = db.agents.filter((a) => a.role === "SDR" && a.status === "trabalhando").length;
-  const sdrDispatchedToday = db.agents
-    .filter((a) => a.role === "SDR")
-    .reduce((s, a) => s + (a.metrics.tasks || 0), 0);
-
+  const semSiteLeads = db.contacts.filter((c) => c.tags.some((t) => /sem-site/i.test(t))).length;
+  const sendsToday = db.executions.filter(
+    (e) => /sendText|evolution/i.test(e.action) && e.result === "sucesso" && isToday(e.at),
+  ).length;
+  const meetingsToday = (db.calendarEvents ?? []).filter((e) => isToday(e.dataHora) && e.status !== "cancelada").length;
   const goal = 15000;
   const pctGoal = Math.min(100, Math.round((monthWonTotal / goal) * 100));
+  const greet = greeting();
 
   if (type === "encerramento") {
     const title = "Resumo Noturno de Encerramento";
@@ -125,14 +155,15 @@ export function generateBriefingScript(
     .replace("{titulo}", config.userTitle)
     .replace("{nome}", config.userName);
 
-  const script = `${opening} Bom dia! Seja bem-vinda ao comando da ${db.organization.name}. Hoje já temos ${semSiteLeads} empresas identificadas no Google Maps sem site institucional. Nossos ${activeSDRs || 2} agentes de prospecção já realizaram ${sdrDispatchedToday} interações comerciais. No financeiro, acumulamos ${brl(monthWonTotal)} de faturamento, avançando para a meta de ${brl(goal)}. Temos ${pendingApprovals} aprovações aguardando sua autorização. Sua prioridade máxima hoje é liberar as propostas comerciais e acompanhar os fechamentos das reuniões agendadas. O que faremos agora para dominar o mercado digital?`;
+  const script = `${opening} ${greet}! Seja bem-vindo ao comando da ${db.organization.name}. Na base real de hoje: ${semSiteLeads} leads sem site, ${sendsToday} disparos WhatsApp confirmados e ${meetingsToday} reuniões na Agenda. Faturamento do mês: ${brl(monthWonTotal)} de ${brl(goal)} (${pctGoal}%). ${pendingApprovals} aprovações pendentes. Me diga o nicho e a cidade — ou Brasil inteiro — que eu orquestro o Time Comercial agora.`;
 
   return {
     title: "Briefing Executivo de Entrada",
     script,
     highlights: [
       { label: "Tratamento", value: `${config.userTitle} ${config.userName}` },
-      { label: "Leads Google Maps", value: `${semSiteLeads} sem site` },
+      { label: "Leads sem site", value: String(semSiteLeads) },
+      { label: "Disparos hoje", value: String(sendsToday) },
       { label: "Faturado no Mês", value: `${brl(monthWonTotal)} (${pctGoal}%)` },
       { label: "Aprovações Pendentes", value: `${pendingApprovals} aguardando` },
       { label: "Trilha Sonora", value: "Ace of Base - Happy Nation" },

@@ -306,7 +306,7 @@ function HelenaPage() {
                   <label className="font-medium text-foreground">Como a Helena te chama (Título):</label>
                   <p className="text-[11px] text-muted-foreground mb-1.5">Pronome de autoridade ou apelido executivo.</p>
                   <div className="flex gap-1.5 flex-wrap">
-                    {["Sócio-Fundador", "Chefe", "Líder", "Diretora", "CEO", "Letícia"].map((title) => (
+                    {["CEO", "Sócio-Fundador", "Chefe", "Líder"].map((title) => (
                       <Button
                         key={title}
                         size="sm"
@@ -326,7 +326,7 @@ function HelenaPage() {
                     value={briefingCfg.userName}
                     onChange={(e) => saveConfig({ userName: e.target.value })}
                     className="mt-1 h-8 text-xs"
-                    placeholder="Letícia Andrade"
+                    placeholder="Robson Alex"
                   />
                 </div>
 

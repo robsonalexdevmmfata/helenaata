@@ -1,6 +1,5 @@
 // Global Helena Background Music Player (Happy Nation / YouTube)
-// Uses YouTube IFrame API postMessage protocol.
-// Iframe MUST be mounted outside display:none for browser autoplay to work.
+// Iframe MUST stay inside the viewport — Chrome silences off-screen media.
 import { createUiStore } from "@/lib/store";
 import { getBriefingConfig, extractYouTubeId } from "./briefing";
 
@@ -13,7 +12,7 @@ export interface MusicPlayerState {
 
 export const helenaMusic = createUiStore<MusicPlayerState>({
   playing: false,
-  volume: 18,
+  volume: 36,
   trackTitle: "Ace of Base - Happy Nation",
   youtubeId: "HWjCStB6k4o",
 });
@@ -21,32 +20,31 @@ export const helenaMusic = createUiStore<MusicPlayerState>({
 let iframeElement: HTMLIFrameElement | null = null;
 let iframeReady = false;
 let pendingVolume: number | null = null;
+let playRetries = 0;
 
-// Listen for YouTube IFrame API ready event
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event) => {
     try {
-      const data =
-        typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+      const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
       if (data?.event === "onReady") {
         iframeReady = true;
-        // If there's a pending play queued before iframe was ready, execute now
         if (pendingVolume !== null) {
           const vol = pendingVolume;
           pendingVolume = null;
-          _postCmd("setVolume", [vol]);
-          _postCmd("playVideo", []);
-          helenaMusic.set({ playing: true });
+          issuePlay(vol);
         }
       }
-      // Sync playing state from YouTube player state changes
       if (data?.event === "onStateChange") {
-        // 1 = playing, 2 = paused, 0 = ended
-        if (data?.info === 1) helenaMusic.set({ playing: true });
-        else if (data?.info === 2 || data?.info === 0) helenaMusic.set({ playing: false });
+        const state = typeof data.info === "number" ? data.info : data.info?.playerState;
+        if (state === 1) {
+          helenaMusic.set({ playing: true });
+          playRetries = 0;
+        } else if (state === 2 || state === 0) {
+          helenaMusic.set({ playing: false });
+        }
       }
     } catch {
-      // ignore non-JSON messages
+      /* ignore */
     }
   });
 }
@@ -56,23 +54,36 @@ function _postCmd(func: string, args: unknown[]) {
   try {
     iframeElement.contentWindow.postMessage(
       JSON.stringify({ event: "command", func, args }),
-      "*"
+      "*",
     );
   } catch {}
 }
 
+function issuePlay(vol: number) {
+  _postCmd("playVideo", []);
+  _postCmd("unMute", []);
+  _postCmd("setVolume", [Math.max(28, Math.min(100, vol))]);
+  helenaMusic.set({ playing: true, volume: vol });
+}
+
 export function registerMusicIframe(iframe: HTMLIFrameElement | null) {
   iframeElement = iframe;
-  // Reset ready state so we wait for the new iframe's onReady event
   if (iframe !== null) {
     iframeReady = false;
     pendingVolume = null;
+    const handshake = () => {
+      try {
+        iframe.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1 }), "*");
+      } catch {}
+    };
+    iframe.addEventListener("load", handshake);
+    handshake();
   }
 }
 
 export function playHappyNation(volume?: number) {
   const cfg = getBriefingConfig();
-  const vol = volume ?? cfg.musicVolume ?? 18;
+  const vol = volume ?? cfg.musicVolume ?? 36;
   const ytid = extractYouTubeId(cfg.musicUrl);
 
   helenaMusic.set({
@@ -81,18 +92,19 @@ export function playHappyNation(volume?: number) {
     volume: vol,
   });
 
-  if (iframeReady) {
-    _postCmd("setVolume", [vol]);
-    _postCmd("playVideo", []);
-    helenaMusic.set({ playing: true });
-  } else {
-    // Queue play — will execute when iframe fires onReady
-    pendingVolume = vol;
-    // Try sending optimistically too (works if API already loaded)
-    _postCmd("setVolume", [vol]);
-    _postCmd("playVideo", []);
-    helenaMusic.set({ playing: true });
-  }
+  pendingVolume = vol;
+  issuePlay(vol);
+
+  playRetries = 0;
+  const retry = () => {
+    playRetries += 1;
+    if (playRetries > 4) return;
+    if (!helenaMusic.get().playing || !iframeReady) {
+      issuePlay(vol);
+      window.setTimeout(retry, 700);
+    }
+  };
+  if (typeof window !== "undefined") window.setTimeout(retry, 600);
 }
 
 export function pauseHappyNation() {
@@ -102,14 +114,12 @@ export function pauseHappyNation() {
 }
 
 export function toggleHappyNation() {
-  if (helenaMusic.get().playing) {
-    pauseHappyNation();
-  } else {
-    playHappyNation();
-  }
+  if (helenaMusic.get().playing) pauseHappyNation();
+  else playHappyNation();
 }
 
 export function setMusicVolume(vol: number) {
   helenaMusic.set({ volume: vol });
+  _postCmd("unMute", []);
   _postCmd("setVolume", [vol]);
 }

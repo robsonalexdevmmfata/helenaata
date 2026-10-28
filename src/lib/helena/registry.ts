@@ -1,4 +1,7 @@
 import type { RiskLevel, Role } from "@/lib/types";
+import { AGENT_CALENDAR_TOOLS } from "./calendar";
+
+export { AGENT_CALENDAR_TOOLS };
 
 export interface ToolDef {
   name: string;
@@ -34,8 +37,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "operations.resume", label: "Retomar operação", description: "Retoma uma operação pausada.", category: "Operações", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "knowledge.search", label: "Buscar conhecimento", description: "Busca semântica na base de conhecimento.", category: "Conhecimento", defaultRisk: "baixo", permission: "helena.use" },
   { name: "analytics.query", label: "Consultar métricas", description: "Consulta indicadores comerciais e de IA.", category: "Analytics", defaultRisk: "baixo", permission: "analytics.view" },
-  { name: "calendar.create_event", label: "Agendar reunião", description: "Cria um evento na agenda.", category: "Agenda", defaultRisk: "medio", permission: "crm.edit" },
-  { name: "prospect.scan_maps", label: "Varredura Google Maps (#sem-site)", description: "Varre empresas sem site no Google Maps e cadastra no CRM com tag #sem-site.", category: "Campanhas", defaultRisk: "medio", permission: "prospect.manage" },
+  { name: "calendar.create_event", label: "Agendar reunião", description: "Grava um compromisso na Agenda compartilhada (lead, agente, data/hora e status).", category: "Agenda", defaultRisk: "baixo", permission: "calendar.edit" },
+  { name: "calendar.agendar_reuniao", label: "agendarReuniao", description: "Tool calling: agendarReuniao(leadId, dataHora, resumo).", category: "Agenda", defaultRisk: "baixo", permission: "calendar.edit" },
+  { name: "calendar.list_events", label: "Listar agenda", description: "Consulta compromissos da Agenda compartilhada.", category: "Agenda", defaultRisk: "baixo", permission: "calendar.edit" },
+  { name: "calendar.update_event", label: "Atualizar reunião", description: "Altera status ou horário de um compromisso.", category: "Agenda", defaultRisk: "baixo", permission: "calendar.edit" },
+  { name: "prospect.scan_maps", label: "Varredura Maps nacional (#sem-site)", description: "Varre o Brasil (nicho + cidade/UF ou Brasil inteiro). Importa só negócios sem site e com WhatsApp válido; Time Comercial dispara pela instância helena.", category: "Campanhas", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "automation.create", label: "Criar automação", description: "Cria e ativa uma automação externa.", category: "Automação", defaultRisk: "alto", permission: "automations.manage" },
   { name: "sales.handle_objection", label: "Contornar objeção comercial", description: "Aplica a matriz de objeções de vendas com resposta autônoma e ação estratégica.", category: "CRM", defaultRisk: "baixo", permission: "crm.edit" },
   { name: "sales.generate_checkout_pix", label: "Gerar Checkout Pix", description: "Gera cobrança Pix instantânea para fechamento de venda.", category: "CRM", defaultRisk: "medio", permission: "crm.edit" },
@@ -48,6 +54,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
 export const PERMISSIONS: { key: string; label: string; group: string }[] = [
   { key: "crm.view", label: "Visualizar CRM", group: "CRM" },
   { key: "crm.edit", label: "Editar CRM", group: "CRM" },
+  { key: "calendar.edit", label: "Ler e escrever na Agenda compartilhada", group: "CRM" },
   { key: "crm.delete", label: "Excluir registros", group: "CRM" },
   { key: "inbox.view", label: "Ver conversas", group: "Atendimento" },
   { key: "inbox.reply", label: "Responder conversas", group: "Atendimento" },
@@ -72,10 +79,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, string[]> = {
   owner: ALL,
   admin: ALL.filter((p) => p !== "billing.manage"),
   manager: [
-    "crm.view", "crm.edit", "inbox.view", "inbox.reply", "prospect.manage", "campaigns.send",
+    "crm.view", "crm.edit", "calendar.edit", "inbox.view", "inbox.reply", "prospect.manage", "campaigns.send",
     "helena.use", "agents.manage", "teams.manage", "approvals.decide", "analytics.view",
   ],
-  agent: ["crm.view", "crm.edit", "inbox.view", "inbox.reply", "helena.use"],
+  agent: ["crm.view", "crm.edit", "calendar.edit", "inbox.view", "inbox.reply", "helena.use"],
   viewer: ["crm.view", "inbox.view", "analytics.view"],
 };
 
@@ -89,4 +96,13 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export function getToolDef(name: string) {
   return TOOL_REGISTRY.find((t) => t.name === name);
+}
+
+/** Tools de Agenda que todo agente de IA precisa ter no prompt/contexto. */
+export function withCalendarTools(tools: string[]) {
+  const next = [...tools];
+  for (const t of AGENT_CALENDAR_TOOLS) {
+    if (!next.includes(t)) next.push(t);
+  }
+  return next;
 }

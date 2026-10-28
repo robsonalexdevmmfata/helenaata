@@ -11,8 +11,9 @@ import { getToolDef } from "./registry";
 import { callGroqOrchestrator } from "./groq";
 import { computeDynamicCadence, getWhatsAppWorkerStatus, OBJECTION_MATRIX, FINANCIAL_GOAL } from "./sales-brain";
 import { computeRevenuePlan, parseDeadline, parseRevenueGoal } from "./revenue-goal";
-import { generateBriefingScript, getBriefingConfig } from "./briefing";
+import { generateBriefingScript, getBriefingConfig, isHelenaArrivalGreeting } from "./briefing";
 import { playHappyNation } from "./music";
+import { extractProspectIntent } from "@/lib/prospect/mapsSearch";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
@@ -53,16 +54,8 @@ export async function sendToHelena(text: string) {
   const triggerNorm = normalize(briefingCfg.triggerPhrase || "olá helena, cheguei");
   const exitNorm = normalize(briefingCfg.exitTriggerPhrase || "helena, encerrando por hoje");
 
-  // Intercept arrival triggers: "helena cheguei", "cheguei", "iniciar expediente", "abertura", or matching configured triggerPhrase
-  if (
-    nClean === triggerNorm ||
-    nClean.includes("cheguei") ||
-    nClean.includes("iniciar expediente") ||
-    nClean.includes("abertura") ||
-    nClean === "helena cheguei" ||
-    nClean === "ola helena" ||
-    nClean === "olá helena"
-  ) {
+  // Intercept arrival: "olá helena cheguei", "bom dia", "boa tarde" — música de fundo + briefing falado
+  if (isHelenaArrivalGreeting(clean, briefingCfg.triggerPhrase) || nClean === triggerNorm) {
     pushHelenaMessage(clean, undefined, "user");
     helenaUi.set({ state: "pensando", draft: "" });
     await sleep(250);
@@ -133,11 +126,11 @@ export async function sendToHelena(text: string) {
           groqRes.text || `Executei a varredura no Google Maps para ${tc.arguments.segment || "empresas"} em ${tc.arguments.city || "São Paulo"}. Encontrei empresas sem site e injetei no CRM com a tag #sem-site. O SDR já iniciou a abordagem!`,
           { type: "result", ok: res.ok, title: "Varredura Google Maps (#sem-site)", detail: res.message }
         );
-      } else if (tc.name === "calendar_create_event") {
-        const res = runTool("calendar.create_event", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+      } else if (tc.name === "calendar_create_event" || tc.name === "calendar_agendar_reuniao") {
+        const res = runTool("calendar.agendar_reuniao", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
         pushHelenaMessage(
-          groqRes.text || "Reunião agendada no Google Calendar / Cal.com e vinculada ao lead no pipeline!",
-          { type: "result", ok: res.ok, title: "Google Calendar / Cal.com", detail: res.message }
+          groqRes.text || "Reunião gravada na Agenda compartilhada e vinculada ao lead.",
+          { type: "result", ok: res.ok, title: "Agenda compartilhada", detail: res.message }
         );
       } else if (tc.name === "sales_handle_objection") {
         const res = runTool("sales.handle_objection", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
@@ -288,7 +281,7 @@ export function interpret(text: string): Reply[] {
           name: `${role} ${segTitle}`,
           role,
           objective: role === "SDR" ? `Prospectar ${segment} sem presença digital adequada.` : `Atuar como ${role.toLowerCase()} para ${segment}.`,
-          tools: ["crm.search_contacts", "crm.create_contact", "messages.send", "knowledge.search", "crm.create_lead", "crm.move_lead"],
+          tools: ["crm.search_contacts", "crm.create_contact", "messages.send", "knowledge.search", "crm.create_lead", "crm.move_lead", "calendar.agendar_reuniao"],
           channels: ["whatsapp"],
           model: db.helenaSettings.agentsDefaultModel,
           supervisorId: isAt ? "a_supat" : "a_supcom",
@@ -298,26 +291,27 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
-  // Google Maps Scraper (#sem-site)
-  if (/sem.?site|google maps|maps|varr\w*|prospect\w*.*site/.test(n)) {
-    const segMatch = n.match(/(cl[ií]nica[s]?|odontolog\w*|est[eé]tica|barbearia[s]?|restaurante[s]?|com[eé]rcio[s]?|ag[eê]ncia[s]?)/i);
-    const segment = segMatch ? segMatch[0].replace(/^\w/, (c) => c.toUpperCase()) : "Clínicas odontológicas";
-    const cityMatch = text.match(/(em|de)\s+([A-ZÁÉÍÓÚÂÊÔÃÕ][a-záéíóúâêôãõ]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕ][a-záéíóúâêôãõ]+)*(?:,\s*[A-Z]{2})?)/i);
-    const city = cityMatch ? cityMatch[2] : "São Paulo, SP";
+  // Prospecção autônoma: qualquer nicho que o gestor pedir (não só dentista)
+  if (/sem.?site|google maps|maps|varr\w*|prospect|cacar lead|caçar lead|buscar cliente|buscar lead|ativar o time/.test(n)) {
+    const intent = extractProspectIntent(text);
+    const segment = intent.segment;
+    const nationwide = intent.nationwide;
+    const city = intent.city;
     const limit = Number(n.match(/(\d{1,3})/)?.[1] ?? 10);
 
     return [
       perform(
         "prospect.scan_maps",
-        { segment, city, limit },
-        `Varredura Google Maps: ${segment} em ${city}`,
+        { segment, city, nationwide, state: nationwide ? "TODOS" : undefined, limit },
+        `Varredura Maps: ${segment} · ${nationwide ? "Brasil inteiro" : city}`,
         [
-          { label: "Segmento", value: segment },
-          { label: "Cidade", value: city },
-          { label: "Critério", value: "Negócios sem site (#sem-site)" },
-          { label: "Agente responsável", value: "SDR 01" },
+          { label: "Nicho", value: segment },
+          { label: "Escopo", value: nationwide ? "Brasil inteiro" : city },
+          { label: "Critério", value: "Sem site + WhatsApp celular válido" },
+          { label: "Roteamento", value: "SDR 01 → SDR 02 → Qualificador → Closer" },
+          { label: "WhatsApp", value: "Evolution helena · +55 18 98101-1186" },
         ],
-        `Executei a varredura do Google Maps em ${city} para ${segment}. Encontrei ${limit} empresas operando sem site oficial. Já cadastrei as empresas e contatos no CRM com a tag #sem-site, criei as oportunidades no Pipeline Comercial e o SDR 01 já disparou a primeira abordagem consultiva via WhatsApp!`
+        `Orquestrei o FreeLLMAPI para planejar as cidades e a varredura de ${segment} (${nationwide ? "Brasil inteiro" : city}). Só entram leads sem site e com WhatsApp. O Time Comercial assume em rodízio com o script do Robson Alex; disparo real na instância helena.`
       ),
     ];
   }
@@ -337,10 +331,10 @@ export function interpret(text: string): Reply[] {
         `Agendar reunião: ${contact?.name}`,
         [
           { label: "Cliente", value: contact?.name || "Cliente" },
-          { label: "Canal", value: "Google Calendar & Cal.com" },
+          { label: "Canal", value: "Agenda compartilhada" },
           { label: "Responsável", value: "Closer (IA)" },
         ],
-        `Reunião agendada com sucesso no Google Calendar e Cal.com para ${contact?.name}! O convite com link de videoconferência foi gerado e o lead foi movido para a etapa de Reunião Agendada no pipeline.`
+        `Reunião gravada na Agenda compartilhada para ${contact?.name}. O lead foi para Reunião Agendada no pipeline.`
       ),
     ];
   }
@@ -472,20 +466,20 @@ export function interpret(text: string): Reply[] {
     const agentCount = comercial?.agentIds?.length ?? 3;
     const orgName = /info\s*tech/i.test(text) ? "Info Tech Ltda" : db.organization.name;
     return planOperation({
-      intro: `${greeting()}. Posso iniciar.\n\nEncontrei o time ${teamMention} com ${agentCount} agentes disponíveis para a ${orgName}.`,
+      intro: `${greeting()}. Eu orquestro; o Time Comercial executa as abordagens.\n\nTime ${teamMention}: ${agentCount} agentes prontos para a ${orgName}. Script inicial: Robson Alex, reunião de 10 minutos. Objeções de preço/tempo ficam com SDR/Closer (Groq). Horário fechado entra na Agenda compartilhada.`,
       title: `Prospecção ${list.name}`,
-      objective: `Prospectar ${total} contatos da lista ${list.name} para a ${orgName} e gerar reuniões.`,
+      objective: `Helena delega ${total} abordagens da lista ${list.name} aos SDRs da ${orgName} e gera reuniões na Agenda.`,
       total,
       listId: list.id,
       agentIds: [...sdrs.map((a) => a.id), "a_qual", "a_closer"],
       suggestions: [
-        `ativar ${sdrs.map((a) => a.name).join(" e ")}`,
-        `utilizar a lista ${list.name}`,
+        `Helena ativa o Supervisor Comercial e delega a ${sdrs.map((a) => a.name).join(" e ")}`,
+        `utilizar a lista ${list.name} e o disparo Evolution API /message/sendText`,
         `priorizar ${list.segment.toLowerCase()}`,
-        `iniciar com ${total} contatos`,
-        "interromper automaticamente respostas negativas",
-        "encaminhar interessados para o agente Closer",
-        "criar os leads no pipeline Comercial",
+        `iniciar com ${total} contatos no script Robson Alex`,
+        "contornar objeções de preço/tempo com Groq",
+        "gravar reunião na Agenda com agendarReuniao ao fechar horário",
+        "encaminhar interessados para o Closer",
       ],
     });
   }

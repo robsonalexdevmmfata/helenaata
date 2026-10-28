@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Building2,
@@ -339,8 +339,17 @@ function ContactsPage() {
 
               {contacts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                    Nenhum contato encontrado com os filtros atuais.
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    {db.contacts.length === 0 ? (
+                      <div className="space-y-3">
+                        <p>Ainda não há leads reais. A varredura no Maps importa empresas sem site com WhatsApp.</p>
+                        <Button asChild>
+                          <Link to="/prospeccao/buscar">Caçar leads</Link>
+                        </Button>
+                      </div>
+                    ) : (
+                      "Nenhum contato encontrado com os filtros atuais."
+                    )}
                   </td>
                 </tr>
               )}

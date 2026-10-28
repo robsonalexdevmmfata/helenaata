@@ -40,9 +40,9 @@ function SegurancaPage() {
     toast.success(val ? "MFA ativado — você receberá um código no próximo acesso." : "MFA desativado.");
   };
 
-  const handleAddIp = () => {
+  const handleAddIp = (): void => {
     const trimmed = newIp.trim();
-    if (!trimmed) return toast.error("Informe um IP ou CIDR válido.");
+    if (!trimmed) { toast.error("Informe um IP ou CIDR válido."); return; }
     const next = [...ipWhitelist, trimmed];
     setIpWhitelist(next);
     update((d) => { if (d.organizationSettings) d.organizationSettings.ipWhitelist = next; });
@@ -63,11 +63,11 @@ function SegurancaPage() {
     toast.success("Sessão encerrada.");
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (!pw.current) return toast.error("Informe a senha atual.");
-    if (pw.next.length < 8) return toast.error("A nova senha deve ter ao menos 8 caracteres.");
-    if (pw.next !== pw.confirm) return toast.error("As senhas não conferem.");
+    if (!pw.current) { toast.error("Informe a senha atual."); return; }
+    if (pw.next.length < 8) { toast.error("A nova senha deve ter ao menos 8 caracteres."); return; }
+    if (pw.next !== pw.confirm) { toast.error("As senhas não conferem."); return; }
     setPw({ current: "", next: "", confirm: "" });
     setChangePwOpen(false);
     toast.success("Senha alterada com sucesso!");

@@ -55,6 +55,7 @@ export const STATUS_TONE: Record<string, Tone> = {
   lead: "info", cliente: "success", inativo: "neutral", convidado: "warning",
   aberto: "info", ganho: "success", perdido: "danger",
   paga: "success",
+  agendada: "info", confirmada: "helena", realizada: "success", cancelada: "danger", no_show: "warning",
 };
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -69,6 +70,7 @@ export const STATUS_LABEL: Record<string, string> = {
   baixo: "Risco baixo", medio: "Risco médio", alto: "Risco alto",
   lead: "Lead", cliente: "Cliente", inativo: "Inativo", convidado: "Convidado",
   aberto: "Aberto", ganho: "Ganho", perdido: "Perdido", paga: "Paga",
+  agendada: "Agendada", confirmada: "Confirmada", realizada: "Realizada", cancelada: "Cancelada", no_show: "No-show",
 };
 
 export function Status({ value, className }: { value: string; className?: string }) {

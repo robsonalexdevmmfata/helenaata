@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Ban, List, Plus, Sparkles, Upload, Users, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,18 @@ function ListsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {db.lists.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                  <div className="space-y-3">
+                    <p>Nenhuma lista real ainda. A varredura cria automaticamente uma lista Maps por nicho.</p>
+                    <Button asChild>
+                      <Link to="/prospeccao/buscar">Caçar leads</Link>
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
             {db.lists.map((l) => (
               <TableRow key={l.id}>
                 <TableCell>
