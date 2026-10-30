@@ -1,0 +1,23 @@
+# Só use isto NA VPS, quando puder pagar o servidor.
+# Até lá o Render já envia WhatsApp pelo Baileys (EVOLUTION_URL vazio).
+#
+# Na VPS: copie .env.example, preencha EVOLUTION_KEY, depois:
+#   docker compose -f docker-compose.evolution.yml up -d
+# No Render, sete EVOLUTION_URL=https://IP-OU-DOMINIO-DA-VPS:8080
+services:
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_PUBLIC_URL:-http://localhost:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_KEY:-troque-esta-chave}
+      AUTHENTICATION_TYPE: apikey
+      CONFIG_SESSION_PHONE_CLIENT: HELENA
+      CONFIG_SESSION_PHONE_NAME: Chrome
+    volumes:
+      - evolution_store:/evolution/store
+
+volumes:
+  evolution_store:

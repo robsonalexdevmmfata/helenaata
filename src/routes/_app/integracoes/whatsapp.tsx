@@ -155,7 +155,7 @@ function EvolutionPanel() {
               <Input
                 value={cfg.baseUrl}
                 onChange={(e) => setCfg({ ...cfg, baseUrl: e.target.value })}
-                placeholder="http://localhost:8080"
+                placeholder="vazio = WhatsApp do Render (sem VPS)"
                 className="font-mono text-sm"
               />
               <Button
@@ -169,7 +169,7 @@ function EvolutionPanel() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Onde a Evolution API está rodando. Conforme print: <code className="font-mono bg-muted px-1 rounded">http://localhost:8080</code>
+              Sem VPS: deixe vazio — o Render fala com o WhatsApp nativo (QR nesta página). Com Evolution na VPS, cole a URL (ex. <code className="font-mono bg-muted px-1 rounded">https://evo.seudominio.com.br</code>).
             </p>
           </div>
 

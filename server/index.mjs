@@ -5,6 +5,8 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { handleApi, startBackground } from "./api.mjs";
+import { log } from "./log.mjs";
+import { remoteEvolutionUrl } from "./evolution-bridge.mjs";
 
 const PORT = Number(process.env.PORT || 8081);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -63,9 +65,14 @@ function serveStatic(req, res) {
 
 let site = null;
 if (existsSync(siteEntry)) {
-  site = (await import(pathToFileURL(siteEntry).href)).middleware;
+  try {
+    site = (await import(pathToFileURL(siteEntry).href)).middleware;
+    log("info", "site compilado", { entry: ".output/server/index.mjs" });
+  } catch (e) {
+    log("error", "falha ao carregar o site compilado", { err: e?.message || String(e) });
+  }
 } else {
-  console.warn("[Helena] Site não compilado. Rode `npm run build:render` antes de `npm start`.");
+  log("warn", "site não compilado — rode npm run build:render");
 }
 
 const server = http.createServer(async (req, res) => {
@@ -77,13 +84,29 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.end("Site ainda não compilado. Rode npm run build:render.");
   } catch (e) {
-    console.error(e);
-    if (!res.headersSent) res.statusCode = 500;
-    res.end("Erro interno");
+    log("error", "request", { path: req.url, err: e?.message || String(e) });
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.end("Erro interno");
+    }
   }
 });
 
+process.on("unhandledRejection", (e) => {
+  log("error", "unhandledRejection", { err: e?.message || String(e) });
+});
+process.on("uncaughtException", (e) => {
+  log("error", "uncaughtException", { err: e?.message || String(e) });
+});
+
 server.listen(PORT, HOST, () => {
-  console.log(`[Helena] Site e servidor rodando em http://localhost:${PORT}`);
-  startBackground();
+  const evo = remoteEvolutionUrl();
+  log("info", "servidor no ar", {
+    host: HOST,
+    port: PORT,
+    groq: Boolean(process.env.GROQ_API_KEY),
+    whatsapp: process.env.WHATSAPP_AUTH_DIR || "data/whatsapp-auth",
+    evolution: evo || "baileys-no-mesmo-render",
+  });
+  startBackground().catch((e) => log("warn", "whatsapp background", { err: e?.message || String(e) }));
 });

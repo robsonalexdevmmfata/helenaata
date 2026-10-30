@@ -1,16 +1,29 @@
+# HELENA AI — bootstrap no Render (sem domínio e sem VPS).
+# WhatsApp: Baileys no mesmo serviço. Quando tiver VPS, preencha EVOLUTION_URL.
 services:
   - type: web
     name: helena-ai
     runtime: node
-    region: oregon
+    region: frankfurt
+    repo: https://github.com/robsonalexdevmmfata/helenaata
+    branch: main
     buildCommand: npm ci && npm run build:render
     startCommand: npm start
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: "20"
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: WHATSAPP_AUTH_DIR
+        value: /opt/render/project/src/data/whatsapp-auth
+      - key: HELENA_AUTO_REPLY
+        value: "true"
+      - key: EVOLUTION_INSTANCE
+        value: helena
       - key: GROQ_API_KEY
         sync: false
       - key: VITE_GROQ_API_KEY
@@ -21,8 +34,6 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: CORS_ORIGIN
-        sync: false
       - key: EVOLUTION_URL
         sync: false
       - key: EVOLUTION_KEY

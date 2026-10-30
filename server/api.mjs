@@ -3,6 +3,7 @@
 //  - produção / Render: server/index.mjs
 import { checkLogin, issueToken, verifyToken } from "./auth.mjs";
 import { aiProvider, chatCompletion } from "./ai.mjs";
+import { evolutionApiKey, handleEvolutionLocal, remoteEvolutionUrl } from "./evolution-bridge.mjs";
 
 const VERSION = "1.0.0";
 const startedAt = Date.now();
@@ -66,8 +67,9 @@ function bearer(req) {
 export async function startBackground() {
   try {
     (await whatsapp()).resumeIfSaved();
+    console.log("[Helena] WhatsApp: sessão salva será retomada se existir creds.json no disco.");
   } catch (e) {
-    console.warn("[Helena] WhatsApp indisponível:", e?.message || e);
+    console.warn("[Helena] WhatsApp indisponível no boot (o site sobe mesmo assim):", e?.message || e);
   }
 }
 
@@ -102,6 +104,9 @@ export async function handleApi(req, res) {
         uptime: Math.round((Date.now() - startedAt) / 1000),
         whatsapp: wa,
         ai: aiProvider(),
+        evolution: process.env.EVOLUTION_URL && !/localhost|127\.0\.0\.1/.test(process.env.EVOLUTION_URL)
+          ? "remote"
+          : "baileys-bridge",
       });
       return true;
     }
@@ -182,20 +187,24 @@ export async function handleApi(req, res) {
       return true;
     }
 
-    if (p.startsWith("/api/evolution/")) {
-      const evo = process.env.EVOLUTION_URL || process.env.VITE_EVOLUTION_URL || "http://127.0.0.1:8080";
-      const key = req.headers.apikey || process.env.EVOLUTION_KEY || process.env.VITE_EVOLUTION_KEY || "429683C4C977415CAAFCCE10F7D57E11";
-      const rest = p.slice("/api/evolution".length);
-      const target = `${evo.replace(/\/$/, "")}${rest}${url.search}`;
+    if (p.startsWith("/api/evolution/") || p === "/api/evolution") {
+      const rest = p.slice("/api/evolution".length) || "/";
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
-      const body = hasBody ? JSON.stringify(await readJson(req)) : undefined;
+      const payload = hasBody ? await readJson(req) : {};
+      const remote = remoteEvolutionUrl();
+      if (!remote) {
+        await handleEvolutionLocal(rest, req.method, payload, send, res);
+        return true;
+      }
+      const key = evolutionApiKey(req);
+      const target = `${remote}${rest}${url.search}`;
       const r = await fetch(target, {
         method: req.method,
         headers: {
-          apikey: Array.isArray(key) ? key[0] : key,
+          apikey: key,
           "Content-Type": "application/json",
         },
-        body,
+        body: hasBody ? JSON.stringify(payload) : undefined,
         signal: AbortSignal.timeout(25_000),
       });
       const text = await r.text();
