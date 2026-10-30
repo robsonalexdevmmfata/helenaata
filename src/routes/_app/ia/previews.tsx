@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { pageHead } from "@/lib/head";
-import { useDB } from "@/lib/store";
+import { currentUser, useDB } from "@/lib/store";
+import { canUseDevTeam } from "@/lib/saas";
 
 export const Route = createFileRoute("/_app/ia/previews")({
   head: () => pageHead("Prévia de sites", "Sites e cardápios gerados pelo Time Desenvolvimento IA para o Time Comercial abordar o dono."),
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/_app/ia/previews")({
 function PreviewsPage() {
   const db = useDB();
   const router = useRouter();
+  const allowDev = canUseDevTeam(currentUser(db));
   const [q, setQ] = useState("");
   const list = (db.sitePreviews ?? []).filter((p) =>
     `${p.name} ${p.segment} ${p.city}`.toLowerCase().includes(q.toLowerCase()),
@@ -38,7 +40,14 @@ function PreviewsPage() {
         <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
         <Input className="pl-9" placeholder="Buscar prévia..." value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      {list.length === 0 ? (
+      {!allowDev ? (
+        <div className="rounded-xl border border-dashed p-5">
+          <p className="text-sm text-muted-foreground">
+            Prévia de site e cardápio é do Time Dev (engenheiros). No trial e no Impulso o comercial prospecta sem montar página. Assine Máquina para liberar.
+          </p>
+          <Button className="mt-3" size="sm" onClick={() => router.history.push("/planos")}>Ver plano Máquina</Button>
+        </div>
+      ) : list.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Nenhuma prévia ainda. Peça à Helena: “procure 50 restaurantes que não tenham site nem cardápio online”.
         </p>

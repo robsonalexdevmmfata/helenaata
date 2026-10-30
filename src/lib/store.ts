@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { DB } from "./types";
-import { createCustomerSeed, createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers, PLATFORM_ORG } from "./seed";
+import { applyDevTeamGate, createCustomerSeed, createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers, PLATFORM_ORG } from "./seed";
 import type { User } from "./types";
 import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "./catalog";
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
@@ -126,6 +126,7 @@ export function activateWorkspaceForUser(userId: string) {
     }
     state = loadCustomerWorkspace(user);
     state.currentUserId = userId;
+    applyDevTeamGate(state, user.planId, user.kind);
   }
   persistNow();
   listeners.forEach((l) => l());
@@ -357,6 +358,24 @@ export function patchUserEverywhere(userId: string, fn: (u: User) => void) {
   if (acc?.kind === "customer" && acc.organizationId) {
     const key = wsKey(acc.organizationId);
     if (key !== persistKey) touch(parseDb(readJson<DB>(key)), key);
+  }
+}
+
+export function syncDevTeamForAccount(userId: string) {
+  const acc = listAccounts().find((u) => u.id === userId);
+  if (!acc || isPlatformUser(acc)) return;
+  if (state && state.users.some((u) => u.id === userId)) {
+    applyDevTeamGate(state, acc.planId, acc.kind);
+    persistNow();
+    listeners.forEach((l) => l());
+  }
+  const key = wsKey(acc.organizationId);
+  if (key !== persistKey) {
+    const ws = parseDb(readJson<DB>(key));
+    if (ws) {
+      applyDevTeamGate(ws, acc.planId, acc.kind);
+      writeJson(key, ws);
+    }
   }
 }
 

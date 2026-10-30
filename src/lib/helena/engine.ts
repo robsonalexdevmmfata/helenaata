@@ -28,6 +28,7 @@ import {
 } from "./sales-brain";
 import { runPresencePipeline } from "@/lib/dev/presence";
 import { reserveProspects } from "@/lib/saas";
+import { planAllowsDevTeam } from "@/lib/seed";
 
 export interface ToolContext {
   actor: string;
@@ -1125,6 +1126,10 @@ const handlers: Record<string, Handler> = {
     );
   },
   "dev.build_presence": (p) => {
+    const user = currentUser(getDB());
+    if (!planAllowsDevTeam(user?.planId, user?.kind)) {
+      return fail("O Time Dev (engenheiros de software) entra no plano Máquina. No Impulso e no trial, o Time Comercial prospecta e a Helena orquestra. Assine Máquina para prévia de site e cardápio.");
+    }
     const quota = reserveProspects(Math.min(Number(p.limit) || 10, 50));
     if (!quota.ok) return fail(quota.message);
     return runPresencePipeline({

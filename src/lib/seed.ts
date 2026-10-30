@@ -484,6 +484,29 @@ export function createSeed(now = new Date()): DB {
   };
 }
 
+export function planAllowsDevTeam(planId?: string, kind?: string) {
+  if (kind === "platform") return true;
+  return planId === "maquina" || planId === "whitelabel";
+}
+
+export function applyDevTeamGate(db: DB, planId?: string, kind?: string) {
+  const allow = planAllowsDevTeam(planId, kind);
+  for (const t of db.teams ?? []) {
+    if (t.id !== "t_dev") continue;
+    t.status = allow ? "ativo" : "pausado";
+  }
+  for (const a of db.agents ?? []) {
+    if (a.teamId !== "t_dev") continue;
+    if (allow) {
+      if (a.status === "pausado") a.status = "aguardando";
+      if (a.currentTask === "Disponível no plano Máquina") a.currentTask = undefined;
+    } else {
+      a.status = "pausado";
+      a.currentTask = "Disponível no plano Máquina";
+    }
+  }
+}
+
 function slugify(name: string) {
   return name
     .normalize("NFD")
@@ -593,5 +616,6 @@ export function createCustomerSeed(owner: User): DB {
     createdAt: now,
     updatedAt: now,
   }));
+  applyDevTeamGate(db, owner.planId, owner.kind);
   return db;
 }

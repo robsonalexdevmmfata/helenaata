@@ -16,6 +16,7 @@ import { generateBriefingScript, getBriefingConfig, isHelenaArrivalGreeting } fr
 import { pauseHappyNation, playFarewellMusic, playHappyNation } from "./music";
 import { extractProspectIntent } from "@/lib/prospect/mapsSearch";
 import { isPresenceIntent } from "@/lib/dev/presence";
+import { canUseDevTeam } from "@/lib/saas";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
@@ -320,6 +321,11 @@ export function interpret(text: string): Reply[] {
   }
 
   // Time Dev IA: nicho sem site / sem cardápio → prévia → comercial aborda com o link
+  if (isPresenceIntent(text) && !canUseDevTeam(currentUser(getDB()))) {
+    return [{
+      text: "Prévia de site e cardápio com o Time Dev (Caio, Diego e Sofia) entra no plano Máquina. No trial e no Impulso o Time Comercial prospecta no WhatsApp. Assine Máquina em Planos para liberar os engenheiros.",
+    }];
+  }
   if (isPresenceIntent(text)) {
     const intent = extractProspectIntent(text);
     const segment = intent.segment;

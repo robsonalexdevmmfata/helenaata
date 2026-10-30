@@ -14,7 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { useDB, update } from "@/lib/store";
+import { currentUser, useDB, update } from "@/lib/store";
+import { canUseDevTeam } from "@/lib/saas";
 import { agentStats } from "@/lib/analytics";
 import { runTool } from "@/lib/helena/engine";
 import { pageHead } from "@/lib/head";
@@ -53,18 +54,19 @@ function AgentesPage() {
   const [testingPing, setTestingPing] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; message: string; latencyMs: number } | null>(null);
 
-  const roles = ["todos", ...Array.from(new Set(db.agents.map((a) => a.role)))];
+  const roster = canUseDevTeam(currentUser(db)) ? db.agents : db.agents.filter((a) => a.teamId !== "t_dev");
+  const roles = ["todos", ...Array.from(new Set(roster.map((a) => a.role)))];
 
-  const filtered = db.agents.filter((a) => {
+  const filtered = roster.filter((a) => {
     const matchSearch = `${a.name} ${a.role} ${a.description}`.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === "todos" || a.role === filter;
     return matchSearch && matchFilter;
   });
 
-  const working = db.agents.filter((a) => a.status === "trabalhando").length;
-  const errors = db.agents.filter((a) => a.status === "erro").length;
-  const totalTasks = db.agents.reduce((s, a) => s + agentStats(db, a).outbound, 0);
-  const freeAgentsCount = db.agents.filter((a) => a.model.startsWith("freellm/")).length;
+  const working = roster.filter((a) => a.status === "trabalhando").length;
+  const errors = roster.filter((a) => a.status === "erro").length;
+  const totalTasks = roster.reduce((s, a) => s + agentStats(db, a).outbound, 0);
+  const freeAgentsCount = roster.filter((a) => a.model.startsWith("freellm/")).length;
 
   const handlePause = (id: string) => {
     const res = runTool("agents.pause", { agentId: id }, { actor: "Gestor", actorType: "user" });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getDB, listAccounts, update } from "@/lib/store";
-import { caktoCheckoutUrl, CAKTO_CHECKOUT, dailyLimitFor, isPlatformAdmin, mustSubscribe, registerCustomer, reserveProspects, SAAS_PLANS, trialEndsAtFrom, workspaceDisplayName } from "@/lib/saas";
+import { canUseDevTeam, caktoCheckoutUrl, CAKTO_CHECKOUT, dailyLimitFor, isPlatformAdmin, mustSubscribe, registerCustomer, reserveProspects, SAAS_PLANS, trialEndsAtFrom, workspaceDisplayName } from "@/lib/saas";
+import { applyDevTeamGate, planAllowsDevTeam } from "@/lib/seed";
 import { findLocalUser } from "@/lib/auth";
 import { isPresenceIntent } from "@/lib/dev/presence";
 
@@ -85,6 +86,23 @@ describe("SaaS trial e planos", () => {
     expect(ws.deals).toEqual([]);
     expect(ws.conversations).toEqual([]);
     expect(ws.campaigns).toEqual([]);
+  });
+
+  it("Time Dev só libera no plano Máquina", () => {
+    expect(planAllowsDevTeam("trial", "customer")).toBe(false);
+    expect(planAllowsDevTeam("impulso", "customer")).toBe(false);
+    expect(planAllowsDevTeam("maquina", "customer")).toBe(true);
+    expect(canUseDevTeam(getDB().users.find((u) => u.id === "u1"))).toBe(true);
+    const email = `devgate${Date.now()}@loja.com`;
+    const res = registerCustomer({ name: "Leo", email, password: "1234", company: "Oficina Leo" });
+    expect(res.ok).toBe(true);
+    const key = `helena-ws-${listAccounts().find((x) => x.email === email)?.organizationId}`;
+    const ws = JSON.parse(window.localStorage.getItem(key)!) as { teams: { id: string; status: string }[]; agents: { teamId?: string; status: string }[] };
+    expect(ws.teams.find((t) => t.id === "t_dev")?.status).toBe("pausado");
+    expect(ws.agents.filter((a) => a.teamId === "t_dev").every((a) => a.status === "pausado")).toBe(true);
+    const db = getDB();
+    applyDevTeamGate(db, "maquina", "customer");
+    expect(db.teams.find((t) => t.id === "t_dev")?.status).toBe("ativo");
   });
 
   it("planos Impulso e Máquina custam 70 e 140", () => {

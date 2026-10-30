@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Activity, Bot, ChevronRight, Network, Plus, Search, Sparkles, Users, Zap,
@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useDB } from "@/lib/store";
+import { currentUser, useDB } from "@/lib/store";
+import { canUseDevTeam } from "@/lib/saas";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { TeamForm } from "./components/-TeamForm";
@@ -31,9 +32,11 @@ function TimesPage() {
   const [search, setSearch] = useState("");
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
 
-  const filtered = db.teams.filter((t) =>
-    `${t.name} ${t.objective}`.toLowerCase().includes(search.toLowerCase())
-  );
+  const allowDev = canUseDevTeam(currentUser(db));
+  const filtered = db.teams.filter((t) => {
+    if (!allowDev && t.id === "t_dev") return false;
+    return `${t.name} ${t.objective}`.toLowerCase().includes(search.toLowerCase());
+  });
 
   const active = db.teams.filter((t) => t.status === "ativo").length;
   const totalLeads = db.teams.reduce((s, t) => s + t.metrics.leads, 0);
@@ -44,7 +47,9 @@ function TimesPage() {
       <PageHeader
         eyebrow="IA"
         title="Times de Agentes"
-        description="Comercial aborda. Desenvolvimento IA monta a prévia de site e cardápio. Atendimento cobre o cliente ativo."
+        description={allowDev
+          ? "Comercial aborda. Desenvolvimento IA monta a prévia de site e cardápio. Atendimento cobre o cliente ativo."
+          : "Comercial e Atendimento no seu plano. O Time Dev (engenheiros) libera no plano Máquina."}
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -125,6 +130,17 @@ function TimesPage() {
           );
         })}
       </div>
+      {!allowDev && (
+        <div className="rounded-xl border border-dashed p-5">
+          <h3 className="font-semibold">Time Dev · engenheiros de software</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Caio (front), Diego (back) e Sofia (design) montam a prévia de site e cardápio. Liberado no plano Máquina.
+          </p>
+          <Button asChild className="mt-3" size="sm">
+            <Link to="/planos">Assinar Máquina</Link>
+          </Button>
+        </div>
+      )}
 
       {/* Modal: Criar Novo Time */}
       <TeamForm

@@ -1,5 +1,6 @@
 import type { QuoteRequest, SaasPlanId, User } from "@/lib/types";
-import { getDB, listAccounts, nowISO, patchUserEverywhere, provisionCustomerAccount, uid, update } from "@/lib/store";
+import { getDB, listAccounts, nowISO, patchUserEverywhere, provisionCustomerAccount, syncDevTeamForAccount, uid, update } from "@/lib/store";
+import { planAllowsDevTeam } from "@/lib/seed";
 
 export const TRIAL_DAYS = 2;
 export const TRIAL_DAILY_PROSPECTS = 30;
@@ -37,7 +38,6 @@ export const SAAS_PLANS: SaasPlan[] = [
       "Trial de 2 dias incluso no cadastro",
       "30 abordagens de prospecção por dia",
       "Helena + Time Comercial no WhatsApp",
-      "Prévia de site e cardápio pelo Time Dev IA",
       "CRM, inbox e agenda",
       "Trilha de entrada e despedida da Helena",
     ],
@@ -106,6 +106,12 @@ export function isPlatformAdmin(user?: User | null) {
   if (!user) return false;
   if (user.kind === "platform") return true;
   return user.role === "owner" && user.id === "u1";
+}
+
+export function canUseDevTeam(user?: User | null) {
+  if (!user) return false;
+  if (isPlatformAdmin(user)) return true;
+  return planAllowsDevTeam(user.planId, user.kind);
 }
 
 export function planOf(user?: User | null): SaasPlan | undefined {
@@ -248,6 +254,7 @@ export function assignPlan(userId: string, planId: SaasPlanId) {
     u.planId = planId;
     if (planId !== "trial") u.trialEndsAt = u.trialEndsAt || nowISO();
   });
+  syncDevTeamForAccount(userId);
 }
 
 export function extendTrial(userId: string, days = TRIAL_DAYS) {
