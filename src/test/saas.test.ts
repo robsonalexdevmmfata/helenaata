@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDB, update } from "@/lib/store";
+import { getDB, listAccounts, update } from "@/lib/store";
 import { caktoCheckoutUrl, CAKTO_CHECKOUT, dailyLimitFor, isPlatformAdmin, mustSubscribe, registerCustomer, reserveProspects, SAAS_PLANS, trialEndsAtFrom, workspaceDisplayName } from "@/lib/saas";
 import { findLocalUser } from "@/lib/auth";
 import { isPresenceIntent } from "@/lib/dev/presence";
@@ -69,6 +69,22 @@ describe("SaaS trial e planos", () => {
     expect(new Date(u!.trialEndsAt!).getTime() - new Date(u!.createdAt!).getTime()).toBe(2 * 86_400_000);
     expect(mustSubscribe(u)).toBe(false);
     expect(workspaceDisplayName(u, "Info Tech Ltda")).toBe("Loja Bia");
+    expect(u?.organizationId).not.toBe("org_novarota");
+  });
+
+  it("cliente novo não herda CRM mock da Info Tech", () => {
+    const email = `vazio${Date.now()}@loja.com`;
+    const res = registerCustomer({ name: "Carla", email, password: "1234", company: "Barbearia Carla" });
+    expect(res.ok).toBe(true);
+    const key = `helena-ws-${listAccounts().find((x) => x.email === email)?.organizationId}`;
+    const raw = window.localStorage.getItem(key);
+    expect(raw).toBeTruthy();
+    const ws = JSON.parse(raw!) as { contacts: unknown[]; deals: unknown[]; conversations: unknown[]; campaigns: unknown[]; organization: { name: string } };
+    expect(ws.organization.name).toBe("Barbearia Carla");
+    expect(ws.contacts).toEqual([]);
+    expect(ws.deals).toEqual([]);
+    expect(ws.conversations).toEqual([]);
+    expect(ws.campaigns).toEqual([]);
   });
 
   it("planos Impulso e Máquina custam 70 e 140", () => {

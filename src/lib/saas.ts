@@ -1,5 +1,5 @@
 import type { QuoteRequest, SaasPlanId, User } from "@/lib/types";
-import { getDB, nowISO, uid, update } from "@/lib/store";
+import { getDB, listAccounts, nowISO, patchUserEverywhere, provisionCustomerAccount, uid, update } from "@/lib/store";
 
 export const TRIAL_DAYS = 2;
 export const TRIAL_DAILY_PROSPECTS = 30;
@@ -208,55 +208,50 @@ export function registerCustomer(input: {
 }): { ok: boolean; message: string; userId?: string } {
   const email = input.email.trim().toLowerCase();
   const username = email.split("@")[0] || "user";
-  const db = getDB();
-  if (db.users.some((u) => u.email.toLowerCase() === email || u.username.toLowerCase() === username.toLowerCase())) {
+  if (listAccounts().some((u) => u.email.toLowerCase() === email || u.username.toLowerCase() === username.toLowerCase())) {
     return { ok: false, message: "Já existe uma conta com este e-mail ou usuário." };
   }
   if (input.password.length < 4) return { ok: false, message: "A senha precisa ter pelo menos 4 caracteres." };
   const id = uid("u_");
   const now = nowISO();
-  update((d) => {
-    d.users.push({
-      id,
-      organizationId: d.organization.id,
-      name: input.name.trim(),
-      email,
-      username,
-      password: input.password,
-      role: "manager",
-      title: "Dona da conta",
-      color: "chart-3",
-      status: "ativo",
-      workHours: "09:00–18:00",
-      goal: 15_000,
-      achieved: 0,
-      lastSeen: now,
-      createdAt: now,
-      kind: "customer",
-      planId: "trial",
-      trialEndsAt: trialEndsAtFrom(new Date(now)),
-      dailyProspectUsed: 0,
-      dailyProspectDate: todayKey(),
-      companyName: input.company.trim(),
-      phone: input.phone ?? "",
-    });
-  });
+  const orgId = uid("org_");
+  const user = {
+    id,
+    organizationId: orgId,
+    name: input.name.trim(),
+    email,
+    username,
+    password: input.password,
+    role: "owner" as const,
+    title: "Dona da conta",
+    color: "chart-3" as const,
+    status: "ativo" as const,
+    workHours: "09:00–18:00",
+    goal: 15_000,
+    achieved: 0,
+    lastSeen: now,
+    createdAt: now,
+    kind: "customer" as const,
+    planId: "trial" as const,
+    trialEndsAt: trialEndsAtFrom(new Date(now)),
+    dailyProspectUsed: 0,
+    dailyProspectDate: todayKey(),
+    companyName: input.company.trim(),
+    phone: input.phone ?? "",
+  };
+  provisionCustomerAccount(user);
   return { ok: true, message: "Conta criada. Trial de 2 dias, 30 prospecções por dia.", userId: id };
 }
 
 export function assignPlan(userId: string, planId: SaasPlanId) {
-  update((d) => {
-    const u = d.users.find((x) => x.id === userId);
-    if (!u) return;
+  patchUserEverywhere(userId, (u) => {
     u.planId = planId;
     if (planId !== "trial") u.trialEndsAt = u.trialEndsAt || nowISO();
   });
 }
 
 export function extendTrial(userId: string, days = TRIAL_DAYS) {
-  update((d) => {
-    const u = d.users.find((x) => x.id === userId);
-    if (!u) return;
+  patchUserEverywhere(userId, (u) => {
     u.planId = "trial";
     u.trialEndsAt = trialEndsAtFrom();
     u.status = "ativo";
@@ -264,9 +259,8 @@ export function extendTrial(userId: string, days = TRIAL_DAYS) {
 }
 
 export function setUserActive(userId: string, active: boolean) {
-  update((d) => {
-    const u = d.users.find((x) => x.id === userId);
-    if (!u || u.id === "u1") return;
+  patchUserEverywhere(userId, (u) => {
+    if (u.id === "u1") return;
     u.status = active ? "ativo" : "inativo";
   });
 }

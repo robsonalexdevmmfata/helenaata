@@ -1,7 +1,7 @@
 // Login: tenta a conta local (admin, demo e cadastros). Se o servidor estiver no ar,
 // o admin ainda pega token. Sem servidor, o site segue em modo demonstração.
 import { backendLogin, clearBackendToken } from "./backend";
-import { getDB, update } from "./store";
+import { activateWorkspaceForUser, getDB, listAccounts, update } from "./store";
 
 const SESSION_KEY = "helena-session";
 
@@ -25,6 +25,7 @@ export function readSessionUserId() {
 export function startSession(userId: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(SESSION_KEY, JSON.stringify({ userId, at: new Date().toISOString() }));
+  activateWorkspaceForUser(userId);
   update((d) => {
     d.currentUserId = userId;
     const u = d.users.find((x) => x.id === userId);
@@ -34,8 +35,8 @@ export function startSession(userId: string) {
 
 export function findLocalUser(username: string, password: string) {
   const key = username.trim().toLowerCase();
-  const db = getDB();
-  return db.users.find((u) => {
+  const users = listAccounts();
+  return users.find((u) => {
     if (u.status === "inativo") return false;
     const matchId = u.username.toLowerCase() === key || u.email.toLowerCase() === key;
     if (!matchId) return false;
@@ -91,9 +92,7 @@ export function syncSessionUser() {
   const id = readSessionUserId();
   if (!id) return;
   const db = getDB();
-  if (db.currentUserId === id) return;
-  if (!db.users.some((u) => u.id === id)) return;
-  update((d) => {
-    d.currentUserId = id;
-  });
+  if (db.currentUserId === id && db.users.some((u) => u.id === id)) return;
+  if (!listAccounts().some((u) => u.id === id)) return;
+  activateWorkspaceForUser(id);
 }

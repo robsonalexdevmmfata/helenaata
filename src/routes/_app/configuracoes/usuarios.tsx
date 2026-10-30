@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EntityAvatar, PageHeader, Status } from "@/components/app/kit";
-import { currentUser, getDB, uid, update, useDB } from "@/lib/store";
+import { currentUser, getDB, listAccounts, uid, update, useDB } from "@/lib/store";
 import { ROLE_LABEL } from "@/lib/helena/registry";
 import { fmtDate } from "@/lib/format";
 import { pageHead } from "@/lib/head";
@@ -157,7 +157,7 @@ function UsersPage() {
         <h3 className="font-semibold text-sm">Contas SaaS cadastradas</h3>
         <p className="text-xs text-muted-foreground">Trial, plano e bloqueio das contas que se inscreveram na landing. O Cakto confirma o pagamento depois — aqui você libera na mão.</p>
         <div className="divide-y">
-          {db.users.filter((u) => u.kind === "customer").map((u) => (
+          {listAccounts().filter((u) => u.kind === "customer").map((u) => (
             <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
               <div>
                 <div className="font-medium">{u.name} · {u.companyName || u.email}</div>
@@ -174,8 +174,8 @@ function UsersPage() {
               </div>
             </div>
           ))}
-          {db.users.filter((u) => u.kind === "customer").length === 0 && (
-            <p className="text-xs text-muted-foreground py-2">Nenhuma conta de cliente ainda. Use o cadastro da landing ou o usuário demo.</p>
+          {listAccounts().filter((u) => u.kind === "customer").length === 0 && (
+            <p className="text-xs text-muted-foreground py-2">Nenhuma conta de cliente ainda. Use o cadastro da landing.</p>
           )}
         </div>
         {(db.quoteRequests ?? []).length > 0 && (

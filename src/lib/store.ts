@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DB } from "./types";
-import { createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers } from "./seed";
+import { createCustomerSeed, createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers, PLATFORM_ORG } from "./seed";
+import type { User } from "./types";
 import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "./catalog";
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
 import { AGENCY_WHATSAPP } from "./evolution/evolutionapi";
@@ -8,34 +9,143 @@ import { AGENCY_WHATSAPP } from "./evolution/evolutionapi";
 // Mock data layer. All reads/writes go through this store so it can be swapped
 // for HTTP calls to a real PostgreSQL-backed API without touching the screens.
 const KEY = "helena-db-v2";
+const ACCOUNTS_KEY = "helena-accounts-v1";
+const SESSION_KEY = "helena-session";
 
 let seedCache: DB | null = null;
 const seed = () => (seedCache ??= createSeed());
 
 let state: DB | null = null;
+let persistKey = KEY;
 const listeners = new Set<() => void>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+function wsKey(orgId: string) {
+  return `helena-ws-${orgId}`;
+}
+
+function readJson<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full */
+  }
+}
+
+function bootSessionUserId() {
+  const parsed = readJson<{ userId?: string }>(SESSION_KEY);
+  return parsed?.userId || "";
+}
+
+function isPlatformUser(user?: User | null) {
+  if (!user) return false;
+  if (user.kind === "platform") return true;
+  return user.role === "owner" && user.id === "u1";
+}
+
+export function listAccounts(): User[] {
+  const stored = readJson<{ users: User[] }>(ACCOUNTS_KEY);
+  const fromDisk = stored?.users ?? [];
+  const fromState = state?.users ?? [];
+  const fromPlatform = persistKey === KEY ? fromState : (readJson<DB>(KEY)?.users ?? []);
+  const map = new Map<string, User>();
+  for (const u of [...fromPlatform, ...fromDisk, ...fromState, ...seed().users]) {
+    if (u?.id) map.set(u.id, u);
+  }
+  return [...map.values()];
+}
+
+function saveAccounts(users: User[]) {
+  const map = new Map<string, User>();
+  for (const u of [...(readJson<{ users: User[] }>(ACCOUNTS_KEY)?.users ?? []), ...users]) {
+    if (u?.id) map.set(u.id, u);
+  }
+  writeJson(ACCOUNTS_KEY, { users: [...map.values()] });
+}
+
+export function upsertAccount(user: User) {
+  const users = listAccounts();
+  const i = users.findIndex((u) => u.id === user.id);
+  if (i >= 0) users[i] = { ...users[i], ...user };
+  else users.push(user);
+  saveAccounts(users);
+}
+
+function parseDb(raw: DB | null): DB | null {
+  if (!raw || typeof raw.version !== "number" || raw.version < 1 || raw.version > 12) return null;
+  return hydrate(raw);
+}
+
+function loadPlatform(): DB {
+  persistKey = KEY;
+  const parsed = parseDb(readJson<DB>(KEY));
+  if (parsed) {
+    writeJson(KEY, parsed);
+    saveAccounts(parsed.users);
+    return parsed;
+  }
+  const db = seed();
+  saveAccounts(db.users);
+  return db;
+}
+
+function loadCustomerWorkspace(user: User): DB {
+  persistKey = wsKey(user.organizationId);
+  const parsed = parseDb(readJson<DB>(persistKey));
+  if (parsed) {
+    parsed.currentUserId = user.id;
+    if (!parsed.users.some((u) => u.id === user.id)) parsed.users.unshift({ ...user, role: "owner" });
+    return parsed;
+  }
+  return createCustomerSeed(user);
+}
+
+/** Troca o banco ativo: admin vê a operação Info Tech; cliente vê workspace vazio até gerar dado real. */
+export function activateWorkspaceForUser(userId: string) {
+  const user = listAccounts().find((u) => u.id === userId);
+  if (!user) return;
+  if (isPlatformUser(user)) {
+    state = loadPlatform();
+    state.currentUserId = userId;
+  } else {
+    if (!user.organizationId || user.organizationId === PLATFORM_ORG) {
+      user.organizationId = user.id === "u_demo" ? "org_demo" : `org_${user.id.replace(/^u_/, "")}`;
+      upsertAccount(user);
+    }
+    state = loadCustomerWorkspace(user);
+    state.currentUserId = userId;
+  }
+  persistNow();
+  listeners.forEach((l) => l());
+}
+
 function load(): DB {
   if (typeof window === "undefined") return seed();
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as DB;
-      if (typeof parsed.version === "number" && parsed.version >= 1 && parsed.version <= 12) {
-        const db = hydrate(parsed);
-        try {
-          window.localStorage.setItem(KEY, JSON.stringify(db));
-        } catch {
-          /* storage full */
-        }
-        return db;
-      }
+  const uid = bootSessionUserId();
+  if (uid) {
+    persistKey = KEY;
+    state = loadPlatform();
+    const user = listAccounts().find((u) => u.id === uid);
+    if (user && !isPlatformUser(user)) {
+      activateWorkspaceForUser(uid);
+      return state!;
     }
-  } catch {
-    /* ignore corrupted storage */
+    if (state) state.currentUserId = uid;
+    return state;
   }
-  return seed();
+  return loadPlatform();
 }
 
 /** Completa campos novos em bases persistidas no localStorage. */
@@ -63,16 +173,41 @@ function hydrate(db: DB): DB {
     t.metrics = { leads: 0, meetings: 0, conversions: 0 };
     if (t.id === "t_com" && !t.agentIds.includes("a_valentina")) t.agentIds.push("a_valentina");
   });
-  db.connections = (db.connections ?? []).filter((c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name));
-  if (!db.connections.length) {
+  const platformOrg = db.organization?.id === PLATFORM_ORG || db.users?.some((u) => u.id === "u1" && u.kind === "platform");
+  if (platformOrg) {
+    db.connections = (db.connections ?? []).filter((c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name));
+    if (!db.connections.length) {
+      db.connections = [
+        {
+          id: AGENCY_WHATSAPP.id,
+          organizationId: db.organization.id,
+          name: AGENCY_WHATSAPP.name,
+          phone: AGENCY_WHATSAPP.phone,
+          type: "cloud_api",
+          status: "online",
+          queue: 0,
+          sentToday: 0,
+          dailyLimit: 1000,
+          lastSyncAt: new Date().toISOString(),
+        },
+      ];
+    }
+    db.users?.forEach((u) => {
+      if (u.id === "u1" || /leticia/i.test(u.name) || /leticia/i.test(u.email)) {
+        u.name = "Robson Alex";
+        u.email = "robson@infotech.com.br";
+        u.title = "CEO";
+      }
+    });
+  } else if (!(db.connections ?? []).some((c) => c.id === AGENCY_WHATSAPP.id)) {
     db.connections = [
       {
         id: AGENCY_WHATSAPP.id,
         organizationId: db.organization.id,
-        name: AGENCY_WHATSAPP.name,
-        phone: AGENCY_WHATSAPP.phone,
+        name: "WhatsApp",
+        phone: "",
         type: "cloud_api",
-        status: "online",
+        status: "offline",
         queue: 0,
         sentToday: 0,
         dailyLimit: 1000,
@@ -80,13 +215,6 @@ function hydrate(db: DB): DB {
       },
     ];
   }
-  db.users?.forEach((u) => {
-    if (u.id === "u1" || /leticia/i.test(u.name) || /leticia/i.test(u.email)) {
-      u.name = "Robson Alex";
-      u.email = "robson@infotech.com.br";
-      u.title = "CEO";
-    }
-  });
   if ((db.version ?? 0) < 5) {
     const demo = (id: string, prefix: string) => new RegExp(`^${prefix}\\d+$`).test(id);
     db.users = (db.users ?? []).filter((u) => u.id === "u1");
@@ -145,9 +273,9 @@ function hydrate(db: DB): DB {
       prod.content = "Tabela viva em Prospecção → Orçamentos. No WhatsApp só citar valor se o cliente perguntar.";
       prod.updatedAt = new Date().toISOString();
     }
+    db.version = 8;
   }
-  db.version = 8;
-  if ((db.version ?? 0) < 9 || db.version === 8) {
+  if ((db.version ?? 0) < 9) {
     db.operations = (db.operations ?? []).filter((o) => o.id === "op_live_maps" || !/^op\d+$/.test(o.id));
     db.approvals = (db.approvals ?? []).filter((a) => !/^ap\d+$/.test(a.id));
     db.version = 9;
@@ -194,21 +322,57 @@ function hydrate(db: DB): DB {
   return db;
 }
 
+export function provisionCustomerAccount(user: User) {
+  upsertAccount(user);
+  const platform = parseDb(readJson<DB>(KEY)) ?? seed();
+  if (!platform.users.some((u) => u.id === user.id)) platform.users.push(user);
+  else platform.users = platform.users.map((u) => (u.id === user.id ? { ...u, ...user } : u));
+  writeJson(KEY, platform);
+  if (persistKey === KEY && state && !state.users.some((u) => u.id === user.id)) {
+    state = { ...state, users: [...state.users, user] };
+  }
+  writeJson(wsKey(user.organizationId), createCustomerSeed(user));
+}
+
+export function patchUserEverywhere(userId: string, fn: (u: User) => void) {
+  update((d) => {
+    const u = d.users.find((x) => x.id === userId);
+    if (u) fn(u);
+  });
+  const accounts = listAccounts();
+  const acc = accounts.find((x) => x.id === userId);
+  if (acc) {
+    fn(acc);
+    saveAccounts(accounts);
+  }
+  const touch = (db: DB | null, key: string) => {
+    if (!db) return;
+    const u = db.users.find((x) => x.id === userId);
+    if (!u) return;
+    fn(u);
+    writeJson(key, db);
+  };
+  if (persistKey !== KEY) touch(parseDb(readJson<DB>(KEY)), KEY);
+  if (acc?.kind === "customer" && acc.organizationId) {
+    const key = wsKey(acc.organizationId);
+    if (key !== persistKey) touch(parseDb(readJson<DB>(key)), key);
+  }
+}
+
 export function getDB(): DB {
   if (!state) state = load();
   return state;
 }
 
+function persistNow() {
+  if (typeof window === "undefined" || !state) return;
+  writeJson(persistKey, state);
+}
+
 function persist() {
   if (typeof window === "undefined") return;
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      window.localStorage.setItem(KEY, JSON.stringify(state));
-    } catch {
-      /* storage full: keep in memory */
-    }
-  }, 250);
+  saveTimer = setTimeout(() => persistNow(), 250);
 }
 
 export function update(fn: (draft: DB) => void) {
@@ -220,7 +384,14 @@ export function update(fn: (draft: DB) => void) {
 }
 
 export function resetDB() {
-  state = createSeed();
+  const user = state ? currentUser(state) : undefined;
+  if (user && !isPlatformUser(user)) {
+    state = createCustomerSeed(user);
+  } else {
+    persistKey = KEY;
+    state = createSeed();
+    saveAccounts(state.users);
+  }
   persist();
   listeners.forEach((l) => l());
 }

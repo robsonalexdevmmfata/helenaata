@@ -66,6 +66,12 @@ function upsertFromEvolution(opts: {
   unread?: number;
 }) {
   const db = getDB();
+  const user = db.users.find((u) => u.id === db.currentUserId);
+  const isPlatform = user?.kind === "platform" || user?.id === "u1";
+  if (!isPlatform) {
+    const own = getAgencyConnection(db);
+    if (!own || own.status !== "online" || !String(own.phone || "").replace(/\D/g, "")) return;
+  }
   const phone = jidToPhone(opts.remoteJid);
   const name = displayName(opts.pushName, opts.remoteJid, phone);
   const conn = getAgencyConnection(db);
@@ -223,6 +229,13 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
  * Na primeira carga só importa histórico. Mensagens novas inbound disparam o agente.
  */
 export async function pollEvolutionInbox(): Promise<number> {
+  const db = getDB();
+  const user = db.users.find((u) => u.id === db.currentUserId);
+  const isPlatform = user?.kind === "platform" || user?.id === "u1";
+  if (!isPlatform) {
+    const own = getAgencyConnection(db);
+    if (!own || own.status !== "online" || !String(own.phone || "").replace(/\D/g, "")) return 0;
+  }
   const chatsRes = await evolutionFindChats().catch(() => ({ ok: false as const, chats: [] as any[] }));
   const contactsRes = await evolutionFindContacts().catch(() => ({ ok: false as const, contacts: [] as any[] }));
   if (!chatsRes.ok && !contactsRes.ok) return 0;

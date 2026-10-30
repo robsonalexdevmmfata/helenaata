@@ -5,7 +5,8 @@ import type {
 import { DEFAULT_ROLE_PERMISSIONS, TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
 import { applyHumanTeam, liveServiceOffers } from "./catalog";
 
-const ORG = "org_novarota";
+export const PLATFORM_ORG = "org_novarota";
+const ORG = PLATFORM_ORG;
 
 export function defaultSalesFlow(): SalesFlowSettings {
   return {
@@ -34,11 +35,11 @@ export function ensureSaasUsers(db: DB) {
     owner.password = owner.password || "123456";
     owner.planId = owner.planId || "whitelabel";
   }
-  if (!db.users.some((u) => u.id === "u_demo")) {
+    if (!db.users.some((u) => u.id === "u_demo")) {
     const start = new Date();
     db.users.push({
       id: "u_demo",
-      organizationId: db.organization.id,
+      organizationId: "org_demo",
       name: "Ana Souza",
       email: "ana@estudioana.com.br",
       username: "demo",
@@ -72,6 +73,7 @@ export function ensureSaasUsers(db: DB) {
     if (!u.trialEndsAt && u.createdAt) {
       u.trialEndsAt = new Date(new Date(u.createdAt).getTime() + 2 * 86_400_000).toISOString();
     }
+    if (u.id === "u_demo" && u.organizationId === PLATFORM_ORG) u.organizationId = "org_demo";
   }
 }
 
@@ -153,7 +155,7 @@ export function createSeed(now = new Date()): DB {
 
   const users: User[] = [
     { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robson@infotech.com.br", username: "admin", password: "123456", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
-    { id: "u_demo", organizationId: ORG, name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), createdAt: now.toISOString(), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
+    { id: "u_demo", organizationId: "org_demo", name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), createdAt: now.toISOString(), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
   ];
 
   const mkAgent = (a: Partial<Agent> & Pick<Agent, "id" | "name" | "role">): Agent => ({
@@ -479,4 +481,116 @@ export function createSeed(now = new Date()): DB {
     abExperiments: [],
     organizationSettings: { retentionDays: 730, mfaEnabled: false, ipWhitelist: [] },
   };
+}
+
+function slugify(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40) || "conta";
+}
+
+/** Workspace de cliente: mesma máquina do admin, zero CRM/campanha/inbox de demonstração. */
+export function createCustomerSeed(owner: User): DB {
+  const db = createSeed();
+  const orgId = owner.organizationId;
+  const company = owner.companyName?.trim() || owner.name;
+  const now = new Date().toISOString();
+  const self: User = {
+    ...owner,
+    organizationId: orgId,
+    role: "owner",
+    title: owner.title || "Dona da conta",
+    kind: "customer",
+  };
+
+  db.organization = {
+    id: orgId,
+    name: company,
+    slug: slugify(company),
+    industry: "",
+    timezone: "America/Sao_Paulo",
+    document: "",
+    plan: owner.planId === "maquina" ? "Máquina" : owner.planId === "impulso" ? "Impulso" : "Trial",
+    createdAt: owner.createdAt || now,
+  };
+  db.currentUserId = owner.id;
+  db.users = [self];
+  db.invites = [];
+  db.companies = [];
+  db.contacts = [];
+  db.deals = [];
+  db.activities = [];
+  db.tasks = [];
+  db.calendarEvents = [];
+  db.meetings = [];
+  db.conversations = [];
+  db.operations = [];
+  db.approvals = [];
+  db.executions = [];
+  db.knowledge = [];
+  db.lists = [];
+  db.campaigns = [];
+  db.sitePreviews = [];
+  db.quoteRequests = [];
+  db.webhooks = [];
+  db.webhookLogs = [];
+  db.apiTokens = [];
+  db.aiUsage = [];
+  db.helenaMessages = [];
+  db.lgpdRequests = [];
+  db.missions = [];
+  db.missionTasks = [];
+  db.missionEvents = [];
+  db.abExperiments = [];
+  db.invoices = [];
+  db.sessions = [{ id: "ss1", device: "Este navegador", ip: "", location: "", lastActive: now, current: true }];
+  db.salesFlow = { ...defaultSalesFlow(), teamUserIds: [owner.id] };
+  db.connections = [{
+    id: "wa_agency",
+    organizationId: orgId,
+    name: "WhatsApp",
+    phone: owner.phone || "",
+    type: "cloud_api",
+    status: "offline",
+    queue: 0,
+    sentToday: 0,
+    dailyLimit: 1000,
+    lastSyncAt: now,
+  }];
+  db.agents.forEach((a) => {
+    a.organizationId = orgId;
+    a.currentTask = undefined;
+    a.spent = 0;
+    a.status = a.status === "pausado" ? "pausado" : "aguardando";
+    a.knowledgeIds = [];
+    a.metrics = { tasks: 0, conversations: 0, responseRate: 0, conversions: 0 };
+    if (a.prompt) a.prompt = a.prompt.replace(/Info Tech/gi, company);
+  });
+  db.teams.forEach((t) => {
+    t.organizationId = orgId;
+    t.spent = 0;
+    t.metrics = { leads: 0, meetings: 0, conversions: 0 };
+  });
+  db.pipelines.forEach((p) => { p.organizationId = orgId; });
+  db.cadences.forEach((c) => { c.organizationId = orgId; });
+  db.quickReplies.forEach((q) => { q.organizationId = orgId; });
+  db.templates.forEach((t) => { t.organizationId = orgId; });
+  db.automations = liveMapsAutomations(orgId);
+  db.serviceOffers = liveServiceOffers(orgId);
+  db.memories = db.memories.map((m) => ({
+    ...m,
+    organizationId: orgId,
+    content: m.content
+      .replace(/Info Tech Ltda/gi, company)
+      .replace(/Robson Alex/gi, owner.name)
+      .replace(/Robson/gi, owner.name.split(" ")[0] || owner.name),
+    source: owner.name,
+    createdAt: now,
+    updatedAt: now,
+  }));
+  return db;
 }
