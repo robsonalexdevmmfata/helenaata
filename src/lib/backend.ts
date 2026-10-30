@@ -2,9 +2,8 @@
 // mesmo endereço do site (mesma porta). Defina VITE_API_URL para usar outro endereço.
 import { useEffect, useState } from "react";
 
-import { helenaApiOrigin } from "@/lib/api-origin";
+import { helenaApiBases } from "@/lib/api-origin";
 
-const BASE = helenaApiOrigin();
 const TOKEN_KEY = "helena-backend-token";
 
 export class BackendError extends Error {
@@ -26,30 +25,36 @@ export function clearBackendToken() {
 }
 
 export async function api<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
-  try {
-    const token = getBackendToken();
-    const res = await fetch(`${BASE}${path}`, {
-      method: init.method ?? (init.body ? "POST" : "GET"),
-      signal: controller.signal,
-      headers: {
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: init.body ? JSON.stringify(init.body) : undefined,
-    });
-    const isJson = res.headers.get("content-type")?.includes("application/json");
-    const data = isJson ? await res.json() : null;
-    if (!isJson) throw new BackendError("Servidor indisponível.", 0);
-    if (!res.ok) throw new BackendError(data?.error ?? `Erro ${res.status}`, res.status);
-    return data as T;
-  } catch (e) {
-    if (e instanceof BackendError) throw e;
-    throw new BackendError("Servidor indisponível.", 0);
-  } finally {
-    clearTimeout(timer);
+  const token = getBackendToken();
+  const headers = {
+    ...(init.body ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  const method = init.method ?? (init.body ? "POST" : "GET");
+  const body = init.body ? JSON.stringify(init.body) : undefined;
+  let last: Error = new BackendError("Servidor WhatsApp indisponível. Rode npm run dev na porta 8081.", 0);
+
+  for (const base of helenaApiBases()) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 45_000);
+    try {
+      const res = await fetch(`${base}${path}`, { method, signal: controller.signal, headers, body });
+      const isJson = res.headers.get("content-type")?.includes("application/json");
+      const data = isJson ? await res.json() : null;
+      if (!isJson) {
+        last = new BackendError("Servidor WhatsApp indisponível. Rode npm run dev na porta 8081.", 0);
+        continue;
+      }
+      if (!res.ok) throw new BackendError(data?.error ?? `Erro ${res.status}`, res.status);
+      return data as T;
+    } catch (e) {
+      if (e instanceof BackendError && e.status !== 0) throw e;
+      last = e instanceof Error ? e : last;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw last;
 }
 
 export interface BackendHealth {

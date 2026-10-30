@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, CheckCircle2, Copy, ExternalLink, Globe, KeyRound,
   MessageCircle, Plus, QrCode, RefreshCw, Settings2, Smartphone,
@@ -18,7 +18,6 @@ import {
 import { useDB, update, uid, nowISO } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
-import { RENDER_API_ORIGIN } from "@/lib/api-origin";
 import { whatsappApi, type WhatsAppStatus } from "@/lib/backend";
 import {
   getEvolutionConfigUI, saveEvolutionConfigUI,
@@ -47,6 +46,7 @@ function BaileysPanel() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const connectOnce = useRef(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean; connected: boolean; message: string; number?: string; latencyMs?: number;
   } | null>(null);
@@ -57,15 +57,23 @@ function BaileysPanel() {
       setSt(next);
       setErr("");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Render indisponível.");
+      setErr(e instanceof Error ? e.message : "Baileys indisponível. Rode npm run dev na porta 8081.");
     }
   };
 
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), 3000);
+    const t = setInterval(() => void refresh(), 2500);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (!st || connectOnce.current) return;
+    if (st.status === "connected" || st.status === "awaiting_qr") return;
+    connectOnce.current = true;
+    void handleConnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st?.status]);
 
   useEffect(() => {
     if (st?.status !== "connected" || !st.phone) return;
@@ -128,11 +136,10 @@ function BaileysPanel() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <QrCode className="size-4 text-primary" /> WhatsApp no Render (Baileys)
+            <QrCode className="size-4 text-primary" /> WhatsApp (Baileys)
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Sem Evolution e sem VPS. O servidor {RENDER_API_ORIGIN.replace("https://", "")} segura o socket.
-            Primeiro boot do plano grátis pode levar ~40s.
+            Sem Evolution. O Baileys roda neste servidor (helenaata.onrender.com). Clique em Gerar QR e leia no chip.
           </p>
         </div>
         <Badge variant={st?.status === "connected" ? "default" : "secondary"}>{label}</Badge>
@@ -140,7 +147,7 @@ function BaileysPanel() {
 
       {err && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {err}. No Render o serviço tem que ser Web Service (Node), branch main do repo helenaata, e ficar Live.
+          {err} Rode o projeto com npm run dev (porta 8081) e tente de novo.
         </div>
       )}
 
@@ -595,7 +602,7 @@ function WhatsAppPage() {
       <PageHeader
         eyebrow="Integrações"
         title="WhatsApp"
-        description="Conecte o chip pelo QR no Render (Baileys). Evolution na VPS fica opcional, na última aba."
+        description="Baileys no Render (helenaata.onrender.com). Escaneie o QR no chip. Evolution na VPS é opcional."
         actions={
           <Button className="gap-2" onClick={() => setIsNewOpen(true)}>
             <Plus className="size-4" /> Adicionar Número

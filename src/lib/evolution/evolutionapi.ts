@@ -12,7 +12,7 @@
  * Documentação Evolution API: https://doc.evolution-api.com
  */
 
-import { helenaApiOrigin, isLocalEvolutionHost, RENDER_API_ORIGIN } from "@/lib/api-origin";
+import { helenaApiBases, helenaApiOrigin, isLocalEvolutionHost } from "@/lib/api-origin";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -101,7 +101,8 @@ function headers(cfg: EvolutionConfig) {
 
 function evoUrl(path: string, _cfg: EvolutionConfig) {
   const clean = path.startsWith("/") ? path : `/${path}`;
-  return `${helenaApiOrigin()}/api/evolution${clean}`;
+  const origin = helenaApiBases()[0] ?? helenaApiOrigin();
+  return `${origin}/api/evolution${clean}`;
 }
 
 export function jidToPhone(jid: string) {
@@ -287,46 +288,45 @@ export async function evolutionSendText(
     return { ok: false, error: "VITEST: disparo WhatsApp desativado" };
   }
 
-  // Garante que o número não tem + ou espaços
   const cleanNumber = number.replace(/\D/g, "");
+  let last = "Falha ao enviar mensagem";
 
-  const url = evoUrl(`/message/sendText/${config.instance}`, config);
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: headers(config),
-      body: JSON.stringify({
-        number: cleanNumber,
-        text,
-        // Opcionais Evolution API v2:
-        delay: 1200,          // ms entre mensagens (simula digitação humana)
-        linkPreview: false,   // não gera preview de links (menos spammy)
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: data?.message ?? data?.error ?? `HTTP ${res.status}`,
-        raw: data,
-      };
+  for (const origin of helenaApiBases()) {
+    try {
+      const res = await fetch(`${origin}/api/whatsapp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: cleanNumber, text }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        return { ok: true, messageId: data.to ?? "sent", raw: data };
+      }
+      if (res.status === 409) {
+        return { ok: false, error: data?.error ?? "WhatsApp desconectado. Escaneie o QR em Integrações." };
+      }
+      last = data?.error ?? `HTTP ${res.status}`;
+    } catch (err: any) {
+      last = err?.message ?? last;
     }
 
-    // Evolution API v2 retorna: { key: { id, ... }, message: { ... } }
-    return {
-      ok: true,
-      messageId: data?.key?.id ?? data?.id ?? "sent",
-      raw: data,
-    };
-  } catch (err: any) {
-    return {
-      ok: false,
-      error: err?.message ?? "Falha ao enviar mensagem",
-    };
+    try {
+      const res = await fetch(evoUrl(`/message/sendText/${config.instance}`, config), {
+        method: "POST",
+        headers: headers(config),
+        body: JSON.stringify({ number: cleanNumber, text, delay: 1200, linkPreview: false }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        return { ok: true, messageId: data?.key?.id ?? data?.id ?? "sent", raw: data };
+      }
+      last = data?.message ?? data?.error ?? `HTTP ${res.status}`;
+    } catch (err: any) {
+      last = err?.message ?? last;
+    }
   }
+
+  return { ok: false, error: last };
 }
 
 // ── 3. Enviar mídia (imagem/arquivo) ─────────────────────────────────────────
@@ -471,24 +471,32 @@ function wipeLocalEvolutionUrl() {
 }
 
 async function pingWhatsAppBackend(): Promise<EvoStatusResult> {
-  const origin = helenaApiOrigin();
-  const url = `${origin}/api/whatsapp/status`;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
-    if (!res.ok) return { ok: false, connected: false, error: `HTTP ${res.status}` };
-    const data = await res.json().catch(() => null);
-    if (!data) return { ok: false, connected: false, error: "HTTP 404" };
-    const connected = data.status === "connected";
-    return {
-      ok: true,
-      connected,
-      instance: "helena",
-      number: data.phone || "",
-      status: data.status || "disconnected",
-    };
-  } catch (err: any) {
-    return { ok: false, connected: false, error: err?.message ?? "sem resposta" };
+  let last = "sem resposta";
+  for (const origin of helenaApiBases()) {
+    const url = `${origin}/api/whatsapp/status`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+      if (!res.ok) {
+        last = `HTTP ${res.status}`;
+        continue;
+      }
+      const data = await res.json().catch(() => null);
+      if (!data || typeof data.status !== "string") {
+        last = "resposta inválida";
+        continue;
+      }
+      return {
+        ok: true,
+        connected: data.status === "connected",
+        instance: "helena",
+        number: data.phone || "",
+        status: data.status || "disconnected",
+      };
+    } catch (err: any) {
+      last = err?.message ?? "sem resposta";
+    }
   }
+  return { ok: false, connected: false, error: last };
 }
 
 export async function testEvolutionConnection(
@@ -498,8 +506,6 @@ export async function testEvolutionConnection(
   const start = Date.now();
   const config = { ...(cfg ?? getEvolutionConfigUI()) };
   if (isLocalEvolutionHost(config.baseUrl)) config.baseUrl = "";
-  const host = helenaApiOrigin() || RENDER_API_ORIGIN;
-
   const baileys = await pingWhatsAppBackend();
   const latencyMs = Date.now() - start;
   if (baileys.ok) {
@@ -508,7 +514,7 @@ export async function testEvolutionConnection(
         ok: true,
         connected: false,
         latencyMs,
-        message: `Render no ar (${host}). WhatsApp ainda sem QR (state: ${baileys.status}). Abra Integrações → QR · Baileys.`,
+        message: `Baileys no ar. WhatsApp ainda sem QR (state: ${baileys.status}). Clique em Gerar QR / Conectar.`,
         number: baileys.number,
       };
     }
@@ -540,7 +546,7 @@ export async function testEvolutionConnection(
     ok: false,
     connected: false,
     latencyMs,
-    message: `WhatsApp do Render (${host}) não respondeu (${baileys.error}). O Web Service helena-ai precisa estar Live — isso não usa localhost:8080.`,
+    message: `WhatsApp (Baileys) não respondeu (${baileys.error}). No PC: npm run dev e use http://localhost:8081. Sem isso o QR não existe.`,
   };
 }
 

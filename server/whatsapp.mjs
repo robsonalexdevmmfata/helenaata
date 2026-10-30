@@ -2,8 +2,6 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import QRCode from "qrcode";
-import pino from "pino";
 import { formatForWhatsApp, nextStage } from "./formatter.mjs";
 import { aiProvider, helenaReply } from "./ai.mjs";
 
@@ -25,7 +23,29 @@ const wa = (g.__helenaWhatsApp ??= {
   conversations: new Map(), // jid -> { stage, history: [{role, content}] }
 });
 
-const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || "warn" });
+const silent = () => {};
+const logger = {
+  level: process.env.WHATSAPP_LOG_LEVEL || "silent",
+  child() {
+    return this;
+  },
+  trace: silent,
+  debug: silent,
+  info: silent,
+  warn: silent,
+  error: silent,
+  fatal: silent,
+};
+
+async function qrDataUrl(text) {
+  try {
+    const mod = await import("qrcode");
+    const QRCode = mod.default ?? mod;
+    return await QRCode.toDataURL(text, { margin: 1, width: 280 });
+  } catch {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=1&data=${encodeURIComponent(text)}`;
+  }
+}
 
 function pushLog(entry) {
   wa.log.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: new Date().toISOString(), ...entry });
@@ -93,7 +113,7 @@ export async function connect() {
   sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       wa.status = "awaiting_qr";
-      wa.qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 280 });
+      wa.qrDataUrl = await qrDataUrl(qr);
     }
     if (connection === "open") {
       wa.status = "connected";

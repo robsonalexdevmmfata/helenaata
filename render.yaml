@@ -1,14 +1,13 @@
-# Backend WhatsApp (Baileys) no Render. Front fica na Vercel.
-# Plano free: sem disco persistente — o QR precisa ser lido de novo se o serviço reiniciar.
+# Serviço real: https://helenaata.onrender.com (site + Baileys na mesma porta)
 services:
   - type: web
-    name: helena-ai
+    name: helenaata
     runtime: node
     plan: free
     region: frankfurt
     repo: https://github.com/robsonalexdevmmfata/helenaata
     branch: main
-    buildCommand: npm ci --omit=dev --no-audit --no-fund
+    buildCommand: npm ci && npm run build:render
     startCommand: node server/index.mjs
     healthCheckPath: /health
     autoDeploy: true

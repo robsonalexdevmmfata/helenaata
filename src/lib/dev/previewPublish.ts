@@ -9,6 +9,7 @@ function previewApiBases() {
   if (typeof window !== "undefined" && !/vercel\.app$/i.test(window.location.hostname)) {
     bases.push("");
   }
+  bases.push("https://helenaata.onrender.com");
   return [...new Set(bases)];
 }
 
