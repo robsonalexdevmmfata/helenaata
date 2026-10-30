@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { pauseHappyNationIfGreeting } from "@/lib/helena/music";
 
 // Cross-browser SpeechRecognition types
 interface SpeechRecognitionEventLike extends Event {
@@ -139,10 +140,12 @@ export function useHelenaVoice(opts?: {
         utterance.onend = () => {
           clearSpeechTimers();
           setIsSpeaking(false);
+          pauseHappyNationIfGreeting();
         };
         utterance.onerror = () => {
           clearSpeechTimers();
           setIsSpeaking(false);
+          pauseHappyNationIfGreeting();
         };
 
         window.speechSynthesis.speak(utterance);
@@ -164,6 +167,7 @@ export function useHelenaVoice(opts?: {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
+      pauseHappyNationIfGreeting();
     }
   }, [clearSpeechTimers]);
 

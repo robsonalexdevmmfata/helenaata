@@ -30,18 +30,20 @@ import {
   type HunterLead,
 } from "@/lib/leads-hunter";
 import { placesToHunterLeads, searchBusinessesWithoutWebsite } from "@/lib/prospect/mapsSearch";
-import { insertPlacesAsLeads, sendOpeningNow } from "@/lib/prospect/runProspecting";
+import { dispatchLeadsToAgents, runWaveProspecting } from "@/lib/prospect/runProspecting";
 import { isValidBrazilWhatsApp } from "@/lib/prospect/mapsSearch";
 import { useDB } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 
 const NICHOS = [
   "Dentistas",
-  "Escritórios de Odontologia",
-  "Consultórios Odontológicos",
   "Clínicas Médicas",
   "Clínicas de estética",
   "Advogados",
+  "Restaurantes",
+  "Barbearias",
+  "Oficinas mecânicas",
+  "Imobiliárias",
 ];
 
 export const Route = createFileRoute("/_app/prospeccao/buscar")({
@@ -58,10 +60,10 @@ function CacarLeadsPage() {
 
   // Estados da Busca
   const [nicho, setNicho] = useState("Dentistas");
-  const [palavrasChave, setPalavrasChave] = useState("consultório, odontologia, sem site");
-  const [cidades, setCidades] = useState("");
-  const [estado, setEstado] = useState("TODOS");
-  const [quantidade, setQuantidade] = useState(12);
+  const [palavrasChave, setPalavrasChave] = useState("consultório odontológico sem site");
+  const [cidades, setCidades] = useState("São Paulo, Campinas, Araçatuba, Andradina");
+  const [estado, setEstado] = useState("SP");
+  const [quantidade, setQuantidade] = useState(150);
   const [isSearching, setIsSearching] = useState(false);
 
   // Leads e Logs
@@ -75,8 +77,9 @@ function CacarLeadsPage() {
   // Filtros e Visualização
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<"todos" | "TUBARÃO" | "PREMIUM" | "quente" | "frio">("todos");
-  const [onlyCell, setOnlyCell] = useState(true);
-  const [onlyVerifiedWa, setOnlyVerifiedWa] = useState(true);
+  const [onlyCell, setOnlyCell] = useState(false);
+  const [onlyVerifiedWa, setOnlyVerifiedWa] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
   const addLog = (text: string) => {
@@ -88,8 +91,8 @@ function CacarLeadsPage() {
   const handleStartSearch = async () => {
     setIsSearching(true);
     addLog(`[INFO] Buscando no mapa aberto (OpenStreetMap) empresas SEM site...`);
-    const nationwide = estado === "TODOS" || !cidades.trim();
-    addLog(`[INFO] Nicho "${nicho}" · ${nationwide ? "Brasil inteiro" : `${cidades}/${estado}`} · meta=${quantidade}`);
+    const nationwide = estado === "TODOS" && !cidades.trim();
+    addLog(`[INFO] Nicho "${nicho}" · ${nationwide ? "Brasil inteiro" : `${cidades || "cidades da UF"}/${estado}`} · meta=${quantidade}`);
 
     try {
       const places = await searchBusinessesWithoutWebsite({
@@ -99,12 +102,15 @@ function CacarLeadsPage() {
         nationwide,
         limit: quantidade,
       });
-      const newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter(
-        (l) => !l.hasWebsite && l.isCellPhone,
-      );
+      const newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter((l) => !l.hasWebsite);
       setLeads(newLeads);
-      addLog(`[OK] ${newLeads.length} empresas sem site e com WhatsApp válido.`);
-      toast.success(newLeads.length ? `${newLeads.length} leads reais sem site` : "Nenhuma empresa sem site encontrada nessa região");
+      const withWa = newLeads.filter((l) => l.isCellPhone).length;
+      addLog(`[OK] ${newLeads.length} empresas sem site · ${withWa} com WhatsApp celular válido.`);
+      toast.success(
+        newLeads.length
+          ? `${newLeads.length} leads sem site (${withWa} prontos para o WhatsApp)`
+          : "Nenhuma empresa sem site encontrada nessa região",
+      );
     } catch (err) {
       addLog(`[ERRO] Falha na varredura: ${err instanceof Error ? err.message : "rede"}`);
       toast.error("Não foi possível consultar o mapa. Tente de novo em instantes.");
@@ -112,40 +118,66 @@ function CacarLeadsPage() {
     setIsSearching(false);
   };
 
-  const handleSendToHelena = (lead: HunterLead) => {
+  const toPlace = (lead: HunterLead) => ({
+    name: lead.name,
+    phone: lead.phone,
+    city: `${lead.city}, ${lead.state}`,
+    address: lead.address,
+    contactName: lead.ownerContact || lead.name,
+  });
+
+  const handleSendToHelena = async (lead: HunterLead) => {
     if (lead.hasWebsite || !isValidBrazilWhatsApp(lead.phone)) {
-      toast.error("Só entram na base ativa leads sem site e com WhatsApp celular válido.");
+      toast.error("Só disparamos para leads sem site e com WhatsApp celular válido.");
       return;
     }
-    const ids = insertPlacesAsLeads(
-      [{
-        name: lead.name,
-        phone: lead.phone,
-        city: `${lead.city}, ${lead.state}`,
-        address: lead.address,
-        contactName: lead.ownerContact || lead.name,
-      }],
-      lead.niche,
-    );
-    if (!ids.length) {
-      toast.error("Lead já está na base ou não passou no filtro de WhatsApp.");
+    setDispatching(true);
+    addLog(`[TIME] Encaminhando "${lead.name}" ao time comercial...`);
+    const res = await dispatchLeadsToAgents([toPlace(lead)], lead.niche);
+    setDispatching(false);
+    if (!res.sent) {
+      addLog(`[WA] Não enviado: ${lead.name}`);
+      toast.error("Lead já está na base ou a Evolution não enviou. Abra o Inbox para conferir.");
       return;
     }
-    void sendOpeningNow(lead.phone, lead.ownerContact || lead.name, lead.name).then((res) => {
-      if (res.ok) addLog(`[WA] Enviado para ${lead.phone} via instância helena`);
-      else addLog(`[WA] Falha ${lead.name}: ${res.error}`);
-    });
-    addLog(`[TIME] Lead "${lead.name}" no CRM · rodízio comercial · WhatsApp helena`);
-    toast.success(`"${lead.name}" no CRM. Disparo pela instância helena.`);
+    addLog(`[WA] SDR enviou para ${lead.phone} · aparece no Inbox`);
+    toast.success(`"${lead.name}" no Inbox. Agente de IA disparou pelo WhatsApp helena.`);
   };
 
-  // Enviar todos os selecionados em lote para a Helena
-  const handleBatchSendToHelena = () => {
+  const handleBatchSendToHelena = async () => {
     const selectedList = leads.filter((l) => selectedIds[l.id]);
-    const targetList = selectedList.length > 0 ? selectedList : leads.slice(0, 10);
+    const ready = (selectedList.length > 0 ? selectedList : leads)
+      .filter((l) => !l.hasWebsite && isValidBrazilWhatsApp(l.phone))
+      .slice(0, 150);
+    if (!ready.length) {
+      toast.error("Selecione leads com WhatsApp celular válido (até 150).");
+      return;
+    }
+    setDispatching(true);
+    addLog(`[TIME] Ativando Comercial · ${ready.length} disparos pela instância helena`);
+    const res = await dispatchLeadsToAgents(ready.map(toPlace), nicho);
+    setDispatching(false);
+    addLog(`[WA] Enviados ${res.sent} · falhas ${res.failed}`);
+    toast.success(`${res.sent} abordagens no Inbox. Abra Atendimento → Inbox.`);
+  };
 
-    targetList.forEach((lead) => handleSendToHelena(lead));
-    toast.success(`${targetList.length} leads enviados para a fila da Helena no CRM!`);
+  const handleWave150 = async () => {
+    setDispatching(true);
+    addLog("[ONDA] Time de vendas · até 150 WhatsApp reais em SP, Campinas, Araçatuba, Andradina e próximas");
+    addLog("[ONDA] Marina · saúde · Camila · serviços · intervalo 8s · sem inventar número");
+    try {
+      const res = await runWaveProspecting({ limit: 150, organizationId: db.organization.id });
+      addLog(`[ONDA] Encontrados ${res.found} · enviados ${res.sent} · falhas ${res.failed} · pulados ${res.skipped}`);
+      toast.success(
+        res.sent
+          ? `Onda no WhatsApp: ${res.sent} disparos. O mapa raramente entrega 150 celulares — só foi o que tinha número válido.`
+          : `Mapa achou ${res.found} sem site. Nenhum WhatsApp novo saiu (já abordado ou Evolution).`,
+      );
+    } catch (err) {
+      addLog(`[ERRO] Onda: ${err instanceof Error ? err.message : "falha"}`);
+      toast.error("Não deu para completar a onda agora. Tente de novo em instantes.");
+    }
+    setDispatching(false);
   };
 
   // Filtragem dos leads
@@ -278,7 +310,7 @@ function CacarLeadsPage() {
               <Input
                 type="number"
                 value={quantidade}
-                onChange={(e) => setQuantidade(Math.min(500, Math.max(5, Number(e.target.value) || 10)))}
+                onChange={(e) => setQuantidade(Math.min(150, Math.max(5, Number(e.target.value) || 10)))}
                 className="w-24 bg-background text-sm font-semibold"
               />
             </div>
@@ -405,10 +437,25 @@ function CacarLeadsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            onClick={handleBatchSendToHelena}
+            onClick={() => void handleWave150()}
+            disabled={dispatching || isSearching}
             className="gap-1.5 bg-helena text-helena-foreground hover:bg-helena/90 text-xs font-medium"
           >
-            <Zap className="size-3.5 fill-current" /> Prospecção IA em fila
+            {dispatching ? <Loader2 className="size-3.5 animate-spin" /> : <Flame className="size-3.5" />}
+            Onda 150 · SP + interior
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void handleBatchSendToHelena()}
+            disabled={dispatching}
+            className="gap-1.5 text-xs font-medium"
+          >
+            {dispatching ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5 fill-current" />}
+            Encaminhar ao time de IA
+          </Button>
+          <Button size="sm" variant="outline" asChild className="text-xs">
+            <a href="/atendimento/inbox">Abrir Inbox</a>
           </Button>
 
           <Button
@@ -487,10 +534,16 @@ function CacarLeadsPage() {
                     <td className="py-3.5 px-4 space-y-1">
                       <div className="flex items-center gap-1.5">
                         <Phone className="size-3 text-emerald-500" />
-                        <span className="font-mono font-medium">{lead.phone}</span>
-                        <Badge variant="outline" className="text-[9px] px-1 text-emerald-500 border-emerald-500/30">
-                          Celular
-                        </Badge>
+                        <span className="font-mono font-medium">{lead.phone || "sem telefone no mapa"}</span>
+                        {lead.isCellPhone ? (
+                          <Badge variant="outline" className="text-[9px] px-1 text-emerald-500 border-emerald-500/30">
+                            WhatsApp
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] px-1 text-muted-foreground">
+                            sem celular
+                          </Badge>
+                        )}
                       </div>
 
                       <div>
@@ -539,7 +592,8 @@ function CacarLeadsPage() {
                       <div className="flex items-center justify-end gap-1.5">
                         <Button
                           size="sm"
-                          onClick={() => handleSendToHelena(lead)}
+                          onClick={() => void handleSendToHelena(lead)}
+                          disabled={dispatching || !lead.isCellPhone}
                           className="h-7 px-2.5 text-[11px] bg-helena text-helena-foreground hover:bg-helena/90 font-medium"
                         >
                           PROSPECÇÃO IA

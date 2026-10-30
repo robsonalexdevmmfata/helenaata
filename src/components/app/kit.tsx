@@ -146,10 +146,10 @@ const avatarTone: Record<ColorToken, string> = {
   "chart-5": "bg-chart-5/15 text-chart-5",
 };
 
-export function EntityAvatar({ name, color = "chart-3", size = "md", agent }: { name: string; color?: ColorToken; size?: "sm" | "md" | "lg"; agent?: boolean }) {
+export function EntityAvatar({ name, color = "chart-3", size = "md", agent, className }: { name: string; color?: ColorToken; size?: "sm" | "md" | "lg"; agent?: boolean; className?: string }) {
   const s = size === "sm" ? "size-6 text-[10px]" : size === "lg" ? "size-11 text-sm" : "size-8 text-xs";
   return (
-    <span className={cn("inline-flex shrink-0 items-center justify-center font-semibold", agent ? "rounded-lg" : "rounded-full", s, avatarTone[color])}>
+    <span className={cn("inline-flex shrink-0 items-center justify-center font-semibold", agent ? "rounded-lg" : "rounded-full", s, avatarTone[color], className)}>
       {initials(name)}
     </span>
   );

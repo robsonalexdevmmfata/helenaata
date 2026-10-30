@@ -27,7 +27,7 @@ describe("Helena FASE 2: Scraper Google Maps e Calendar", () => {
 
     // Verifica se a mensagem de abordagem do SDR foi disparada no WhatsApp
     const semSiteConversations = dbAfter.conversations.filter((c) =>
-      c.messages.some((m) => m.text.includes("Robson Alex") && m.text.includes("reunião de 10 minutos"))
+      c.messages.some((m) => m.text.includes("Robson Alex") && /proprietári/i.test(m.text))
     );
     expect(semSiteConversations.length).toBeGreaterThanOrEqual(3);
   });

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DB } from "./types";
-import { createSeed, liveMapsAutomations } from "./seed";
-import { applyCommercialAgentPrompts, liveServiceOffers } from "./catalog";
+import { createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers } from "./seed";
+import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "./catalog";
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
 import { AGENCY_WHATSAPP } from "./evolution/evolutionapi";
 
@@ -22,7 +22,7 @@ function load(): DB {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as DB;
-      if (typeof parsed.version === "number" && parsed.version >= 1 && parsed.version <= 6) {
+      if (typeof parsed.version === "number" && parsed.version >= 1 && parsed.version <= 12) {
         const db = hydrate(parsed);
         try {
           window.localStorage.setItem(KEY, JSON.stringify(db));
@@ -41,6 +41,8 @@ function load(): DB {
 /** Completa campos novos em bases persistidas no localStorage. */
 function hydrate(db: DB): DB {
   if (!Array.isArray(db.calendarEvents)) db.calendarEvents = [];
+  if (!Array.isArray(db.meetings)) db.meetings = [];
+  if (!db.salesFlow) db.salesFlow = defaultSalesFlow();
   if (!Array.isArray(db.toolSettings)) db.toolSettings = [];
   for (const t of TOOL_REGISTRY) {
     if (!db.toolSettings.some((x) => x.name === t.name)) {
@@ -53,8 +55,13 @@ function hydrate(db: DB): DB {
     if (!a.permissions.includes("calendar.edit")) a.permissions.push("calendar.edit");
     a.metrics = { tasks: 0, conversations: 0, responseRate: 0, conversions: 0 };
   });
+  if (!db.agents?.some((a) => a.id === "a_valentina")) {
+    const fromSeed = seed().agents.find((a) => a.id === "a_valentina");
+    if (fromSeed) db.agents.push(fromSeed);
+  }
   db.teams?.forEach((t) => {
     t.metrics = { leads: 0, meetings: 0, conversions: 0 };
+    if (t.id === "t_com" && !t.agentIds.includes("a_valentina")) t.agentIds.push("a_valentina");
   });
   db.connections = (db.connections ?? []).filter((c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name));
   if (!db.connections.length) {
@@ -124,16 +131,56 @@ function hydrate(db: DB): DB {
     });
   }
   if (!Array.isArray(db.serviceOffers)) db.serviceOffers = [];
-  if ((db.version ?? 0) < 6) {
+  if ((db.version ?? 0) < 8) {
     db.serviceOffers = liveServiceOffers(db.organization.id);
     applyCommercialAgentPrompts(db.agents ?? []);
+    const team = db.teams?.find((t) => t.id === "t_com");
+    if (team) team.objective = "Máquina de vendas: SDR por vertical, BANT em quem responde, Closer fecha reunião.";
+    const sdr1 = db.agents?.find((a) => a.id === "a_sdr1");
+    if (sdr1) sdr1.objective = "Vender reunião para saúde e beleza sem site.";
+    const sdr2 = db.agents?.find((a) => a.id === "a_sdr2");
+    if (sdr2) sdr2.objective = "Vender reunião para comércio e serviço local sem site.";
     const prod = db.memories?.find((m) => m.id === "mem_produtos");
     if (prod) {
-      prod.content = "Tabela viva em Prospecção → Orçamentos. Os agentes só podem cotar o que está ativo nessa lista.";
+      prod.content = "Tabela viva em Prospecção → Orçamentos. No WhatsApp só citar valor se o cliente perguntar.";
       prod.updatedAt = new Date().toISOString();
     }
   }
-  db.version = 6;
+  db.version = 8;
+  if ((db.version ?? 0) < 9 || db.version === 8) {
+    db.operations = (db.operations ?? []).filter((o) => o.id === "op_live_maps" || !/^op\d+$/.test(o.id));
+    db.approvals = (db.approvals ?? []).filter((a) => !/^ap\d+$/.test(a.id));
+    db.version = 9;
+  }
+  if ((db.version ?? 0) < 10) {
+    applyHumanTeam(db.agents ?? []);
+    const team = db.teams?.find((t) => t.id === "t_com");
+    if (team) {
+      team.objective = "Marina e Camila abrem, Rafael qualifica, André e Valentina fecham reunião. Sem perseguir o mesmo número.";
+    }
+    db.version = 10;
+  }
+  if (!Array.isArray(db.sitePreviews)) db.sitePreviews = [];
+  if ((db.version ?? 0) < 11) {
+    const fromSeed = seed();
+    for (const id of ["a_dev_fe", "a_dev_be", "a_dev_ds"]) {
+      if (!db.agents?.some((a) => a.id === id)) {
+        const a = fromSeed.agents.find((x) => x.id === id);
+        if (a) db.agents.push(a);
+      }
+    }
+    if (!db.teams?.some((t) => t.id === "t_dev")) {
+      const t = fromSeed.teams.find((x) => x.id === "t_dev");
+      if (t) db.teams.push(t);
+    }
+    applyHumanTeam(db.agents ?? []);
+    db.version = 11;
+  }
+  if (!Array.isArray(db.quoteRequests)) db.quoteRequests = [];
+  if ((db.version ?? 0) < 12) {
+    ensureSaasUsers(db);
+    db.version = 12;
+  }
   if (db.automations?.some((a) => /facebook/i.test(a.name) || /^au\d+$/.test(a.id))) {
     db.automations = liveMapsAutomations(db.organization.id);
   }

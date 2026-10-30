@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { Clock, Mail, Plus, Shield, User, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,15 +20,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EntityAvatar, PageHeader, Status } from "@/components/app/kit";
-import { currentUser, uid, update, useDB } from "@/lib/store";
+import { currentUser, getDB, uid, update, useDB } from "@/lib/store";
 import { ROLE_LABEL } from "@/lib/helena/registry";
 import { fmtDate } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 import type { Role, User as UserType } from "@/lib/types";
+import { assignPlan, extendTrial, formatTrialLabel, isPlatformAdmin, setUserActive } from "@/lib/saas";
 
 export const Route = createFileRoute("/_app/configuracoes/usuarios")({
   head: () => pageHead("Usuários & Equipe", "Membros da organização e controle de acesso."),
+  beforeLoad: () => {
+    const user = currentUser(getDB());
+    if (!isPlatformAdmin(user)) throw redirect({ to: "/visao-geral" });
+  },
   component: UsersPage,
 });
 
@@ -146,6 +151,41 @@ function UsersPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5 space-y-3">
+        <h3 className="font-semibold text-sm">Contas SaaS cadastradas</h3>
+        <p className="text-xs text-muted-foreground">Trial, plano e bloqueio das contas que se inscreveram na landing. O Cakto confirma o pagamento depois — aqui você libera na mão.</p>
+        <div className="divide-y">
+          {db.users.filter((u) => u.kind === "customer").map((u) => (
+            <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+              <div>
+                <div className="font-medium">{u.name} · {u.companyName || u.email}</div>
+                <div className="text-xs text-muted-foreground font-mono">{u.username} · {u.email} · {formatTrialLabel(u)} · {u.dailyProspectUsed ?? 0} hoje</div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => { assignPlan(u.id, "impulso"); toast.success("Impulso liberado"); }}>Impulso</Button>
+                <Button size="sm" variant="outline" onClick={() => { assignPlan(u.id, "maquina"); toast.success("Máquina liberada"); }}>Máquina</Button>
+                <Button size="sm" variant="outline" onClick={() => { assignPlan(u.id, "whitelabel"); toast.success("White-label liberado"); }}>WL</Button>
+                <Button size="sm" variant="ghost" onClick={() => { extendTrial(u.id); toast.success("Trial renovado 2 dias"); }}>+2 dias</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setUserActive(u.id, u.status !== "ativo"); toast.success(u.status === "ativo" ? "Bloqueada" : "Ativada"); }}>
+                  {u.status === "ativo" ? "Bloquear" : "Ativar"}
+                </Button>
+              </div>
+            </div>
+          ))}
+          {db.users.filter((u) => u.kind === "customer").length === 0 && (
+            <p className="text-xs text-muted-foreground py-2">Nenhuma conta de cliente ainda. Use o cadastro da landing ou o usuário demo.</p>
+          )}
+        </div>
+        {(db.quoteRequests ?? []).length > 0 && (
+          <div className="pt-2">
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground">Orçamentos white-label</h4>
+            {(db.quoteRequests ?? []).map((q) => (
+              <p key={q.id} className="mt-1 text-xs">{q.company} · {q.email} · {q.message}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Pending Invites */}

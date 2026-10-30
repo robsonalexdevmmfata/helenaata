@@ -2,10 +2,15 @@
 // the UI goes through runTool(), which checks permission/enablement, mutates the
 // data store and writes an Execution record. Nothing is "pretended".
 import type {
-  Agent, Approval, Automation, CalendarEvent, CalendarEventStatus, DB, Execution, HelenaCard, HelenaMessage, Operation, RiskLevel, Task,
+  Agent, Approval, Automation, CalendarEvent, CalendarEventStatus, DB, Execution, HelenaCard, HelenaMessage, Meeting, Operation, RiskLevel, SalesFlowSettings, Task,
 } from "@/lib/types";
-import { bumpAutomation, can, currentUser, getDB, nowISO, uid, update } from "@/lib/store";
+import { bumpAutomation, can, currentUser, getDB, nowISO, ownerName, uid, update } from "@/lib/store";
+import {
+    closerFollowupText, evaluateFollowup, FOLLOWUP_REASON_LABEL, hasConflict, parseWhen, pickProposedSlot, shouldHoldOutbound, slotLabel, suggestSlots, unansweredAgentStreak,
+  type FollowupReason,
+} from "./sales-flow";
 import { getToolDef, withCalendarTools } from "./registry";
+import { liveBoard, syncLiveCommercial } from "@/lib/analytics";
 import { buildCatalogOpening, formatCatalogForAgents } from "@/lib/catalog";
 import { normalize } from "@/lib/format";
 import { brl } from "@/lib/format";
@@ -21,6 +26,8 @@ import {
   executeRescueColdLeads,
   computeDynamicCadence,
 } from "./sales-brain";
+import { runPresencePipeline } from "@/lib/dev/presence";
+import { reserveProspects } from "@/lib/saas";
 
 export interface ToolContext {
   actor: string;
@@ -111,10 +118,16 @@ function createCalendarEvent(p: Record<string, any>, ctx: ToolContext): ToolResu
   const contact = db.contacts.find((c) => c.id === leadId);
   if (!contact) return fail("lead/contato não encontrado");
 
-  const agenteId = resolveAgentId(db, ctx, p.agenteId);
+  const agenteId = resolveAgentId(db, ctx, p.agenteId || p.ownerId);
   const meetingTitle = String(p.titulo || p.title || p.resumo || `Reunião 10 min · ${contact.name}`);
   const resumo = String(p.resumo || meetingTitle);
-  const meetDate = String(p.dataHora || p.at || p.date || new Date(Date.now() + 24 * 3600 * 1000).toISOString());
+  const meetDate = String(p.dataHora || p.at || p.startAt || p.date || new Date(Date.now() + 24 * 3600 * 1000).toISOString());
+  const durationMin = Math.max(15, Number(p.durationMin) || db.salesFlow?.meetingDurationMin || 30);
+  const startAt = new Date(meetDate.replace(" ", "T")).toISOString();
+  if (Number.isNaN(new Date(startAt).getTime())) return fail("data da reunião inválida");
+  if (hasConflict(db.meetings ?? [], agenteId, startAt, durationMin)) {
+    return fail(`${ownerName(db, agenteId)} já tem uma reunião nesse horário`);
+  }
   const existing = (db.calendarEvents ?? []).find((e) => {
     if (e.leadId !== leadId) return false;
     if (e.status === "cancelada") return false;
@@ -126,6 +139,7 @@ function createCalendarEvent(p: Record<string, any>, ctx: ToolContext): ToolResu
     });
   }
   const eventId = uid("ev_");
+  const meetingId = uid("mt_");
   const calLink = `https://cal.com/infotech/${eventId}`;
   const closer = db.agents.find((a) => a.id === agenteId) || db.agents.find((a) => a.role === "Closer");
 
@@ -146,6 +160,26 @@ function createCalendarEvent(p: Record<string, any>, ctx: ToolContext): ToolResu
       updatedAt: nowISO(),
     };
     d.calendarEvents.unshift(event);
+    if (!d.meetings) d.meetings = [];
+    d.meetings.push({
+      id: meetingId,
+      organizationId: d.organization.id,
+      title: meetingTitle,
+      contactId: leadId,
+      dealId: event.dealId,
+      ownerId: agenteId,
+      ownerType: closer ? "agent" : "user",
+      startAt,
+      durationMin,
+      location: "whatsapp",
+      status: "agendada",
+      source: p.source ?? (ctx.actorType === "helena" ? "helena" : ctx.actorType === "agent" ? "closer" : "manual"),
+      notes: resumo,
+      createdBy: ctx.actor,
+      createdAt: nowISO(),
+    });
+    const conv = d.conversations.find((c) => c.contactId === leadId && c.flow);
+    if (conv?.flow) conv.flow.state = "reuniao_agendada";
 
     d.tasks.unshift({
       id: uid("tk_"),
@@ -194,13 +228,16 @@ function createCalendarEvent(p: Record<string, any>, ctx: ToolContext): ToolResu
       createdAt: nowISO(),
     });
     bumpAutomation(d, "reuniao_agendada");
+    syncLiveCommercial(d);
   });
 
   return ok(`Reunião agendada na Agenda compartilhada com ${contact.name}.`, {
     id: eventId,
+    meetingId,
     leadId,
     agenteId,
     dataHora: meetDate,
+    startAt,
     calLink,
   });
 }
@@ -308,6 +345,9 @@ const handlers: Record<string, Handler> = {
     if (!conv) return fail("conversa não encontrada");
     const problem = conv.channel === "whatsapp" ? connectionCheck(db, conv.connectionId) : null;
     if (problem) return fail(problem);
+    if (ctx.actorType !== "user" && shouldHoldOutbound(conv)) {
+      return fail("este número já recebeu abordagem; esperando o cliente responder para não insistir");
+    }
 
     // Limpa emojis e markdown do texto que vai para o WhatsApp
     const rawText = String(p.text ?? "");
@@ -338,6 +378,7 @@ const handlers: Record<string, Handler> = {
       });
       c.lastMessageAt = nowISO();
       c.unread = 0;
+      if (c.flow) c.flow.lastOutboundAt = nowISO();
 
       // Atualiza métricas do contato
       const ct = d.contacts.find((x) => x.id === c.contactId);
@@ -394,8 +435,11 @@ const handlers: Record<string, Handler> = {
     // Só dispara se for canal WhatsApp e houver número do contato.
     if (conv.channel === "whatsapp") {
       const contactPhone = getDB().contacts.find((c) => c.id === conv.contactId)?.phone ?? "";
-      if (contactPhone) {
-        evolutionSendText(contactPhone, outText)
+      const sendTo = conv.remoteJid?.endsWith("@s.whatsapp.net")
+        ? conv.remoteJid.replace(/@.*/, "")
+        : contactPhone;
+      if (sendTo) {
+        evolutionSendText(sendTo, outText)
           .then((res) => {
             if (!res.ok) {
               // Registra falha de envio na auditoria sem interromper o fluxo
@@ -706,23 +750,189 @@ const handlers: Record<string, Handler> = {
     });
     return ok("Compromisso atualizado", { id: ev.id });
   },
+  "calendar.cancel_event": (p, ctx) => {
+    const db = getDB();
+    const ev = (db.calendarEvents ?? []).find((e) => e.id === p.id || e.id === p.eventId || e.id === p.meetingId);
+    const m = (db.meetings ?? []).find((x) => x.id === p.meetingId || x.id === p.id || x.id === p.eventId);
+    if (!ev && !m) return fail("compromisso não encontrado");
+    if ((ev && ev.status === "cancelada") || (m && m.status === "cancelada")) return fail("essa reunião já estava cancelada");
+    update((d) => {
+      if (ev) {
+        const x = d.calendarEvents.find((e) => e.id === ev.id);
+        if (x) { x.status = "cancelada"; x.updatedAt = nowISO(); }
+      }
+      if (m) {
+        const x = d.meetings.find((y) => y.id === m.id);
+        if (x) {
+          x.status = "cancelada";
+          if (p.reason) x.notes = `${x.notes ? `${x.notes}\n` : ""}Cancelada: ${p.reason}`;
+        }
+      }
+      const contactId = ev?.leadId ?? m?.contactId;
+      if (contactId) {
+        d.activities.unshift({
+          id: uid("ac_"), organizationId: d.organization.id, contactId, dealId: ev?.dealId ?? m?.dealId, type: "reuniao",
+          text: `Reunião cancelada${p.reason ? `: ${p.reason}` : ""}`, actor: ctx.actor, createdAt: nowISO(),
+        });
+      }
+    });
+    return ok("Reunião cancelada", { id: ev?.id ?? m?.id, meetingId: m?.id });
+  },
+  "sales.closer_takeover": (p, ctx) => {
+    const db = getDB();
+    const s = db.salesFlow;
+    const conv = db.conversations.find((c) => c.id === p.conversationId);
+    if (!conv) return fail("conversa não encontrada");
+    if (!conv.flow) return fail("essa conversa não veio da prospecção");
+    if (conv.handlerType === "human") return fail("um atendente do time já assumiu essa conversa");
+    if (!s) return fail("regras do número comercial não configuradas");
+    const closer = db.agents.find((a) => a.id === s.closerAgentId);
+    if (!closer) return fail("a agente Closer configurada não existe");
+    if (closer.status === "pausado" || closer.status === "erro") return fail(`${closer.name} está ${closer.status === "erro" ? "com erro" : "pausada"}`);
+    const problem = connectionCheck(db, conv.connectionId ?? s.sharedConnectionId);
+    if (problem) return fail(problem);
+    if (shouldHoldOutbound(conv) || unansweredAgentStreak(conv) >= 2) {
+      return fail("este número já foi abordado; a Closer só entra depois de 48h sem resposta, e uma vez só");
+    }
+    const contact = db.contacts.find((c) => c.id === conv.contactId);
+    const reason: FollowupReason = p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : (conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt ? "visualizou_sem_responder" : "sem_resposta");
+    const attempt = conv.flow.closerAttempts + 1;
+    const slots = suggestSlots(db.meetings ?? [], closer.id, new Date(), s, 6);
+    const text = formatForWhatsApp(closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots }));
+    const previous = ownerName(db, conv.handlerId);
+
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv.id);
+      if (!c?.flow) return;
+      const f = c.flow;
+      c.handlerType = "agent";
+      c.handlerId = closer.id;
+      c.status = "aberta";
+      c.messages.push({ id: uid("m_"), from: "agent", authorName: closer.name, text, at: nowISO(), kind: "text" });
+      c.lastMessageAt = nowISO();
+      f.state = "closer";
+      f.closerAttempts = attempt;
+      f.closerSince ??= nowISO();
+      f.lastOutboundAt = nowISO();
+      f.proposedSlots = slots.map((x) => x.toISOString());
+      const wa = d.connections.find((x) => x.id === (c.connectionId ?? d.salesFlow?.sharedConnectionId));
+      if (wa) wa.sentToday += 1;
+      const ag = d.agents.find((a) => a.id === closer.id);
+      if (ag) { ag.metrics.tasks += 1; if (attempt === 1) ag.metrics.conversations += 1; ag.currentTask = `Resgatando ${contact?.name ?? "lead"}`; }
+      const deal = d.deals.find((x) => x.contactId === c.contactId && x.status === "aberto");
+      if (deal) { deal.ownerId = closer.id; deal.ownerType = "agent"; deal.updatedAt = nowISO(); }
+      d.activities.unshift({
+        id: uid("ac_"), organizationId: d.organization.id, contactId: c.contactId, dealId: deal?.id, type: "handoff",
+        text: attempt === 1
+          ? `${closer.name} assumiu no lugar de ${previous}: o cliente ${FOLLOWUP_REASON_LABEL[reason]}`
+          : `${closer.name} fez a ${attempt}ª tentativa de fechamento`,
+        actor: ctx.actor, createdAt: nowISO(),
+      });
+    });
+    const sendTo = conv.remoteJid?.endsWith("@s.whatsapp.net")
+      ? conv.remoteJid.replace(/@.*/, "")
+      : (contact?.phone ?? "");
+    if (sendTo && !(typeof process !== "undefined" && process.env?.VITEST)) {
+      void evolutionSendText(sendTo, text);
+    }
+    return ok(`${closer.name} entrou na conversa com ${contact?.name ?? "o cliente"} e ofereceu ${slots.map((x) => slotLabel(x)).join(" ou ")}`, { conversationId: conv.id, attempt });
+  },
+  "sales.update_flow_settings": (p) => {
+    const db = getDB();
+    const patch = (p.patch ?? {}) as Partial<SalesFlowSettings>;
+    const hours = ["noReplyHours", "readNoReplyHours"] as const;
+    for (const k of hours) if (patch[k] !== undefined && !(Number(patch[k]) > 0 && Number(patch[k]) <= 720)) return fail("o tempo de espera precisa ficar entre 1 e 720 horas");
+    if (patch.maxCloserAttempts !== undefined && !(patch.maxCloserAttempts >= 1 && patch.maxCloserAttempts <= 5)) return fail("a Closer pode tentar de 1 a 5 vezes");
+    if (patch.closerAgentId && !db.agents.some((a) => a.id === patch.closerAgentId)) return fail("agente não encontrado");
+    if (patch.sharedConnectionId && !db.connections.some((c) => c.id === patch.sharedConnectionId)) return fail("número de WhatsApp não encontrado");
+    if (patch.businessStart !== undefined && patch.businessEnd !== undefined && patch.businessStart >= patch.businessEnd) return fail("o horário de início precisa ser antes do fim");
+    update((d) => { Object.assign(d.salesFlow, patch); });
+    return ok("Regras do número comercial atualizadas");
+  },
+  "messages.register_event": (p, ctx) => {
+    const db = getDB();
+    const conv = db.conversations.find((c) => c.id === p.conversationId);
+    if (!conv) return fail("conversa não encontrada");
+    const contact = db.contacts.find((c) => c.id === conv.contactId);
+    if (p.event === "read") {
+      update((d) => {
+        const c = d.conversations.find((x) => x.id === conv.id);
+        if (c?.flow) {
+          c.flow.readAt = nowISO();
+          if (c.flow.state === "abordado") c.flow.state = "visualizou";
+        }
+      });
+      return ok(`${contact?.name ?? "Cliente"} visualizou a mensagem`);
+    }
+    if (p.event !== "reply") return fail("evento desconhecido");
+    const text = String(p.text ?? "").trim();
+    if (!text) return fail("mensagem vazia");
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv.id);
+      if (!c) return;
+      c.messages.push({ id: uid("m_"), from: "contact", authorName: contact?.name ?? "Cliente", text, at: nowISO(), kind: "text" });
+      c.lastMessageAt = nowISO();
+      c.unread += 1;
+      c.status = "aberta";
+      if (c.flow) {
+        c.flow.repliedAt = nowISO();
+        c.flow.readAt ??= nowISO();
+        if (c.flow.state !== "closer" && c.flow.state !== "reuniao_agendada") c.flow.state = "respondeu";
+      }
+      const ct = d.contacts.find((x) => x.id === c.contactId);
+      if (ct) ct.lastContactAt = nowISO();
+    });
+
+    const fresh = getDB().conversations.find((c) => c.id === conv.id);
+    const s = getDB().salesFlow;
+    if (fresh?.flow?.state === "closer" && fresh.handlerType === "agent" && s && fresh.handlerId === s.closerAgentId && s.autoBookMeetings) {
+      const parsed = parseWhen(text);
+      const picked = parsed?.hasTime ? parsed.date.toISOString() : pickProposedSlot(text, fresh.flow.proposedSlots);
+      if (picked) {
+        const closer = getDB().agents.find((a) => a.id === s.closerAgentId);
+        if (!closer) return fail("a agente Closer configurada não existe");
+        const booked = runTool("calendar.create_event", { contactId: fresh.contactId, startAt: picked, ownerId: closer.id, source: "closer" }, { actor: closer.name, actorType: "agent", requestedBy: ctx.actor });
+        const when = slotLabel(new Date(picked));
+        const reply = booked.ok
+          ? `Perfeito, ficou reservado ${when}. Vou te mandar o link um pouco antes. Até lá!`
+          : `Esse horário acabou de ser ocupado. Consigo ${(fresh.flow.proposedSlots ?? []).filter((x) => x !== picked).map((x) => slotLabel(new Date(x))).join(" ou ") || "outro horário"}, pode ser?`;
+        update((d) => {
+          const c = d.conversations.find((x) => x.id === conv.id);
+          if (!c) return;
+          c.messages.push({ id: uid("m_"), from: "agent", authorName: closer.name, text: formatForWhatsApp(reply), at: nowISO(), kind: "text" });
+          c.lastMessageAt = nowISO();
+          c.unread = 0;
+          if (c.flow) c.flow.lastOutboundAt = nowISO();
+        });
+        return ok(booked.ok ? `Cliente respondeu e ${closer.name} marcou a reunião para ${when}` : `Cliente respondeu, mas o horário ${when} estava ocupado`, { meetingId: booked.data?.meetingId });
+      }
+    }
+    return ok(`${contact?.name ?? "Cliente"} respondeu`);
+  },
   "prospect.scan_maps": (p, ctx) => {
+    const asked = Math.min(Number(p.limit) || 10, 150);
+    const quota = reserveProspects(asked);
+    if (!quota.ok) return fail(quota.message);
     const segment = String(p.segment || "negócios locais sem site");
     const city = String(p.city || "Brasil");
     const state = p.state != null ? String(p.state) : undefined;
     const nationwide = p.nationwide === true || /brasil|nacional/i.test(city) || state === "TODOS";
     const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
     if (!isTest && p.simulate !== true) {
-      const limitLive = Math.min(Number(p.limit) || 10, 30);
-      import("@/lib/prospect/runProspecting").then(({ runRealProspecting }) => {
-        runRealProspecting({
-          segment,
-          city,
-          state,
-          nationwide,
-          limit: limitLive,
-          organizationId: getDB().organization.id,
-        }).then((r) => {
+      const limitLive = Math.min(quota.allowed, 150);
+      const wave = p.wave === true || limitLive >= 80;
+      import("@/lib/prospect/runProspecting").then(({ runRealProspecting, runWaveProspecting }) => {
+        const job = wave
+          ? runWaveProspecting({ limit: limitLive, organizationId: getDB().organization.id })
+          : runRealProspecting({
+            segment,
+            city,
+            state,
+            nationwide,
+            limit: limitLive,
+            organizationId: getDB().organization.id,
+          });
+        job.then((r) => {
           update((d) => {
             d.executions.unshift({
               id: uid("ex_scan_"),
@@ -731,7 +941,7 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `Varredura real: ${r.found} sem site + WhatsApp válido (${nationwide ? "Brasil inteiro" : city}). Instância helena: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? "Onda multi-nicho SP" : "Varredura real"}: ${r.found} sem site + WhatsApp válido (${nationwide ? "Brasil inteiro" : city}). Instância helena: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
@@ -739,9 +949,11 @@ const handlers: Record<string, Handler> = {
           });
         }).catch((err) => console.warn("[scan_maps]", err));
       });
-      return ok(`Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. FreeLLMAPI planeja as cidades; só entram leads sem site e com WhatsApp. Time Comercial dispara pela instância helena.`);
+      return ok(wave
+        ? `Onda comercial iniciada: até ${limitLive} WhatsApp válidos em São Paulo, Campinas, Araçatuba, Andradina e cidades próximas, vários nichos. Só número real; intervalo entre disparos. Time de vendas assume.`
+        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Só entram leads sem site e com WhatsApp. Time Comercial dispara pela instância helena.`);
     }
-    const limit = Math.min(Number(p.limit) || 10, 50);
+    const limit = Math.min(quota.allowed, 150);
 
     const businessTemplates = [
       { name: "Consultório Dr. André", contact: "Dr. André Figueiredo", role: "Cirurgião Dentista" },
@@ -821,7 +1033,7 @@ const handlers: Record<string, Handler> = {
             title: `Criação de Site · ${compName}`,
             contactId,
             companyId: compId,
-            value: 4900,
+            value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 547,
             probability: stage.probability,
             expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
             ownerId: ownerSdr.id,
@@ -841,7 +1053,8 @@ const handlers: Record<string, Handler> = {
           organizationId: d.organization.id,
           contactId,
           channel: "whatsapp",
-          connectionId: getAgencyConnection(d)?.id,
+          connectionId: getAgencyConnection(d)?.id ?? d.salesFlow?.sharedConnectionId,
+          flow: { origin: "prospeccao", state: "abordado", lastOutboundAt: nowISO(), closerAttempts: 0 },
           status: "aberta",
           handlerType: "agent",
           handlerId: ownerSdr.id,
@@ -911,6 +1124,16 @@ const handlers: Record<string, Handler> = {
       { count: limit, companyIds: createdCompanyIds, contactIds: createdContactIds, dealIds: createdDealIds }
     );
   },
+  "dev.build_presence": (p) => {
+    const quota = reserveProspects(Math.min(Number(p.limit) || 10, 50));
+    if (!quota.ok) return fail(quota.message);
+    return runPresencePipeline({
+      segment: String(p.segment || "negócios locais"),
+      city: String(p.city || "Brasil"),
+      limit: quota.allowed,
+      nationwide: p.nationwide === true,
+    });
+  },
   "automation.create": (p) => {
     if (!p.name) return fail("nome da automação é obrigatório");
     const id = uid("au_");
@@ -966,17 +1189,7 @@ const handlers: Record<string, Handler> = {
         kind: "text",
       });
 
-      // Se a ação for enviar mídia demonstrativa
-      if (objDef.actionType === "send_demo_media" && objDef.demoMockMedia) {
-        conv.messages.push({
-          id: uid("m_media_"),
-          from: "agent",
-          authorName: "Helena AI (Sales Brain)",
-          text: formatForWhatsApp(`${objDef.demoMockMedia.title}\n${objDef.demoMockMedia.preview}\n\nDemonstração ao vivo: ${objDef.demoMockMedia.url}`),
-          at: nowISO(),
-          kind: "image",
-        });
-      }
+      // Não empilha mídia no WhatsApp — uma resposta de objeção basta.
 
       conv.lastMessageAt = nowISO();
 
@@ -1287,33 +1500,87 @@ export interface Summary {
 }
 
 export function computeSummary(db: DB): Summary {
-  const now = Date.now();
-  const open = db.deals.filter((d) => d.status === "aberto" && d.pipelineId === "pl_com");
-  const won = db.deals.filter((d) => d.status === "ganho");
-  const lost = db.deals.filter((d) => d.status === "perdido");
-  const sdrs = db.agents.filter((a) => a.metrics.responseRate > 0 && a.role === "SDR").sort((a, b) => b.metrics.responseRate - a.metrics.responseRate);
-  const endOfDay = new Date();
-  endOfDay.setHours(23, 59, 59, 999);
+  const b = liveBoard(db);
   return {
-    leads7d: db.contacts.filter((c) => now - new Date(c.createdAt).getTime() < 7 * 86_400_000).length + db.operations.reduce((s, o) => s + (now - new Date(o.createdAt).getTime() < 7 * 86_400_000 ? o.metrics.interested : 0), 0),
-    openPipeline: open.reduce((s, d) => s + d.value, 0),
-    openDeals: open.length,
-    won: won.length,
-    wonValue: won.reduce((s, d) => s + d.value, 0),
-    lost: lost.length,
-    conversion: won.length + lost.length ? (won.length / (won.length + lost.length + open.length)) * 100 : 0,
-    meetings: (db.calendarEvents ?? []).filter((e) => e.status !== "cancelada").length,
-    staleDeals: open.filter((d) => now - new Date(d.updatedAt).getTime() > 48 * 3_600_000).length,
-    followupsToday: db.tasks.filter((t) => !t.done && t.type === "follow-up" && new Date(t.dueAt) <= endOfDay).length,
-    bestAgent: sdrs[0] ? { name: sdrs[0].name, rate: sdrs[0].metrics.responseRate } : null,
+    leads7d: b.leads7d,
+    openPipeline: b.pipelineValue,
+    openDeals: b.openDealsCount,
+    won: b.wonCount,
+    wonValue: b.totalRevenue,
+    lost: b.lostCount,
+    conversion: b.convRate,
+    meetings: b.meetings.length,
+    staleDeals: b.staleDeals,
+    followupsToday: b.followupsToday,
+    bestAgent: b.bestAgent,
     aiCost30d: db.aiUsage.reduce((s, u) => s + u.cost, 0),
-    runningOps: db.operations.filter((o) => o.status === "running").length,
-    pendingApprovals: db.approvals.filter((a) => a.status === "pendente").length,
-    workingAgents: db.agents.filter((a) => a.status === "trabalhando").length,
+    runningOps: b.runningOps,
+    pendingApprovals: b.pendingApprovals,
+    workingAgents: b.workingAgents,
   };
 }
 
 /** Operations avançam só com disparos reais (Evolution) e reuniões na Agenda. */
 export function tickOperations() {
   return;
+}
+
+let lastCloserHuntAt = 0;
+
+/**
+ * Vigia o número comercial compartilhado: quando um lead da prospecção não
+ * responde (ou visualiza e não responde) no prazo, a Closer entra sozinha.
+ * Chamado em intervalo pelo layout do app; o servidor faz o mesmo com mensagens reais.
+ */
+export function tickSalesFlow(now = new Date()) {
+  const db = getDB();
+  if (db.salesFlow && (db.salesFlow.noReplyHours < 24 || db.salesFlow.maxCloserAttempts > 1)) {
+    update((d) => {
+      d.salesFlow.noReplyHours = 48;
+      d.salesFlow.readNoReplyHours = 24;
+      d.salesFlow.respectBusinessHours = true;
+      d.salesFlow.maxCloserAttempts = 1;
+      d.agents.forEach((a) => {
+        if (a.teamId === "t_com" && a.status !== "pausado" && a.status !== "erro") {
+          a.status = "trabalhando";
+          a.currentTask = "Prospecção ativa · aguardando resposta";
+        }
+      });
+      const team = d.teams.find((t) => t.id === "t_com");
+      if (team) team.status = "ativo";
+    });
+  }
+  const s = getDB().salesFlow;
+  if (!s?.enabled || db.killSwitchActive) return;
+  const closer = db.agents.find((a) => a.id === s.closerAgentId);
+  if (!closer || closer.status === "pausado" || closer.status === "erro") return;
+  const conn = db.connections.find((c) => c.id === s.sharedConnectionId);
+  if (!conn || conn.status !== "online") return;
+
+  const cooled: string[] = [];
+  if (Date.now() - lastCloserHuntAt < 30 * 60_000) return;
+  let hunted = 0;
+  getDB().conversations.forEach((conv) => {
+    if (hunted >= 1) return;
+    if ((conv.connectionId ?? s.sharedConnectionId) !== s.sharedConnectionId) return;
+    const decision = evaluateFollowup(conv, s, now);
+    if (decision.action === "closer") {
+      runTool("sales.closer_takeover", { conversationId: conv.id, reason: decision.reason }, { actor: closer.name, actorType: "agent", requestedBy: "Automação do número comercial" });
+      hunted += 1;
+      lastCloserHuntAt = Date.now();
+    } else if (decision.action === "esfriou") {
+      cooled.push(conv.id);
+    }
+  });
+  if (cooled.length) {
+    update((d) => {
+      cooled.forEach((id) => {
+        const c = d.conversations.find((x) => x.id === id);
+        if (!c?.flow) return;
+        c.flow.state = "esfriou";
+        c.status = "pendente";
+        d.activities.unshift({ id: uid("ac_"), organizationId: d.organization.id, contactId: c.contactId, type: "ia", text: `Lead esfriou depois de ${c.flow.closerAttempts} tentativas da Closer sem resposta`, actor: "Automação do número comercial", createdAt: nowISO() });
+      });
+    });
+  }
 }

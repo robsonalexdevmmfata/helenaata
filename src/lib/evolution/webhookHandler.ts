@@ -35,8 +35,11 @@ import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { bumpAutomation, getDB, update, uid, nowISO } from "@/lib/store";
 import { evaluateHandoff } from "@/lib/helena/whatsapp-formatter";
 import type { HandoffStage } from "@/lib/helena/whatsapp-formatter";
-import { extractMeetingFromText, ROBSON_OPENING_SCRIPT, CALENDAR_TOOL_PROMPT } from "@/lib/helena/calendar";
+import { extractMeetingFromText } from "@/lib/helena/calendar";
+import { nextInboxReply } from "@/lib/helena/inbox-brain";
+import { formatSlotMenu, pickProposedSlot, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
 import { runTool } from "@/lib/helena/engine";
+import { syncLiveCommercial } from "@/lib/analytics";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +58,17 @@ export interface WebhookProcessResult {
  *
  * @param rawPayload - Corpo do POST recebido da Evolution API
  */
+const repliedConvAt = new Map<string, number>();
+const processedMsg = new Set<string>();
+
+function similarText(a: string, b: string) {
+  const n = (s: string) => s.toLowerCase().replace(/\s+/g, " ").slice(0, 90).trim();
+  return n(a) === n(b) || (n(a).length > 30 && n(b).includes(n(a).slice(0, 40)));
+}
+
+const STOP_CHAT =
+  /somente para vendas|s[oó] (pra|para) venda|contato acima|n[uú]mero errado|whatsapp (errado|s[oó] (de|pra|para))|n[aã]o sou (o|a) respons|pare de (mandar|enviar)|n[aã]o tenho interesse|n[aã]o me ligue|remover|opt.?out/i;
+
 export async function processEvolutionWebhook(
   rawPayload: unknown
 ): Promise<WebhookProcessResult> {
@@ -62,6 +76,13 @@ export async function processEvolutionWebhook(
   const incoming = parseEvolutionWebhook(rawPayload);
   if (!incoming) {
     return { handled: false, action: "skipped" };
+  }
+  if (incoming.messageId && processedMsg.has(incoming.messageId)) {
+    return { handled: false, action: "skipped" };
+  }
+  if (incoming.messageId) {
+    processedMsg.add(incoming.messageId);
+    if (processedMsg.size > 800) processedMsg.clear();
   }
 
   // 2. Ignora grupos por padrão
@@ -73,7 +94,8 @@ export async function processEvolutionWebhook(
 
   // 3. Encontra ou cria contato pelo número
   const cleanPhone = incoming.from.replace(/\D/g, "");
-  let contact = db.contacts.find((c) => c.phone.replace(/\D/g, "") === cleanPhone);
+  let contact = db.contacts.find((c) => c.phone.replace(/\D/g, "") === cleanPhone)
+    ?? db.contacts.find((c) => db.conversations.some((x) => x.contactId === c.id && x.remoteJid?.startsWith(incoming.from)));
 
   if (!contact) {
     // Cria contato novo automaticamente
@@ -127,25 +149,33 @@ export async function processEvolutionWebhook(
     conv = getDB().conversations.find((c) => c.id === newConvId)!;
   }
 
-  // 5. Registra mensagem do contato na conversa
-  update((d) => {
-    const c = d.conversations.find((x) => x.id === conv!.id);
-    if (!c) return;
-    c.messages.push({
-      id: uid("m_evo_"),
-      from: "contact",
-      authorName: incoming.fromName ?? contact!.name,
-      text: incoming.text,
-      at: nowISO(),
-      kind: "text",
+  // 5. Registra mensagem do contato na conversa (sem duplicar o mesmo texto)
+  const already = conv.messages.some(
+    (m) => m.from === "contact" && m.text === incoming.text && Date.now() - +new Date(m.at) < 120_000,
+  );
+  if (!already) {
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv!.id);
+      if (!c) return;
+      c.messages.push({
+        id: incoming.messageId ? `evo_${incoming.messageId}` : uid("m_evo_"),
+        from: "contact",
+        authorName: incoming.fromName ?? contact!.name,
+        text: incoming.text,
+        at: nowISO(),
+        kind: "text",
+      });
+      c.lastMessageAt = nowISO();
+      c.unread = (c.unread ?? 0) + 1;
+      if (c.flow) {
+        c.flow.repliedAt = nowISO();
+        if (c.flow.state !== "closer" && c.flow.state !== "reuniao_agendada") c.flow.state = "respondeu";
+      }
+      const ct = d.contacts.find((x) => x.id === contact!.id);
+      if (ct) ct.lastContactAt = nowISO();
+      bumpAutomation(d, "mensagem_recebida");
     });
-    c.lastMessageAt = nowISO();
-    c.unread = (c.unread ?? 0) + 1;
-    // Atualiza último contato
-    const ct = d.contacts.find((x) => x.id === contact!.id);
-    if (ct) ct.lastContactAt = nowISO();
-    bumpAutomation(d, "mensagem_recebida");
-  });
+  }
 
   // 6. Avalia se precisa de handoff entre agentes
   const currentDb = getDB();
@@ -203,17 +233,65 @@ export async function processEvolutionWebhook(
 
   maybeScheduleFromWhatsApp(incoming.text, contact!.id, responderAgent, conv!.id);
 
+  const liveConv = getDB().conversations.find((c) => c.id === conv!.id);
+  const lastMsg = liveConv?.messages.at(-1);
+  if (lastMsg && lastMsg.from !== "contact") {
+    return { handled: true, action: "new_message" };
+  }
+  const contactTurns = (liveConv?.messages ?? []).filter((m) => m.from === "contact");
+  const lastContact = contactTurns.at(-1);
+  const prevContact = contactTurns.at(-2);
+  const lastAgent = [...(liveConv?.messages ?? [])].reverse().find((m) => m.from === "agent" || m.from === "helena");
+  if (
+    lastContact &&
+    prevContact &&
+    similarText(lastContact.text, prevContact.text) &&
+    lastAgent &&
+    new Date(lastAgent.at).getTime() >= new Date(prevContact.at).getTime()
+  ) {
+    return { handled: true, action: "new_message" };
+  }
+  const lastAuto = repliedConvAt.get(conv!.id) ?? (lastAgent ? +new Date(lastAgent.at) : 0);
+  if (lastAuto && Date.now() - lastAuto < 15 * 60_000) {
+    return { handled: true, action: "new_message" };
+  }
+  if (unansweredAgentStreak(liveConv ?? { messages: [] }) >= 2) {
+    return { handled: true, action: "new_message" };
+  }
+
+  if (STOP_CHAT.test(incoming.text)) {
+    const bye = formatForWhatsApp("Combinado, desculpa o incômodo. Não mando mais neste número. Se puder, me passa o WhatsApp do proprietário ou da proprietária.");
+    update((d) => {
+      const c = d.conversations.find((x) => x.id === conv!.id);
+      if (!c) return;
+      if (c.flow) c.flow.state = "esfriou";
+      c.status = "resolvida";
+      c.handlerType = "human";
+      c.messages.push({ id: uid("m_evo_stop_"), from: "agent", authorName: responderAgent?.name ?? "Helena", text: bye, at: nowISO(), kind: "text" });
+      c.lastMessageAt = nowISO();
+    });
+    repliedConvAt.set(conv!.id, Date.now());
+    const cfgStop = getEvolutionConfigUI();
+    if (cfgStop.apiKey) await evolutionSendText(cleanPhone, bye, cfgStop);
+    return { handled: true, action: "handoff", reply: bye };
+  }
+
   const reply = await generateAgentReply(
     incoming.text,
     contact!.name,
     contact!.phone,
     responderAgent,
-    currentStage
+    currentStage,
+    liveConv,
   );
 
   if (!reply) {
     return { handled: true, action: "new_message" };
   }
+  if (lastAgent && similarText(lastAgent.text, reply)) {
+    return { handled: true, action: "new_message" };
+  }
+  repliedConvAt.set(conv!.id, Date.now());
 
   // 8. Registra a resposta no store
   update((d) => {
@@ -265,14 +343,17 @@ function maybeScheduleFromWhatsApp(
   agent: Agent | undefined,
   conversationId: string,
 ) {
+  const conv = getDB().conversations.find((c) => c.id === conversationId);
+  const picked = pickProposedSlot(clientMessage, conv?.flow?.proposedSlots);
   const parsed = extractMeetingFromText(clientMessage);
-  if (!parsed) return;
+  const dataHora = picked ?? parsed?.dataHora;
+  if (!dataHora) return;
   runTool(
     "calendar.agendar_reuniao",
     {
       leadId,
-      dataHora: parsed.dataHora,
-      resumo: parsed.resumo,
+      dataHora,
+      resumo: parsed?.resumo ?? "Reunião 10 min fechada no WhatsApp",
       agenteId: agent?.id,
       conversationId,
     },
@@ -289,14 +370,35 @@ async function generateAgentReply(
   clientName: string,
   clientPhone: string,
   agent: Agent | undefined,
-  currentStage: HandoffStage
+  _currentStage: HandoffStage,
+  convHint?: { messages: { from: string; text: string }[] },
 ): Promise<string | null> {
   const db = getDB();
   const conv = db.conversations.find(
     (c) => c.contactId === db.contacts.find((x) => x.phone.replace(/\D/g, "") === clientPhone.replace(/\D/g, ""))?.id
   );
-  const history = (conv?.messages ?? [])
-    .slice(-6)
+  const turns = (convHint?.messages ?? conv?.messages ?? []).slice(-10);
+  const firstName = clientName.split(/\s+/)[0] ?? clientName;
+  const scripted = nextInboxReply(clientMessage, turns, firstName, db.serviceOffers ?? []);
+  if (scripted) {
+    let text = scripted;
+    if (/10 minutos|horario|horário/i.test(scripted) && !/\n1\)/.test(scripted) && db.salesFlow) {
+      const slots = suggestSlots(db.meetings ?? [], agent?.id ?? db.salesFlow.closerAgentId, new Date(), db.salesFlow, 6);
+      if (slots.length) {
+        text = `${scripted}\n${formatSlotMenu(slots)}`;
+        update((d) => {
+          const c = d.conversations.find((x) => x.id === conv?.id);
+          if (c?.flow) c.flow.proposedSlots = slots.map((s) => s.toISOString());
+          syncLiveCommercial(d);
+        });
+      }
+    }
+    return formatForWhatsApp(text);
+  }
+  const wantsDetail = /\?|quanto|pre[cç]o|como funciona|hor[aá]rio|quando/.test(clientMessage);
+  if (!wantsDetail) return null;
+
+  const history = turns
     .filter((m) => m.from === "contact" || m.from === "agent")
     .map((m) => ({
       role: (m.from === "contact" ? "user" : "assistant") as "user" | "assistant",
@@ -305,7 +407,9 @@ async function generateAgentReply(
 
   const roleHint = agent?.role === "Closer" ? "Closer" : "SDR";
   const groqRes = await callGroqOrchestrator(
-    `Papel: ${roleHint} da Info Tech. Lead: ${clientName}. ${CALENDAR_TOOL_PROMPT}\nScript de abertura: ${ROBSON_OPENING_SCRIPT}\nMensagem do cliente: ${clientMessage}`,
+    `Papel: ${roleHint} da Info Tech no WhatsApp. Lead: ${clientName}.
+IGNORE o script longo e o catálogo de preços nesta resposta. Uma ou duas frases. Sem emoji. Não insista.
+Mensagem do cliente: ${clientMessage}`,
     history,
   );
 
@@ -330,19 +434,13 @@ async function generateAgentReply(
   }
 
   if (groqRes?.text && groqRes.text.length > 5) {
-    return formatForWhatsApp(groqRes.text);
+    const text = formatForWhatsApp(groqRes.text);
+    const lastOut = [...(convHint?.messages ?? conv?.messages ?? [])].reverse().find((m) => m.from === "agent");
+    if (lastOut && similarText(lastOut.text, text)) return null;
+    return text;
   }
 
-  // Fallback: resposta baseada no estágio do agente
-  const stageReplies: Record<HandoffStage, string> = {
-    sdr: `Olá ${clientName}! Obrigado pelo retorno. Você tem interesse em saber como um site profissional pode trazer mais clientes para o seu negócio? Posso te mostrar uma prévia sem compromisso.`,
-    qualificador: `Ótimo ${clientName}! Para entender melhor sua necessidade, me conta: qual o principal objetivo com o site — atrair novos clientes, mostrar seus serviços ou facilitar o contato?`,
-    closer: `Perfeito ${clientName}! Temos uma condição especial disponível esta semana. Posso te passar as opções de investimento. Quando você teria 20 minutos para uma apresentação rápida?`,
-    humano: null as unknown as string,
-  };
-
-  const fallback = stageReplies[currentStage];
-  return fallback ? formatForWhatsApp(fallback) : null;
+  return null;
 }
 
 // ── Utilitários de configuração de webhook ───────────────────────────────────

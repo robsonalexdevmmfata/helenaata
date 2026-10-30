@@ -1,14 +1,67 @@
 import type {
   AbExperiment, Activity, Agent, AiUsage, Approval, Automation, CalendarEvent, Campaign, Company, Contact, Conversation, DB, Deal,
-  Execution, KnowledgeDoc, Memory, Mission, MissionEvent, MissionTask, Operation, Task, Team, User,
+  Execution, KnowledgeDoc, Memory, Mission, MissionEvent, MissionTask, Operation, SalesFlowSettings, Task, Team, User,
 } from "./types";
 import { DEFAULT_ROLE_PERMISSIONS, TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
-import { ROBSON_OPENING_SCRIPT } from "./helena/calendar";
-import { applyCommercialAgentPrompts, liveServiceOffers } from "./catalog";
+import { applyHumanTeam, liveServiceOffers } from "./catalog";
 
 const ORG = "org_novarota";
 
+export function defaultSalesFlow(): SalesFlowSettings {
+  return {
+    enabled: true,
+    sharedConnectionId: "wa_agency",
+    teamUserIds: ["u1"],
+    onlyAfterProspecting: true,
+    noReplyHours: 48,
+    readNoReplyHours: 24,
+    maxCloserAttempts: 1,
+    closerAgentId: "a_valentina",
+    respectBusinessHours: true,
+    businessStart: 9,
+    businessEnd: 18,
+    meetingDurationMin: 30,
+    autoBookMeetings: true,
+  };
+}
+
 /** Fluxos reais: Maps → sem site → WhatsApp dos agentes. Sem Facebook Ads. */
+export function ensureSaasUsers(db: DB) {
+  if (!Array.isArray(db.quoteRequests)) db.quoteRequests = [];
+  const owner = db.users.find((u) => u.id === "u1");
+  if (owner) {
+    owner.kind = "platform";
+    owner.password = owner.password || "123456";
+    owner.planId = owner.planId || "whitelabel";
+  }
+  if (!db.users.some((u) => u.id === "u_demo")) {
+    const start = new Date();
+    db.users.push({
+      id: "u_demo",
+      organizationId: db.organization.id,
+      name: "Ana Souza",
+      email: "ana@estudioana.com.br",
+      username: "demo",
+      password: "123456",
+      role: "manager",
+      title: "Dona da conta",
+      color: "chart-4",
+      status: "ativo",
+      workHours: "09:00–18:00",
+      goal: 8000,
+      achieved: 0,
+      lastSeen: start.toISOString(),
+      kind: "customer",
+      planId: "trial",
+      trialEndsAt: new Date(start.getTime() + 2 * 86_400_000).toISOString(),
+      dailyProspectUsed: 0,
+      dailyProspectDate: start.toISOString().slice(0, 10),
+      companyName: "Estúdio Ana",
+      phone: "+55 11 98888-0001",
+    });
+  }
+}
+
 export function liveMapsAutomations(organizationId: string): Automation[] {
   return [
     {
@@ -86,7 +139,8 @@ export function createSeed(now = new Date()): DB {
   const ahead = (d: number) => new Date(t + d * 86_400_000).toISOString();
 
   const users: User[] = [
-    { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robson@infotech.com.br", username: "admin", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1) },
+    { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robson@infotech.com.br", username: "admin", password: "123456", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
+    { id: "u_demo", organizationId: ORG, name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
   ];
 
   const mkAgent = (a: Partial<Agent> & Pick<Agent, "id" | "name" | "role">): Agent => ({
@@ -111,22 +165,62 @@ export function createSeed(now = new Date()): DB {
   });
 
   const agents: Agent[] = [
-    mkAgent({ id: "a_supcom", name: "Supervisor Comercial", role: "Supervisor", teamId: "t_com", objective: "Coordenar SDRs, Qualificador e Closer para gerar reuniões qualificadas.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-1", budget: 200, personality: "Direto, estratégico e protetor do ritmo do time.", prompt: "Você coordena o Time Comercial da Info Tech. Delegue abordagens aos SDRs e use agendarReuniao quando um horário for fechado.", tools: withCalendarTools(["crm.search_contacts", "crm.assign_lead", "agents.assign_task", "analytics.query"]) }),
-    mkAgent({ id: "a_sdr1", name: "SDR 01", role: "SDR", teamId: "t_com", supervisorId: "a_supcom", objective: "Prospectar e abordar leads sem site pelo WhatsApp da agência.", status: "aguardando", color: "chart-2", personality: "Consultivo, humano e persistente sem ser agressivo.", prompt: `Abordagem inicial (personalidade Robson Alex):\n${ROBSON_OPENING_SCRIPT}\nContorne objeções de preço/tempo com Groq e conduza ao agendamento de 10 minutos. Sempre chame agendarReuniao quando o cliente fechar horário.`, tools: withCalendarTools(["crm.search_contacts", "crm.create_lead", "messages.send", "crm.create_task", "sales.handle_objection"]), knowledgeIds: ["k1", "k2", "k3"] }),
-    mkAgent({ id: "a_sdr2", name: "SDR 02", role: "SDR", teamId: "t_com", supervisorId: "a_supcom", objective: "Prospectar e abordar leads sem site pelo WhatsApp da agência.", status: "aguardando", color: "chart-3", personality: "Consultivo, humano e persistente sem ser agressivo.", prompt: `Abordagem inicial (personalidade Robson Alex):\n${ROBSON_OPENING_SCRIPT}\nContorne objeções de preço/tempo com Groq e conduza ao agendamento de 10 minutos. Sempre chame agendarReuniao quando o cliente fechar horário.`, tools: withCalendarTools(["crm.search_contacts", "crm.create_lead", "messages.send", "crm.create_task", "sales.handle_objection"]), knowledgeIds: ["k1", "k2", "k3"] }),
-    mkAgent({ id: "a_qual", name: "Qualificador", role: "Qualificador", teamId: "t_com", supervisorId: "a_supcom", objective: "Qualificar respostas (BANT) e encaminhar interessados ao Closer.", status: "aguardando", color: "chart-4", model: "google/gemini-flash", tools: withCalendarTools(["crm.search_contacts", "sales.qualify_bant", "messages.send"]) }),
-    mkAgent({ id: "a_closer", name: "Closer", role: "Closer", teamId: "t_com", supervisorId: "a_supcom", objective: "Conduzir reuniões, propostas e negociação até o fechamento.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-5", budget: 250, knowledgeIds: ["k1", "k4", "k5"], personality: "Consultor de negócios, direto e empático. Quebra objeções de preço e prazo.", prompt: "Você é o Closer da Info Tech. Use Groq para responder dúvidas, contornar preço/tempo e gravar a reunião na Agenda com agendarReuniao(leadId, dataHora, resumo) assim que o horário for fechado no WhatsApp.", tools: withCalendarTools(["crm.move_lead", "messages.send", "sales.handle_objection", "sales.generate_checkout_pix"]) }),
-    mkAgent({ id: "a_supat", name: "Supervisor Atendimento", role: "Supervisor", teamId: "t_at", objective: "Garantir SLA de resposta e qualidade do atendimento.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-1" }),
-    mkAgent({ id: "a_at", name: "Atendimento Geral", role: "Atendimento", teamId: "t_at", supervisorId: "a_supat", objective: "Responder dúvidas de clientes e leads em até 2 minutos.", status: "aguardando", color: "chart-2", channels: ["whatsapp", "instagram", "webchat"], knowledgeIds: ["k1"] }),
-    mkAgent({ id: "a_sup", name: "Suporte", role: "Suporte", teamId: "t_at", supervisorId: "a_supat", objective: "Resolver chamados técnicos de clientes ativos.", status: "pausado", color: "chart-4", channels: ["email", "webchat"], knowledgeIds: ["k1"] }),
-    mkAgent({ id: "a_cs", name: "Customer Success", role: "Customer Success", teamId: "t_at", supervisorId: "a_supat", objective: "Acompanhar onboarding e identificar oportunidades de upsell.", status: "aguardando", color: "chart-3" }),
-    mkAgent({ id: "a_fu", name: "Follow-up", role: "Follow-up", objective: "Retomar propostas e leads parados há mais de 48 horas.", status: "aguardando", color: "chart-5", tools: withCalendarTools(["crm.search_contacts", "messages.send", "crm.create_task"]) }),
+    mkAgent({ id: "a_supcom", name: "Marcos Rivera", role: "Supervisor", teamId: "t_com", objective: "Dirigir o comercial: reunião na Agenda, não volume de WhatsApp.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-1", budget: 200, tools: withCalendarTools(["crm.search_contacts", "crm.assign_lead", "agents.assign_task", "analytics.query"]) }),
+    mkAgent({ id: "a_sdr1", name: "Marina Costa", role: "SDR", teamId: "t_com", supervisorId: "a_supcom", objective: "Abrir conversa com clínicas, dentistas, estética e pet sem site.", status: "aguardando", color: "chart-2", tools: withCalendarTools(["crm.search_contacts", "crm.create_lead", "messages.send", "crm.create_task", "sales.handle_objection"]), knowledgeIds: ["k1", "k2", "k3"] }),
+    mkAgent({ id: "a_sdr2", name: "Camila Alves", role: "SDR", teamId: "t_com", supervisorId: "a_supcom", objective: "Abrir conversa com comércio e serviço local sem site.", status: "aguardando", color: "chart-3", tools: withCalendarTools(["crm.search_contacts", "crm.create_lead", "messages.send", "crm.create_task", "sales.handle_objection"]), knowledgeIds: ["k1", "k2", "k3"] }),
+    mkAgent({ id: "a_qual", name: "Rafael Mendes", role: "Qualificador", teamId: "t_com", supervisorId: "a_supcom", objective: "Qualificar só quem respondeu e passar quente ao closer.", status: "aguardando", color: "chart-4", model: "google/gemini-flash", tools: withCalendarTools(["crm.search_contacts", "sales.qualify_bant", "messages.send"]) }),
+    mkAgent({ id: "a_closer", name: "André Lima", role: "Closer", teamId: "t_com", supervisorId: "a_supcom", objective: "Fechar reunião de 10 min e o contrato. Preço só se pedirem.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-5", budget: 250, knowledgeIds: ["k1", "k4", "k5"], tools: withCalendarTools(["crm.move_lead", "messages.send", "sales.handle_objection", "sales.generate_checkout_pix"]) }),
+    mkAgent({ id: "a_supat", name: "Beatriz Nunes", role: "Supervisor", teamId: "t_at", objective: "Garantir SLA de resposta e qualidade do atendimento.", model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-1" }),
+    mkAgent({ id: "a_at", name: "Juliana Prado", role: "Atendimento", teamId: "t_at", supervisorId: "a_supat", objective: "Responder dúvidas de clientes e leads em até 2 minutos.", status: "aguardando", color: "chart-2", channels: ["whatsapp", "instagram", "webchat"], knowledgeIds: ["k1"] }),
+    mkAgent({ id: "a_sup", name: "Pedro Rocha", role: "Suporte", teamId: "t_at", supervisorId: "a_supat", objective: "Resolver chamados técnicos de clientes ativos.", status: "pausado", color: "chart-4", channels: ["email", "webchat"], knowledgeIds: ["k1"] }),
+    mkAgent({ id: "a_cs", name: "Fernanda Dias", role: "Customer Success", teamId: "t_at", supervisorId: "a_supat", objective: "Acompanhar onboarding e identificar oportunidades de upsell.", status: "aguardando", color: "chart-3" }),
+    mkAgent({ id: "a_fu", name: "Lucas Moreira", role: "Follow-up", objective: "Retomar propostas e leads parados há mais de 48 horas.", status: "aguardando", color: "chart-5", tools: withCalendarTools(["crm.search_contacts", "messages.send", "crm.create_task"]) }),
+    mkAgent({
+      id: "a_dev_fe", name: "Caio Ferreira", role: "Front-end Sênior", teamId: "t_dev", supervisorId: "a_dev_fe",
+      description: "Engenheiro de software sênior · front-end",
+      objective: "Montar a prévia do site (páginas, WhatsApp, cardápio visível) com dados do mapa.",
+      personality: "Detalhista em UI. Entrega página, não slide.",
+      model: "anthropic/claude-sonnet", status: "aguardando", color: "chart-1", budget: 220,
+      channels: ["webchat"], tools: ["knowledge.search", "crm.search_contacts"],
+      permissions: ["crm.view", "helena.use"],
+    }),
+    mkAgent({
+      id: "a_dev_be", name: "Diego Nakamura", role: "Back-end Sênior", teamId: "t_dev", supervisorId: "a_dev_fe",
+      description: "Engenheiro de software sênior · back-end",
+      objective: "Estruturar cardápio/catálogo, slug da prévia e dados de contato para o comercial enviar.",
+      personality: "Direto, dado limpo, link estável.",
+      model: "openai/gpt-4o", status: "aguardando", color: "chart-2", budget: 220,
+      channels: ["webchat"], tools: ["knowledge.search", "crm.search_contacts"],
+      permissions: ["crm.view", "helena.use"],
+    }),
+    mkAgent({
+      id: "a_dev_ds", name: "Sofia Almeida", role: "Designer Sênior", teamId: "t_dev", supervisorId: "a_dev_fe",
+      description: "Designer gráfico sênior",
+      objective: "Identidade visual da prévia: paleta, hierarquia e fotos de referência do nicho.",
+      personality: "Visual forte, copy curta, marca local.",
+      model: "google/gemini-flash", status: "aguardando", color: "chart-4", budget: 180,
+      channels: ["webchat"], tools: ["knowledge.search"],
+      permissions: ["crm.view", "helena.use"],
+    }),
+    mkAgent({
+      id: "a_valentina", name: "Valentina Ribeiro", role: "Closer", teamId: "t_com", supervisorId: "a_supcom",
+      description: "Closer de reativação no número compartilhado.",
+      objective: "Quando o lead da prospecção não responde ou visualiza e não responde, retomar a conversa, agendar a reunião e fechar a venda.",
+      personality: "Confiante, direta e persistente sem ser chata. Frases curtas, tom de gente, sempre fecha com dois horários.",
+      prompt: "Você é a Valentina, closer da Info Tech. Você só entra em conversas iniciadas pela prospecção em que o cliente não respondeu ou visualizou e não respondeu. Seu único foco é transformar o silêncio em reunião agendada. Seja curta, humana, sem emojis e sem markdown. Quando o cliente aceitar um horário, chame agendarReuniao. Nunca diga que é uma IA.",
+      model: "anthropic/claude-sonnet", temperature: 0.5, status: "aguardando", color: "chart-5", spent: 0, budget: 250,
+      knowledgeIds: [], channels: ["whatsapp"], schedule: "Seg–Sex, 09:00–18:00",
+      tools: withCalendarTools(["messages.send", "sales.closer_takeover", "sales.handle_objection", "sales.generate_checkout_pix", "crm.move_lead"]),
+      permissions: ["crm.view", "crm.edit", "inbox.reply", "calendar.edit"],
+      metrics: { tasks: 0, conversations: 0, responseRate: 0, conversions: 0 },
+    }),
   ];
-  applyCommercialAgentPrompts(agents);
+  applyHumanTeam(agents);
 
   const teams: Team[] = [
-    { id: "t_com", organizationId: ORG, name: "Comercial", objective: "Gerar reuniões qualificadas para venda de sites e tráfego.", supervisorId: "a_supcom", agentIds: ["a_sdr1", "a_sdr2", "a_qual", "a_closer"], goals: "Reuniões na Agenda compartilhada", schedule: "Seg–Sex, 08:00–19:00", channels: ["whatsapp", "email"], budget: 900, spent: 0, status: "ativo", metrics: { leads: 0, meetings: 0, conversions: 0 } },
+    { id: "t_com", organizationId: ORG, name: "Comercial", objective: "Marina e Camila abrem, Rafael qualifica, André e Valentina fecham reunião. Sem perseguir o mesmo número.", supervisorId: "a_supcom", agentIds: ["a_sdr1", "a_sdr2", "a_qual", "a_closer", "a_valentina"], goals: "Reuniões na Agenda · 1 abertura por WhatsApp", schedule: "Seg–Sex, 08:00–19:00", channels: ["whatsapp", "email"], budget: 900, spent: 0, status: "ativo", metrics: { leads: 0, meetings: 0, conversions: 0 } },
     { id: "t_at", organizationId: ORG, name: "Atendimento", objective: "Responder 100% dos contatos em até 2 minutos com resolução no primeiro contato.", supervisorId: "a_supat", agentIds: ["a_at", "a_sup", "a_cs"], goals: "SLA 2 min", schedule: "Todos os dias, 07:00–22:00", channels: ["whatsapp", "instagram", "webchat", "email"], budget: 400, spent: 0, status: "ativo", metrics: { leads: 0, meetings: 0, conversions: 0 } },
+    { id: "t_dev", organizationId: ORG, name: "Desenvolvimento IA", objective: "Caio (front), Diego (back) e Sofia (design) montam prévia de site e cardápio para negócios sem presença digital. O link vai ao Time Comercial.", supervisorId: "a_dev_fe", agentIds: ["a_dev_fe", "a_dev_be", "a_dev_ds"], goals: "Prévia pronta + link no WhatsApp", schedule: "Seg–Sex, 08:00–19:00", channels: ["webchat", "whatsapp"], budget: 700, spent: 0, status: "ativo", metrics: { leads: 0, meetings: 0, conversions: 0 } },
   ];
 
   const companies: Company[] = [];
@@ -288,12 +382,12 @@ export function createSeed(now = new Date()): DB {
   }
 
   return {
-    version: 6,
+    version: 12,
     organization: { id: ORG, name: "Info Tech Ltda", slug: "info-tech", industry: "Agência de Marketing & Tecnologia B2B", timezone: "America/Sao_Paulo", document: "12.345.678/0001-90", plan: "Scale", createdAt: days(180) },
     currentUserId: "u1",
     users,
     invites: [],
-    companies, contacts, pipelines, deals: [], activities, tasks: [], calendarEvents: [], conversations: [],
+    companies, contacts, pipelines, deals: [], activities, tasks: [], calendarEvents: [], meetings: [], salesFlow: defaultSalesFlow(), conversations: [],
     quickReplies: [
       { id: "q1", organizationId: ORG, shortcut: "/prazo", title: "Prazo de entrega", text: "Nosso prazo para site institucional é de 30 dias após aprovação do layout." },
       { id: "q2", organizationId: ORG, shortcut: "/precos", title: "Faixa de preços", text: "Sites a partir de R$ 4.900, landing pages a partir de R$ 1.900 e gestão de tráfego a partir de R$ 1.800/mês." },
@@ -319,6 +413,8 @@ export function createSeed(now = new Date()): DB {
     ],
     automations: liveMapsAutomations(ORG),
     serviceOffers: liveServiceOffers(ORG),
+    sitePreviews: [],
+    quoteRequests: [],
     connections: [
       { id: "wa_agency", organizationId: ORG, name: "agência info tech", phone: "+55 18 98101-1186", type: "cloud_api", status: "online", queue: 0, sentToday: 0, dailyLimit: 1000, lastSyncAt: ago(1) },
     ],

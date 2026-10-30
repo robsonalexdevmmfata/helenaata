@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { evaluateFollowup, formatSlotMenu, pickProposedSlot, shouldHoldOutbound, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
+import type { Conversation, SalesFlowSettings } from "@/lib/types";
+
+const settings: SalesFlowSettings = {
+  enabled: true,
+  sharedConnectionId: "wa_agency",
+  teamUserIds: ["u1"],
+  onlyAfterProspecting: true,
+  noReplyHours: 48,
+  readNoReplyHours: 24,
+  maxCloserAttempts: 1,
+  closerAgentId: "a_valentina",
+  respectBusinessHours: false,
+  businessStart: 9,
+  businessEnd: 18,
+  meetingDurationMin: 30,
+  autoBookMeetings: true,
+};
+
+function conv(messages: Conversation["messages"], hoursAgo = 1): Conversation {
+  const lastAt = new Date(Date.now() - hoursAgo * 3600_000).toISOString();
+  return {
+    id: "cv1",
+    organizationId: "org",
+    contactId: "p1",
+    channel: "whatsapp",
+    status: "aberta",
+    handlerType: "agent",
+    handlerId: "a_sdr1",
+    unread: 0,
+    sentiment: "neutro",
+    lastMessageAt: lastAt,
+    messages: messages.map((m) => ({ ...m, at: m.at || lastAt })),
+    flow: { origin: "prospeccao", state: "abordado", lastOutboundAt: lastAt, closerAttempts: 0 },
+  };
+}
+
+describe("não insistir no mesmo número", () => {
+  it("segura follow-up se a última mensagem ainda é do agente", () => {
+    const c = conv([{ id: "m1", from: "agent", authorName: "SDR", text: "Oi, é o dono?", at: "", kind: "text" }], 2);
+    expect(unansweredAgentStreak(c)).toBe(1);
+    expect(shouldHoldOutbound(c)).toBe(true);
+    expect(evaluateFollowup(c, settings).action).toBe("none");
+  });
+
+  it("esfria se o time já mandou duas sem resposta", () => {
+    const c = conv([
+      { id: "m1", from: "agent", authorName: "SDR", text: "abertura", at: "", kind: "text" },
+      { id: "m2", from: "agent", authorName: "Closer", text: "follow", at: "", kind: "text" },
+    ], 50);
+    c.flow!.closerAttempts = 1;
+    expect(evaluateFollowup(c, settings).action).toBe("esfriou");
+  });
+
+  it("oferece vários horários e aceita a opção 3", () => {
+    const from = new Date("2026-10-28T08:00:00");
+    const slots = suggestSlots([], "a_closer", from, { ...settings, respectBusinessHours: true }, 6);
+    expect(slots.length).toBe(6);
+    expect(formatSlotMenu(slots, from)).toMatch(/1\)/);
+    expect(formatSlotMenu(slots, from)).toMatch(/6\)/);
+    const iso = slots.map((s) => s.toISOString());
+    expect(pickProposedSlot("pode ser o 3", iso)).toBe(iso[2]);
+  });
+});

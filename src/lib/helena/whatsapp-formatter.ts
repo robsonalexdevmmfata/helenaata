@@ -15,16 +15,43 @@
  * rich — este módulo só é chamado quando o texto vai para o canal externo real.
  */
 
-/** Regex que captura o range Unicode de emojis e símbolos */
+/** Só pictogramas. Não usa \\p{Emoji} — isso come dígitos e às vezes acento. */
 const EMOJI_REGEX =
-  /[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
+  /[\u{1F300}-\u{1FAFF}\u{1F000}-\u{1F2FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE0E}\u{FE0F}]/gu;
 
 /** Remove emojis de uma string */
 export function stripEmojis(text: string): string {
-  return text
+  return sanitizeChatText(text)
     .replace(EMOJI_REGEX, "")
-    .replace(/\s{2,}/g, " ") // colapsa espaços duplos deixados pela remoção
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+/** Texto de conversa: português intacto, sem losango, controle ou mojibake. */
+export function sanitizeChatText(text: string): string {
+  let s = String(text ?? "").normalize("NFC");
+  if (/Ã.|Â.|â€/.test(s)) {
+    try {
+      const bytes = Uint8Array.from([...s].map((c) => c.charCodeAt(0) & 0xff));
+      const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      if ((decoded.match(/\uFFFD/g) || []).length < (s.match(/\uFFFD/g) || []).length + 2) {
+        s = decoded;
+      }
+    } catch {
+      /* mantém original */
+    }
+  }
+  s = s
+    .replace(/\uFFFD/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+  if (/Helena teste:/i.test(s) && /ping/i.test(s)) {
+    return "Helena teste: o WhatsApp da instância helena está conectado. Este é um ping para o próprio número da agência (não é disparo para leads).";
+  }
+  return s;
 }
 
 /** Remove formatação markdown (negrito **, itálico __, riscado ~~, headers ##) */
@@ -43,10 +70,8 @@ export function stripMarkdown(text: string): string {
  * remove emojis e markdown, preserva quebras de linha e bullets naturais.
  */
 export function formatForWhatsApp(text: string): string {
-  return stripMarkdown(stripEmojis(text))
-    // Remove espaços antes de pontuação
+  return stripMarkdown(stripEmojis(sanitizeChatText(text)))
     .replace(/ ([.,!?;:])/g, "$1")
-    // Colapsa linhas em branco extras (mantém no máx 2 quebras)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -74,7 +99,7 @@ export interface HandoffDecision {
 
 /** Palavras/padrões que indicam interesse e disparam handoff SDR → Qualificador */
 const INTEREST_TRIGGERS =
-  /\b(quero|queria|me interess|sim|pode ser|gostei|me mostra|que horas|quanto custa|valor|pre[cç]o|qual seria|tenho interesse|me conta mais|quero saber|me fala|pode apresentar|demonstra[cç][aã]o|ver como funciona|como [eé] feito)\b/i;
+  /\b(quero (saber|sim|ver)|me interess|gostei|quanto custa|valor do site|tenho interesse|pode apresentar|demonstra[cç][aã]o|ver como funciona)\b/i;
 
 /** Padrões que indicam qualificação aprovada → Closer */
 const QUALIFIED_TRIGGERS =

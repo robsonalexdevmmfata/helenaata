@@ -12,12 +12,13 @@ import { evolutionSendText, getEvolutionConfigUI } from "./evolutionapi";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { buildCatalogOpening } from "@/lib/catalog";
 import { getDB, update, uid, nowISO } from "@/lib/store";
+import { unansweredAgentStreak } from "@/lib/helena/sales-flow";
 
 // ── Configurações de disparo seguro ──────────────────────────────────────────
 
-const DEFAULT_DELAY_MS = 8_000;    // 8s entre cada mensagem (evita ban)
-const MAX_BURST = 5;               // Máximo de mensagens antes de pausa longa
-const BURST_PAUSE_MS = 30_000;     // 30s de pausa a cada 5 mensagens
+const DEFAULT_DELAY_MS = 8_000;
+const MAX_BURST = 6;
+const BURST_PAUSE_MS = 35_000;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,17 @@ export async function dispatchProspectMessages(
     if (cleanPhone.length < 10) {
       result.skipped++;
       continue;
+    }
+    const dbNow = getDB();
+    const already = dbNow.contacts.find((c) => c.phone.replace(/\D/g, "").slice(-10) === cleanPhone.slice(-10));
+    const existingConv = already ? dbNow.conversations.find((cv) => cv.contactId === already.id) : undefined;
+    if (existingConv && unansweredAgentStreak(existingConv) >= 1) {
+      const lastOut = existingConv.flow?.lastOutboundAt ?? existingConv.messages.at(-1)?.at;
+      const age = lastOut ? Date.now() - new Date(lastOut).getTime() : 0;
+      if (age > 10 * 60_000) {
+        result.skipped++;
+        continue;
+      }
     }
 
     const text = formatForWhatsApp(messageFactory(contact));

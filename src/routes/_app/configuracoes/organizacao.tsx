@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/app/kit";
-import { update, useDB } from "@/lib/store";
+import { currentUser, update, useDB } from "@/lib/store";
+import { isPlatformAdmin } from "@/lib/saas";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
@@ -17,8 +18,10 @@ export const Route = createFileRoute("/_app/configuracoes/organizacao")({
 function OrganizationPage() {
   const db = useDB();
   const org = db.organization;
+  const user = currentUser(db);
+  const admin = isPlatformAdmin(user);
 
-  const [name, setName] = useState(org.name);
+  const [name, setName] = useState(admin ? org.name : (user.companyName || org.name));
   const [slug, setSlug] = useState(org.slug);
   const [industry, setIndustry] = useState(org.industry);
   const [document, setDocument] = useState(org.document);
@@ -27,19 +30,24 @@ function OrganizationPage() {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      toast.error("O nome da organização não pode ser vazio.");
+      toast.error("O nome da instituição não pode ser vazio.");
       return;
     }
 
     update((d) => {
-      d.organization.name = name.trim();
-      d.organization.slug = slug.trim();
-      d.organization.industry = industry.trim();
-      d.organization.document = document.trim();
-      d.organization.timezone = timezone.trim();
+      if (admin) {
+        d.organization.name = name.trim();
+        d.organization.slug = slug.trim();
+        d.organization.industry = industry.trim();
+        d.organization.document = document.trim();
+        d.organization.timezone = timezone.trim();
+      } else {
+        const u = d.users.find((x) => x.id === user.id);
+        if (u) u.companyName = name.trim();
+      }
     });
 
-    toast.success("Dados da organização atualizados com sucesso!");
+    toast.success("Dados da instituição atualizados com sucesso!");
   };
 
   return (
@@ -65,7 +73,7 @@ function OrganizationPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="org-name">Nome da Empresa / Agência</Label>
+              <Label htmlFor="org-name">Nome da instituição</Label>
               <Input
                 id="org-name"
                 value={name}
@@ -75,46 +83,50 @@ function OrganizationPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="org-slug">Identificador / Slug</Label>
-              <Input
-                id="org-slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="info-tech"
-              />
-              <p className="text-[11px] text-muted-foreground">Usado em links e rotas multi-empresa.</p>
-            </div>
+            {admin && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="org-slug">Identificador / Slug</Label>
+                  <Input
+                    id="org-slug"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="info-tech"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Usado em links e rotas multi-empresa.</p>
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="org-doc">CNPJ / Documento</Label>
-              <Input
-                id="org-doc"
-                value={document}
-                onChange={(e) => setDocument(e.target.value)}
-                placeholder="00.000.000/0001-00"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="org-doc">CNPJ / Documento</Label>
+                  <Input
+                    id="org-doc"
+                    value={document}
+                    onChange={(e) => setDocument(e.target.value)}
+                    placeholder="00.000.000/0001-00"
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="org-industry">Segmento de Atuação</Label>
-              <Input
-                id="org-industry"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                placeholder="Ex: Agência de Marketing, Software B2B"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="org-industry">Segmento de Atuação</Label>
+                  <Input
+                    id="org-industry"
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
+                    placeholder="Ex: Agência de Marketing, Software B2B"
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="org-tz">Fuso Horário Padrão</Label>
-              <Input
-                id="org-tz"
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                placeholder="America/Sao_Paulo"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="org-tz">Fuso Horário Padrão</Label>
+                  <Input
+                    id="org-tz"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    placeholder="America/Sao_Paulo"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end pt-2">

@@ -17,6 +17,7 @@ import { playHappyNation, helenaMusic } from "@/lib/helena/music";
 export const HELENA_SUGGESTIONS = [
   "Helena, precisamos faturar R$ 15.000 esta semana.",
   "Boa noite Helena. Preciso que você ative o time comercial e comece a prospectar clientes para a agência Info Tech Ltda.",
+  "Helena, procure 50 restaurantes que não tenham site nem cardápio online.",
   "Helena, varra o Google Maps e busque 10 clínicas sem site em São Paulo.",
   "Agende uma reunião no Google Calendar com o cliente.",
   "Como está o comercial?",
@@ -53,10 +54,6 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
     const last = messages[messages.length - 1];
     if (last && last.role === "helena" && last.id !== lastSpokenRef.current) {
       lastSpokenRef.current = last.id;
-      const cfg = getBriefingConfig();
-      if (cfg.autoPlayMusic && !helenaMusic.get().playing) {
-        playHappyNation(cfg.musicVolume);
-      }
       window.setTimeout(() => voice.speak(last.text), 380);
     }
   }, [messages, voice.voiceEnabled, voice.speak]);

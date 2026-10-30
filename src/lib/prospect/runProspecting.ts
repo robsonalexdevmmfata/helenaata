@@ -3,22 +3,34 @@ import { dispatchProspectMessages, buildProspectMessage } from "@/lib/evolution/
 import { buildCatalogOpening } from "@/lib/catalog";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { bumpAutomation, getDB, nowISO, uid, update } from "@/lib/store";
-import { digits, isValidBrazilWhatsApp, searchBusinessesWithoutWebsite, type MapPlace } from "./mapsSearch";
+import { syncLiveCommercial } from "@/lib/analytics";
+import { digits, isValidBrazilWhatsApp, searchBusinessesWithoutWebsite, WAVE_CITIES, WAVE_NICHES, type MapPlace } from "./mapsSearch";
 
-function commercialRoster() {
-  const db = getDB();
-  const order = ["SDR 01", "SDR 02", "Qualificador", "Closer"];
-  const team = db.agents.filter(
-    (a) => a.teamId === "t_com" && ["SDR", "Qualificador", "Closer"].includes(a.role),
-  );
-  const ranked = order
-    .map((name) => team.find((a) => a.name === name))
-    .filter((a): a is NonNullable<typeof a> => Boolean(a));
-  return ranked.length ? ranked : team.length ? team : db.agents.slice(0, 1);
+export function activateCommercialTeam() {
+  update((d) => {
+    const team = d.teams.find((t) => t.id === "t_com");
+    if (team) team.status = "ativo";
+    d.agents.forEach((a) => {
+      if (a.teamId !== "t_com") return;
+      a.status = "trabalhando";
+      if (a.id === "a_sdr1") a.currentTask = "Marina · clínicas e saúde no WhatsApp";
+      else if (a.id === "a_sdr2") a.currentTask = "Camila · comércio local no WhatsApp";
+      else if (a.id === "a_qual") a.currentTask = "Rafael · só quem respondeu";
+      else if (a.role === "Closer") a.currentTask = "Fechar reunião de 10 min";
+      else a.currentTask = "Comercial · Maps sem site";
+    });
+  });
+}
+
+function ownerForSegment(segment: string, slot: number, agents: { id: string; teamId?: string; role: string }[]) {
+  const roster = agents.filter((a) => a.teamId === "t_com" && a.role === "SDR");
+  const n = segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const saude = /odont|dentist|clinic|estetic|veterin|pet shop|medico|saude/;
+  const prefer = saude.test(n) ? "a_sdr1" : "a_sdr2";
+  return roster.find((a) => a.id === prefer) ?? roster[slot % Math.max(1, roster.length)] ?? roster[0] ?? agents[0];
 }
 
 export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
-  const roster = commercialRoster();
   const conn = getAgencyConnection(getDB());
   const createdContactIds: string[] = [];
 
@@ -31,10 +43,11 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
       if (place.website) return;
       if (!isValidBrazilWhatsApp(place.phone)) return;
       const phoneKey = digits(place.phone);
+      if (phoneKey.endsWith("18981011186")) return;
       if (existingPhones.has(phoneKey)) return;
       existingPhones.add(phoneKey);
 
-      const owner = roster[slot % Math.max(1, roster.length)] ?? roster[0] ?? d.agents[0];
+      const owner = ownerForSegment(segment, slot, d.agents);
       if (!owner) return;
       slot += 1;
       const compId = uid("c_maps_");
@@ -78,7 +91,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
           title: `Site · ${place.name}`,
           contactId,
           companyId: compId,
-          value: 4900,
+          value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 547,
           probability: stage.probability,
           expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
           ownerId: owner.id,
@@ -123,6 +136,8 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
         unread: 0,
         sentiment: "neutro",
         lastMessageAt: nowISO(),
+        remoteJid: `${(() => { const n = digits(place.phone); return n.startsWith("55") ? n : `55${n}`; })()}@s.whatsapp.net`,
+        flow: { origin: "prospeccao", state: "abordado", lastOutboundAt: nowISO(), closerAttempts: 0 },
         messages: [{
           id: uid("m_"),
           from: "agent",
@@ -133,6 +148,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
         }],
       });
     });
+    syncLiveCommercial(d);
   });
   return createdContactIds;
 }
@@ -177,4 +193,82 @@ export async function runRealProspecting(opts: {
 export async function sendOpeningNow(phone: string, contactName: string, companyName: string) {
   const text = formatForWhatsApp(buildCatalogOpening(contactName, companyName, getDB().serviceOffers ?? []));
   return evolutionSendText(phone, text);
+}
+
+export async function runWaveProspecting(opts: { limit?: number; organizationId: string; operationId?: string }) {
+  activateCommercialTeam();
+  const target = Math.min(Math.max(opts.limit ?? 150, 1), 150);
+  const hubs = WAVE_CITIES.slice(0, 4);
+  const niches = WAVE_NICHES.slice(0, 6);
+  const seen = new Set<string>();
+  const bag: { place: MapPlace; segment: string }[] = [];
+  for (const city of hubs) {
+    for (const niche of niches) {
+      if (bag.length >= target) break;
+      try {
+        const found = await searchBusinessesWithoutWebsite({ segment: niche, city, state: "SP", limit: 10 });
+        for (const p of found) {
+          if (!isValidBrazilWhatsApp(p.phone)) continue;
+          const k = digits(p.phone);
+          if (!k || seen.has(k) || k.endsWith("18981011186")) continue;
+          seen.add(k);
+          bag.push({ place: p, segment: niche });
+          if (bag.length >= target) break;
+        }
+      } catch {
+        /* próxima combinação */
+      }
+    }
+  }
+  const bySeg = new Map<string, MapPlace[]>();
+  for (const item of bag) {
+    const list = bySeg.get(item.segment) ?? [];
+    list.push(item.place);
+    bySeg.set(item.segment, list);
+  }
+  const ids: string[] = [];
+  for (const [segment, places] of bySeg) {
+    ids.push(...insertPlacesAsLeads(places, segment));
+  }
+  if (!ids.length) return { found: 0, sent: 0, failed: 0, skipped: 0 };
+  const db = getDB();
+  const contacts = ids.map((id) => {
+    const c = db.contacts.find((x) => x.id === id)!;
+    const comp = db.companies.find((x) => x.id === c.companyId);
+    const agent = db.agents.find((a) => a.id === c.ownerId);
+    return {
+      phone: c.phone,
+      name: c.name,
+      companyName: comp?.name ?? c.name,
+      contactId: c.id,
+      agentName: agent?.name ?? "SDR 01",
+    };
+  });
+  const cfg = getEvolutionConfigUI();
+  if (!cfg.apiKey) return { found: bag.length, sent: 0, failed: contacts.length, skipped: 0 };
+  const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
+  return { found: bag.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
+}
+
+export async function dispatchLeadsToAgents(places: MapPlace[], segment: string) {
+  activateCommercialTeam();
+  const ids = insertPlacesAsLeads(places, segment);
+  if (!ids.length) return { found: places.length, sent: 0, failed: 0, skipped: places.length };
+  const db = getDB();
+  const contacts = ids.map((id) => {
+    const c = db.contacts.find((x) => x.id === id)!;
+    const comp = db.companies.find((x) => x.id === c.companyId);
+    const agent = db.agents.find((a) => a.id === c.ownerId);
+    return {
+      phone: c.phone,
+      name: c.name,
+      companyName: comp?.name ?? c.name,
+      contactId: c.id,
+      agentName: agent?.name ?? "SDR 01",
+    };
+  });
+  const cfg = getEvolutionConfigUI();
+  if (!cfg.apiKey) return { found: places.length, sent: 0, failed: contacts.length, skipped: 0 };
+  const disp = await dispatchProspectMessages(contacts, buildProspectMessage, db.organization.id);
+  return { found: places.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
 }

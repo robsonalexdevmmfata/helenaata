@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -18,7 +19,7 @@ export const Route = createFileRoute("/_app/ia/execucoes")({
   component: ExecucoesPage,
 });
 
-const RESULT_ICON: Record<string, JSX.Element> = {
+const RESULT_ICON: Record<string, ReactElement> = {
   sucesso: <CheckCircle2 className="size-4 text-success shrink-0" />,
   falha: <XCircle className="size-4 text-destructive shrink-0" />,
   pendente: <Clock className="size-4 text-warning shrink-0" />,
@@ -58,7 +59,7 @@ function ExecucoesPage() {
       <div className="grid gap-3 sm:grid-cols-4">
         <StatCard label="Com Sucesso" value={success} icon={<CheckCircle2 />} tone="success" />
         <StatCard label="Total" value={db.executions.length} icon={<Activity />} tone="info" />
-        <StatCard label="Com Falha" value={failed} icon={<XCircle />} tone="destructive" />
+        <StatCard label="Com Falha" value={failed} icon={<XCircle />} tone="danger" />
         <StatCard label="Duração Média" value={`${avgDuration}ms`} hint="Por execução" icon={<Clock />} tone="helena" />
       </div>
 

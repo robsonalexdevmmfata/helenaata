@@ -1,5 +1,5 @@
-import { useRouter } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { useRouter } from "@tanstack/react-router";
 import { Disc3, Maximize2, Pause, Play, RotateCcw, X } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,9 @@ import { HELENA_STATE_LABEL, helenaUi } from "@/lib/helena/orchestrator";
 import { update } from "@/lib/store";
 import { HelenaChat } from "./HelenaChat";
 import { HelenaOrb } from "./HelenaOrb";
-import {
-  helenaMusic, toggleHappyNation, registerMusicIframe,
-} from "@/lib/helena/music";
-import { getBriefingConfig, extractYouTubeId } from "@/lib/helena/briefing";
+import { HelenaAvatarWidget } from "./HelenaAvatarWidget";
+import { helenaMusic, MUSIC_START_SEC, registerMusicIframe, toggleHappyNation } from "@/lib/helena/music";
+import { extractYouTubeId, getBriefingConfig } from "@/lib/helena/briefing";
 import { cn } from "@/lib/utils";
 
 export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onClose?: () => void }) {
@@ -22,7 +21,7 @@ export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onC
   return (
     <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
       <div className="flex items-center gap-2.5">
-        <HelenaOrb className="size-8" state={ui.state} />
+        <HelenaOrb className="size-9" state={ui.state} talking={music.playing} />
         <div>
           <div className="text-sm font-semibold tracking-[0.16em] flex items-center gap-1.5">
             HELENA
@@ -91,41 +90,30 @@ export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onC
 
 export function HelenaPanel() {
   const ui = helenaUi.use();
-  const music = helenaMusic.use();
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Register iframe as soon as it mounts (iframe always mounted, not inside Sheet)
-  useEffect(() => {
-    if (iframeRef.current) {
-      registerMusicIframe(iframeRef.current);
-    }
-    return () => registerMusicIframe(null);
-  }, []);
-
   const cfg = getBriefingConfig();
   const ytId = extractYouTubeId(cfg.musicUrl);
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8081";
 
+  useEffect(() => {
+    if (iframeRef.current) registerMusicIframe(iframeRef.current);
+    return () => registerMusicIframe(null);
+  }, []);
+
   return (
     <>
-      {/* Player visível no viewport: Chrome silencia iframe fora da tela. */}
-      <div
-        className={cn(
-          "fixed bottom-[4.5rem] right-5 z-40 overflow-hidden rounded-lg border bg-black shadow-lg transition-all",
-          ui.open || music.playing ? "h-[72px] w-[128px] opacity-100" : "h-[72px] w-[128px] opacity-70",
-        )}
-      >
-        <iframe
-          ref={iframeRef}
-          width="128"
-          height="72"
-          src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&origin=${origin}&loop=1&playlist=${ytId}&playsinline=1&rel=0&modestbranding=1`}
-          title="Happy Nation Player"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
-        />
-      </div>
+      <iframe
+        ref={iframeRef}
+        width="2"
+        height="2"
+        src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1&origin=${origin}&start=${MUSIC_START_SEC}&playsinline=1&rel=0&modestbranding=1`}
+        title="Helena soundtrack"
+        allow="autoplay; encrypted-media"
+        tabIndex={-1}
+        className="pointer-events-none fixed bottom-0 right-0 h-px w-px opacity-[0.02]"
+      />
+      <HelenaAvatarWidget />
 
       <Sheet open={ui.open} onOpenChange={(open) => helenaUi.set({ open })}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[480px] [&>button]:hidden shadow-2xl">
@@ -157,7 +145,7 @@ export function HelenaFab() {
       className="group fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full border bg-card py-2 pl-2 pr-4 shadow-lg shadow-foreground/10 transition-all hover:-translate-y-0.5 hover:border-helena/50 hover:shadow-helena/10"
       aria-label="Abrir Helena"
     >
-      <HelenaOrb className="size-8" state={ui.state} />
+      <HelenaOrb className="size-9" state={ui.state} talking={music.playing} />
       <span className="text-left">
         <span className="block text-xs font-semibold tracking-[0.14em] flex items-center gap-1.5">
           HELENA

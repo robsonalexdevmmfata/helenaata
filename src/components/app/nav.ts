@@ -2,7 +2,7 @@ import {
   Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact,
   CreditCard, Gauge, Inbox, KeyRound, KanbanSquare, ListChecks, Lock, MessageSquareQuote, Network, Receipt,
   Radar, Repeat, Rocket, Scale, Settings2, ShieldCheck, Sparkles, Users, UsersRound, Webhook, Workflow,
-  Wrench, Zap, Cpu, MessageCircle, List,
+  Wrench, Zap, Cpu, MessageCircle, List, Globe,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Helena", to: "/ia/helena", icon: Sparkles },
     { label: "Agenda", to: "/ia/agenda", icon: CalendarClock },
     { label: "Times", to: "/ia/times", icon: Network },
+    { label: "Prévia de sites", to: "/ia/previews", icon: Globe },
     { label: "Agentes", to: "/ia/agentes", icon: Bot },
     { label: "Conhecimento", to: "/ia/conhecimento", icon: BookOpen },
     { label: "Memória", to: "/ia/memoria", icon: Brain },
@@ -74,12 +75,20 @@ export const NAV_SETTINGS: NavGroup = {
   label: "Configurações", icon: Settings2, items: [
     { label: "Organização", to: "/configuracoes/organizacao", icon: Building2 },
     { label: "Usuários", to: "/configuracoes/usuarios", icon: Users },
+    { label: "Planos", to: "/planos", icon: CreditCard },
     { label: "Permissões", to: "/configuracoes/permissoes", icon: ShieldCheck },
     { label: "Segurança", to: "/configuracoes/seguranca", icon: Lock },
     { label: "LGPD", to: "/configuracoes/lgpd", icon: Scale },
     { label: "Billing", to: "/configuracoes/billing", icon: CreditCard },
   ],
 };
+
+export function settingsNavFor(isAdmin: boolean): NavGroup {
+  return {
+    ...NAV_SETTINGS,
+    items: NAV_SETTINGS.items.filter((i) => isAdmin || i.to !== "/configuracoes/usuarios"),
+  };
+}
 
 export const ALL_NAV: NavItem[] = [
   ...NAV_TOP,

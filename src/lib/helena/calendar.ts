@@ -4,7 +4,7 @@
  */
 
 export const ROBSON_OPENING_SCRIPT =
-  "Olá! Sou o Robson Alex, CEO da Agência Info Tech Ltda. Notei que vocês ainda não possuem um site institucional otimizado/presença digital completa no Google, e isso faz vocês perderem clientes diariamente aqui na região. Gostaria de agendar uma rápida reunião de 10 minutos para mostrar como podemos resolver isso.";
+  "Olá! Sou o Robson Alex, da Info Tech. Vi vocês no mapa e notei que ainda não têm site na região. Você é o proprietário ou a proprietária do estabelecimento?";
 
 /** Tools injetadas no prompt/contexto de todo agente de IA. */
 export const AGENT_CALENDAR_TOOLS = [
@@ -23,7 +23,7 @@ export const CALENDAR_TOOL_PROMPT = `Agenda compartilhada (leitura e escrita obr
 export function buildRobsonOpening(contactName?: string, companyName?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
   const biz = companyName ? ` a ${companyName}` : " vocês";
-  return `${who} Sou o Robson Alex, CEO da Agência Info Tech Ltda. Notei que${biz} ainda não possuem um site institucional otimizado/presença digital completa no Google, e isso faz vocês perderem clientes diariamente aqui na região. Gostaria de agendar uma rápida reunião de 10 minutos para mostrar como podemos resolver isso.`;
+  return `${who} Sou o Robson Alex, da Info Tech. Vi${biz} no mapa e notei que ainda não têm site na região. Você é o proprietário ou a proprietária do estabelecimento?`;
 }
 
 export interface ParsedMeeting {

@@ -5,6 +5,9 @@ import {
   normalizePhone,
   queryForSegment,
   citiesForState,
+  parseCityList,
+  WAVE_CITIES,
+  WAVE_NICHES,
 } from "@/lib/prospect/mapsSearch";
 import { interpret } from "@/lib/helena/orchestrator";
 import { getEvolutionConfig } from "@/lib/evolution/evolutionapi";
@@ -25,6 +28,17 @@ describe("scan_maps nacional", () => {
     expect(isNationwideScope("", "TODOS")).toBe(true);
     expect(isNationwideScope("Presidente Prudente, SP")).toBe(false);
     expect(citiesForState("SP")).toContain("Presidente Prudente, SP");
+  });
+
+  it("separa a onda SP + interior e vários nichos", () => {
+    expect(parseCityList("São Paulo, Campinas, Andradina, Araçatuba", "SP")).toEqual([
+      "São Paulo, SP",
+      "Campinas, SP",
+      "Andradina, SP",
+      "Araçatuba, SP",
+    ]);
+    expect(WAVE_CITIES.join(" ")).toMatch(/Andradina/);
+    expect(WAVE_NICHES.length).toBeGreaterThan(5);
   });
 
   it("usa Overpass de dentista para nichos odontológicos", () => {

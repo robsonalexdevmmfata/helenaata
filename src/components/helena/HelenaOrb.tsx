@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { HelenaState } from "@/lib/helena/orchestrator";
+import { HelenaAvatar } from "./HelenaAvatar";
 
 export function RobotFace({
   className,
@@ -164,24 +165,13 @@ export function RobotFace({
 export function HelenaOrb({
   state = "ocioso",
   className,
+  talking,
 }: {
   state?: HelenaState;
   className?: string;
+  talking?: boolean;
 }) {
-  return (
-    <span
-      className={cn(
-        "helena-orb inline-flex items-center justify-center size-6 shrink-0 rounded-full select-none overflow-hidden",
-        className
-      )}
-      data-state={state}
-      aria-hidden
-    >
-      <span className="relative z-10 flex items-center justify-center w-[84%] h-[84%]">
-        <RobotFace state={state} />
-      </span>
-    </span>
-  );
+  return <HelenaAvatar className={cn("size-6", className)} state={state} talking={talking} />;
 }
 
 export { RobotFace as HelenaRobotLogo };

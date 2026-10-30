@@ -11,7 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { useDB } from "@/lib/store";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
-import { TeamForm } from "./components/TeamForm";
+import { TeamForm } from "./components/-TeamForm";
 
 export const Route = createFileRoute("/_app/ia/times")({
   head: () => pageHead("Times de IA", "Equipes autônomas de agentes coordenadas pela Helena para missões e operações."),
@@ -44,7 +44,7 @@ function TimesPage() {
       <PageHeader
         eyebrow="IA"
         title="Times de Agentes"
-        description="Equipes especializadas com supervisores, SDRs, Closers e Analistas trabalhando em missões."
+        description="Comercial aborda. Desenvolvimento IA monta a prévia de site e cardápio. Atendimento cobre o cliente ativo."
       />
 
       <div className="grid gap-3 sm:grid-cols-3">

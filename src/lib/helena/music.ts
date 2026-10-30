@@ -3,11 +3,15 @@
 import { createUiStore } from "@/lib/store";
 import { getBriefingConfig, extractYouTubeId } from "./briefing";
 
+/** Happy Nation: pula a intro e começa no refrão (~0:12). Sem loop. */
+export const MUSIC_START_SEC = 12;
+
 export interface MusicPlayerState {
   playing: boolean;
   volume: number;
   trackTitle: string;
   youtubeId: string;
+  linger: boolean;
 }
 
 export const helenaMusic = createUiStore<MusicPlayerState>({
@@ -15,6 +19,7 @@ export const helenaMusic = createUiStore<MusicPlayerState>({
   volume: 36,
   trackTitle: "Ace of Base - Happy Nation",
   youtubeId: "HWjCStB6k4o",
+  linger: false,
 });
 
 let iframeElement: HTMLIFrameElement | null = null;
@@ -60,6 +65,7 @@ function _postCmd(func: string, args: unknown[]) {
 }
 
 function issuePlay(vol: number) {
+  _postCmd("seekTo", [MUSIC_START_SEC, true]);
   _postCmd("playVideo", []);
   _postCmd("unMute", []);
   _postCmd("setVolume", [Math.max(28, Math.min(100, vol))]);
@@ -81,15 +87,17 @@ export function registerMusicIframe(iframe: HTMLIFrameElement | null) {
   }
 }
 
-export function playHappyNation(volume?: number) {
+export function playHelenaTrack(kind: "entrada" | "despedida" = "entrada", volume?: number, opts?: { linger?: boolean }) {
   const cfg = getBriefingConfig();
   const vol = volume ?? cfg.musicVolume ?? 36;
-  const ytid = extractYouTubeId(cfg.musicUrl);
+  const url = kind === "despedida" ? (cfg.exitMusicUrl || cfg.musicUrl) : cfg.musicUrl;
+  const ytid = extractYouTubeId(url);
 
   helenaMusic.set({
     youtubeId: ytid,
-    trackTitle: "Ace of Base - Happy Nation",
+    trackTitle: kind === "despedida" ? "Trilha de despedida" : "Trilha de entrada",
     volume: vol,
+    linger: opts?.linger === true,
   });
 
   pendingVolume = vol;
@@ -107,15 +115,29 @@ export function playHappyNation(volume?: number) {
   if (typeof window !== "undefined") window.setTimeout(retry, 600);
 }
 
+export function playHappyNation(volume?: number, opts?: { linger?: boolean }) {
+  playHelenaTrack("entrada", volume, opts);
+}
+
+export function playFarewellMusic(volume?: number) {
+  playHelenaTrack("despedida", volume, { linger: true });
+}
+
 export function pauseHappyNation() {
   pendingVolume = null;
-  helenaMusic.set({ playing: false });
+  helenaMusic.set({ playing: false, linger: false });
   _postCmd("pauseVideo", []);
+}
+
+/** Para a trilha no fim da saudação, a menos que o usuário tenha pedido para continuar. */
+export function pauseHappyNationIfGreeting() {
+  if (helenaMusic.get().linger) return;
+  pauseHappyNation();
 }
 
 export function toggleHappyNation() {
   if (helenaMusic.get().playing) pauseHappyNation();
-  else playHappyNation();
+  else playHappyNation(undefined, { linger: true });
 }
 
 export function setMusicVolume(vol: number) {

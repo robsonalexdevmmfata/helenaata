@@ -9,7 +9,8 @@ export interface BriefingConfig {
   triggerPhrase: string; // "Olá Helena, cheguei"
   exitTriggerPhrase: string; // "Helena, encerrando por hoje"
   voiceTone: string; // "Executivo & Foco em Metas" | "Inspirador & Agressivo" | "Direto e Sucinto"
-  musicUrl: string; // YouTube URL
+  musicUrl: string; // YouTube URL — entrada
+  exitMusicUrl: string; // YouTube URL — despedida
   musicVolume: number; // 0 - 100
   autoPlayMusic: boolean;
   customOpening: string;
@@ -33,7 +34,8 @@ export function getBriefingConfig(): BriefingConfig {
       triggerPhrase: "Olá Helena, cheguei",
       exitTriggerPhrase: "Helena, encerrando por hoje",
       voiceTone: "Executivo & Foco em Metas",
-      musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o", // Happy Nation - Ace of Base
+      musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o",
+      exitMusicUrl: "https://www.youtube.com/watch?v=jfKfPfyJRdk",
       musicVolume: 36,
       autoPlayMusic: true,
       customOpening: "Olá, {titulo} {nome}! Que bom ter você aqui.",
@@ -48,6 +50,7 @@ export function getBriefingConfig(): BriefingConfig {
     exitTriggerPhrase: "Helena, encerrando por hoje",
     voiceTone: "Executivo & Foco em Metas",
     musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o",
+    exitMusicUrl: "https://www.youtube.com/watch?v=jfKfPfyJRdk",
     musicVolume: 36,
     autoPlayMusic: true,
     customOpening: "Olá, {titulo} {nome}! Que bom ter você aqui.",
@@ -73,6 +76,7 @@ function migrateBriefingOwner(cfg: BriefingConfig): BriefingConfig {
     cfg.userTitle = "CEO";
   }
   if (cfg.musicVolume < 24) cfg.musicVolume = 36;
+  if (!cfg.exitMusicUrl) cfg.exitMusicUrl = "https://www.youtube.com/watch?v=jfKfPfyJRdk";
   return cfg;
 }
 
@@ -137,7 +141,7 @@ export function generateBriefingScript(
 
   if (type === "encerramento") {
     const title = "Resumo Noturno de Encerramento";
-    const script = `Excelente trabalho por hoje, ${config.userTitle} ${config.userName}! Expediente de prospecção do dia finalizado. A ${db.organization.name} encerra o dia com ${brl(monthWonTotal)} acumulados no mês, correspondendo a ${pctGoal}% da nossa meta de ${brl(goal)}. Os agentes SDR 01 e SDR 02 foram configurados em modo de cadência automática noturna para evitar bloqueios no WhatsApp. Descanse com tranquilidade, eu continuo monitorando a infraestrutura e o radar de atendimento. Até amanhã!`;
+    const script = `Excelente trabalho por hoje, ${config.userTitle} ${config.userName}! Expediente de prospecção do dia finalizado. A ${db.organization.name} encerra o dia com ${brl(monthWonTotal)} acumulados no mês, correspondendo a ${pctGoal}% da nossa meta de ${brl(goal)}. Marina e Camila ficam em cadência noturna leve para não bloquear o WhatsApp. Descanse com tranquilidade — eu continuo no radar. Até amanhã!`;
     return {
       title,
       script,

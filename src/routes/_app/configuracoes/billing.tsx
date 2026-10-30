@@ -86,7 +86,7 @@ function BillingPage() {
             ))}
           </ul>
           <div className="flex gap-2 pt-1">
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => window.open("https://helena.ai/planos", "_blank")}>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { window.location.href = "/planos"; }}>
               <TrendingUp className="size-3.5" /> Ver todos os planos
             </Button>
             <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground" onClick={() => window.open("https://helena.ai/cancelar", "_blank")}>

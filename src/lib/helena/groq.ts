@@ -3,6 +3,7 @@ import { getDB } from "@/lib/store";
 import { callFreeLLMOrchestrator, getFreeLLMConfig } from "./freellmapi";
 import { CALENDAR_TOOL_PROMPT, ROBSON_OPENING_SCRIPT } from "./calendar";
 import { formatCatalogForAgents } from "@/lib/catalog";
+import { serverChatCompletion } from "@/lib/backend";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -35,6 +36,24 @@ export interface GroqResponse {
 }
 
 export const GROQ_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "dev_build_presence",
+      description:
+        "Aciona o Time Desenvolvimento IA (front, back e designer seniores): encontra negócios do NICHO sem site (e sem cardápio online se for comida), monta prévia com dados do mapa e passa o link ao Time Comercial para abordar o proprietário. Use para restaurantes, barbearias, clínicas, qualquer nicho — não só restaurante.",
+      parameters: {
+        type: "object",
+        properties: {
+          segment: { type: "string", description: "Nicho (ex: Restaurantes, Barbearias, Advogados)" },
+          city: { type: "string", description: "Cidade e UF, ou Brasil" },
+          nationwide: { type: "boolean" },
+          limit: { type: "number", description: "Quantidade (padrão 10, máx 50)" },
+        },
+        required: ["segment"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -195,44 +214,51 @@ export const GROQ_TOOLS = [
   },
 ];
 
+function parseChoice(choice: any): GroqResponse {
+  const toolCalls: GroqToolCall[] = [];
+  if (choice.tool_calls && Array.isArray(choice.tool_calls)) {
+    for (const tc of choice.tool_calls) {
+      try {
+        toolCalls.push({ id: tc.id, name: tc.function.name, arguments: JSON.parse(tc.function.arguments || "{}") });
+      } catch {
+        // ignore argument parse error
+      }
+    }
+  }
+  return { text: choice.content || "", toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+}
+
 export async function callGroqOrchestrator(
   userMessage: string,
   history: Array<{ role: "user" | "assistant" | "system"; content: string }> = [],
 ): Promise<GroqResponse | null> {
   const apiKey = getGroqApiKey();
-  if (!apiKey) {
-    const freeConfig = getFreeLLMConfig();
-    if (freeConfig.enabled) {
-      const freeReply = await callFreeLLMOrchestrator(userMessage, history);
-      if (freeReply) return { text: freeReply };
-    }
-    return null;
-  }
 
   const db = getDB();
   const org = db.organization.name;
   const user = db.users.find((u) => u.id === db.currentUserId)?.name || "Gestor";
 
-  const systemPrompt = `Você é a HELENA, orquestradora principal (estilo Jarvis) da agência Info Tech Ltda (${org}).
+  const systemPrompt = `Você é a HELENA, diretora de operações da agência Info Tech Ltda (${org}). Fale como uma executiva humana: calma, precisa, profissional. Nunca diga que é uma IA.
 Seu interlocutor é ${user}.
-Você NÃO faz a abordagem individual do WhatsApp: delega ao Time Comercial (Supervisor, SDR 01, SDR 02, Qualificador, Closer).
+Você NÃO faz a abordagem individual do WhatsApp: delega ao time (Marcos Rivera na direção comercial, Marina Costa em saúde, Camila Alves em serviços, Rafael Mendes na qualificação, André Lima e Valentina Ribeiro no fechamento).
 
 Abordagem inicial obrigatória (personalidade Robson Alex, CEO):
 ${ROBSON_OPENING_SCRIPT}
 
 ${formatCatalogForAgents(db.serviceOffers ?? [])}
 
-Quebra de objeções (SDR/Closer via Groq): preço, tempo, "já tenho Instagram", "não tenho interesse". Sempre conduza para uma reunião de 10 minutos. Use SOMENTE preços do catálogo acima.
+Quebra de objeções (dona da agência): Instagram não ranqueia no Maps; 1 cliente novo paga o projeto; sem tempo = 10 min no horário deles; sobrinho/site velho = não aparece no Google. NUNCA solte valor se o cliente não perguntou. Se perguntar, cite só landing e/ou site do catálogo.
 
 ${CALENDAR_TOOL_PROMPT}
 
 Diretrizes:
-1. Fale como diretora comercial humana, direta e empática.
-2. Prospecção fria: dor da falta de site / presença no Google na região.
-3. Termine com pergunta aberta ou dois horários (hoje 16h ou amanhã 10h).
+1. Fale como executiva da casa: humana, direta, dona do resultado. Nunca soe como robô.
+2. Prospecção fria: dono(a) primeiro, depois dor de sumir no Google. Zero tabela na abertura.
+3. Termine com pergunta aberta ou dois horários só depois de confirmar o dono.
 4. Se o cliente fechar horário, chame calendar_agendar_reuniao / calendar_create_event na hora.
 5. Respeite limites de disparo e logs de auditoria.
-6. Prospecção: chame prospect_scan_maps com o NICHO que o usuário pedir (advogados, clínicas, restaurantes, imobiliárias… — nunca assuma dentista). nationwide=true se não citar cidade. Só leads sem site e com WhatsApp válido. Time Comercial aborda em rodízio via instância helena.
+6. Prospecção só de lista: chame prospect_scan_maps com o NICHO pedido. nationwide=true se não citar cidade.
+7. Site / cardápio / “procure N restaurantes sem site”: chame dev_build_presence. O Time Desenvolvimento IA (Caio, Diego, Sofia) monta a prévia; o Time Comercial aborda o dono com o link. Qualquer nicho, não só restaurante.
 
 Quando o usuário pedir para prospectar, ative o time e inicie a operação — as abordagens individuais ficam com o Time Comercial.
 Responda sempre em Português do Brasil.`;
@@ -242,6 +268,19 @@ Responda sempre em Português do Brasil.`;
     ...history.slice(-6),
     { role: "user", content: userMessage },
   ];
+
+  if (!apiKey) {
+    // Sem chave no navegador: usa a IA do servidor (chave fica guardada lá).
+    const viaServer = await serverChatCompletion({ messages, tools: GROQ_TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 1024 });
+    const serverChoice = viaServer?.choices?.[0]?.message;
+    if (serverChoice) return parseChoice(serverChoice);
+    const freeConfig = getFreeLLMConfig();
+    if (freeConfig.enabled) {
+      const freeReply = await callFreeLLMOrchestrator(userMessage, history);
+      if (freeReply) return { text: freeReply };
+    }
+    return null;
+  }
 
   try {
     const res = await fetch(GROQ_API_URL, {
@@ -268,26 +307,7 @@ Responda sempre em Português do Brasil.`;
     const data = await res.json();
     const choice = data.choices?.[0]?.message;
     if (!choice) return null;
-
-    const toolCalls: GroqToolCall[] = [];
-    if (choice.tool_calls && Array.isArray(choice.tool_calls)) {
-      for (const tc of choice.tool_calls) {
-        try {
-          toolCalls.push({
-            id: tc.id,
-            name: tc.function.name,
-            arguments: JSON.parse(tc.function.arguments || "{}"),
-          });
-        } catch {
-          // ignore argument parse error
-        }
-      }
-    }
-
-    return {
-      text: choice.content || "",
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-    };
+    return parseChoice(choice);
   } catch (err) {
     console.warn("Failed to contact Groq Cloud, attempting FreeLLMAPI failover:", err);
     try {

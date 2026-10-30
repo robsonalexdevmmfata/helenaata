@@ -6,6 +6,7 @@ import { HelenaOrb } from "@/components/helena/HelenaOrb";
 import { Button } from "@/components/ui/button";
 import { currentUser, useDB } from "@/lib/store";
 import { computeSummary } from "@/lib/helena/engine";
+import { liveBoard, liveAgentStats } from "@/lib/analytics";
 import { helenaUi, sendToHelena } from "@/lib/helena/orchestrator";
 import { brl, greeting } from "@/lib/format";
 import { pageHead } from "@/lib/head";
@@ -20,8 +21,11 @@ function Home() {
   const router = useRouter();
   const user = currentUser(db);
   const s = computeSummary(db);
+  const board = liveBoard(db);
+  const agentsLive = liveAgentStats(db);
   const proposals = db.deals.filter((d) => d.status === "aberto" && ["st_prop", "st_neg"].includes(d.stageId));
   const attention = [
+    board.waitingCount > 0 && `${board.waitingCount} conversas no Inbox esperando resposta`,
     s.followupsToday > 0 && `${s.followupsToday} follow-ups vencendo hoje`,
     s.pendingApprovals > 0 && `${s.pendingApprovals} aprovações aguardando você`,
     db.connections.some((c) => c.status === "offline") && "Uma conexão de WhatsApp está offline",
@@ -47,32 +51,36 @@ function Home() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Leads aguardando follow-up" value={s.followupsToday + s.staleDeals} icon={<ListChecks />} tone="warning" />
-        <StatCard label="Propostas abertas" value={brl(proposals.reduce((a, d) => a + d.value, 0))} hint={`${proposals.length} oportunidades`} icon={<CircleDollarSign />} tone="info" />
-        <StatCard label="Agentes trabalhando" value={s.workingAgents} hint={`de ${db.agents.length} agentes`} icon={<Bot />} tone="success" />
-        <StatCard label="Aprovações aguardando" value={s.pendingApprovals} icon={<ShieldAlert />} tone="helena" />
+        <StatCard label="Abordagens WhatsApp" value={board.abordados} hint={`${board.campaignSent} disparos Evolution`} icon={<ListChecks />} tone="info" />
+        <StatCard label="Responderam" value={board.responderam} hint={`${board.waitingCount} aguardando o time`} icon={<Bot />} tone="success" />
+        <StatCard label="Reuniões na Agenda" value={board.meetings.length} hint={`${board.openDealsCount} deals no pipeline`} icon={<CircleDollarSign />} tone="helena" />
+        <StatCard label="Pipeline aberto" value={brl(board.pipelineValue)} hint={`${proposals.length} em proposta/negociação`} icon={<ShieldAlert />} tone="warning" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Agentes ativos">
           <ul className="divide-y">
-            {db.agents.map((a) => (
+            {db.agents.filter((a) => a.teamId === "t_com").map((a) => {
+              const st = agentsLive.find((x) => x.id === a.id);
+              return (
               <li key={a.id} className="flex items-center gap-3 py-2.5">
                 <EntityAvatar name={a.name} color={a.color} agent size="sm" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">{a.name}</div>
                   <div className="truncate text-xs text-muted-foreground">{a.currentTask || a.objective}</div>
+                  <div className="text-[10px] text-muted-foreground">{st?.conversations ?? 0} conv. · {st?.meetings ?? 0} reun. · {st?.outbound ?? 0} disparos</div>
                 </div>
                 <Dot tone={a.status === "trabalhando" ? "success" : a.status === "pausado" ? "warning" : "neutral"} pulse={a.status === "trabalhando"} />
                 <Status value={a.status} />
               </li>
-            ))}
+              );
+            })}
           </ul>
         </Panel>
         <div className="space-y-6">
           <Panel title="Operações">
             <ul className="space-y-4">
-              {db.operations.filter((o) => o.status !== "failed").slice(0, 5).map((o) => (
+              {(db.operations.filter((o) => o.id === "op_live_maps" || o.status === "running").slice(0, 5)).map((o) => (
                 <li key={o.id}>
                   <div className="mb-1.5 flex items-center justify-between text-sm">
                     <span className="font-medium">{o.title}</span>

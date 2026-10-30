@@ -10,12 +10,43 @@ export interface MapPlace {
   address: string;
   website?: string;
   contactName: string;
+  rating?: number;
+  reviewCount?: number;
+  hours?: string;
 }
 
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINTS = [
+  "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+];
 const PHOTON = "https://photon.komoot.io/api/";
+const UA = "HelenaProspecting/1.0 (Info Tech Ltda; +https://infotech.com.br)";
 
-/** Capitais e polos para varredura nacional. */
+/** Polo oeste/noroeste SP + capitais de demanda para a onda comercial. */
+export const WAVE_CITIES = [
+  "São Paulo, SP",
+  "Campinas, SP",
+  "Araçatuba, SP",
+  "Andradina, SP",
+  "Birigui, SP",
+  "Penápolis, SP",
+  "Bauru, SP",
+  "São José do Rio Preto, SP",
+];
+
+export const WAVE_NICHES = [
+  "Dentistas",
+  "Clínicas Médicas",
+  "Clínicas de estética",
+  "Advogados",
+  "Restaurantes",
+  "Barbearias",
+  "Oficinas mecânicas",
+  "Imobiliárias",
+];
+
 export const NATIONAL_HUBS = [
   "São Paulo, SP",
   "Rio de Janeiro, RJ",
@@ -54,33 +85,44 @@ export function queryForSegment(segment: string) {
   const n = segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (/odontolog|dentista|dentist|consultorio/.test(n)) {
     return `
-      nwr["amenity"="dentist"]["phone"]
-      nwr["healthcare"="dentist"]["phone"]
-      nwr["amenity"="clinic"]["phone"]["name"~"odonto|dent",i]
+      nwr["amenity"="dentist"]
+      nwr["healthcare"="dentist"]
+      nwr["amenity"="clinic"]["name"~"odonto|dent|sorriso",i]
     `;
   }
-  if (/advog/.test(n)) return `nwr["office"="lawyer"]["phone"]`;
-  if (/imobili/.test(n)) return `nwr["office"="estate_agent"]["phone"]`;
-  if (/academia|fitness/.test(n)) return `nwr["leisure"="fitness_centre"]["phone"]`;
-  if (/veterin|pet shop|petshop/.test(n)) return `nwr["amenity"="veterinary"]["phone"]`;
-  if (/hotel|pousada/.test(n)) return `nwr["tourism"="hotel"]["phone"]`;
-  if (/oficina|auto pe/.test(n)) return `nwr["shop"="car_repair"]["phone"]`;
+  if (/advog/.test(n)) return `nwr["office"="lawyer"]`;
+  if (/imobili/.test(n)) return `nwr["office"="estate_agent"]`;
+  if (/academia|fitness/.test(n)) return `nwr["leisure"="fitness_centre"]`;
+  if (/veterin|pet shop|petshop/.test(n)) return `nwr["amenity"="veterinary"]`;
+  if (/hotel|pousada/.test(n)) return `nwr["tourism"="hotel"]`;
+  if (/oficina|auto pe/.test(n)) return `nwr["shop"="car_repair"]`;
   if (/clinic|medico|medica/.test(n)) {
-    return `nwr["amenity"~"clinic|doctors|hospital"]["phone"]`;
+    return `nwr["amenity"~"clinic|doctors|hospital"]`;
   }
-  if (/estetica|beleza/.test(n)) return `nwr["shop"~"beauty|hairdresser"]["phone"]`;
-  if (/restaurante/.test(n)) return `nwr["amenity"="restaurant"]["phone"]`;
-  if (/barbearia/.test(n)) return `nwr["shop"="hairdresser"]["phone"]`;
-  if (/comercio|loja/.test(n)) return `nwr["shop"]["phone"]`;
-  if (/agencia/.test(n)) return `nwr["office"]["phone"]`;
-  return `nwr["phone"]["name"]`;
+  if (/estetica|beleza/.test(n)) return `nwr["shop"~"beauty|hairdresser"]`;
+  if (/restaurante|pizzaria|lanchonete|churrasc/.test(n)) return `nwr["amenity"="restaurant"]`;
+  if (/padaria|cafeteria/.test(n)) return `nwr["shop"="bakery"]\n      nwr["amenity"="cafe"]`;
+  if (/barbearia/.test(n)) return `nwr["shop"="hairdresser"]`;
+  if (/comercio|loja/.test(n)) return `nwr["shop"]`;
+  if (/agencia/.test(n)) return `nwr["office"]`;
+  return `nwr["name"]["phone"]`;
+}
+
+function overpassClauses(segment: string) {
+  return queryForSegment(segment)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((clause) => clause.replace(/^nwr/, "node"));
 }
 
 export function extractProspectIntent(text: string) {
   const n = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const nationwide = /brasil inteiro|todo o brasil|nacional|todos os estados|\bno brasil\b/.test(n);
-  const cityMatch = text.match(/\bem\s+([A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+){0,3})(?:,\s*[A-Z]{2})?/i);
-  const cityRaw = cityMatch?.[1]?.trim() ?? "";
+  const cityMatch = text.match(/\bem\s+([A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+){0,2}(?:,\s*[A-Z]{2})?)/i);
+  const cityRaw = (cityMatch?.[1] ?? "")
+    .replace(/\s+(sem|com|so|só|leads?|quentes?|site|whatsapp|e|para|pelo|via)\b[\s\S]*$/i, "")
+    .trim();
   const city = cityRaw && !/brasil/i.test(cityRaw) ? cityRaw : "Brasil";
 
   const labels: Array<[RegExp, string]> = [
@@ -88,7 +130,8 @@ export function extractProspectIntent(text: string) {
     [/advog|escritorio de advoc/, "Advogados"],
     [/clinic.*medic|medico/, "Clínicas Médicas"],
     [/estetica/, "Clínicas de estética"],
-    [/restaurante/, "Restaurantes"],
+    [/restaurante|pizzaria|lanchonete/, "Restaurantes"],
+    [/padaria|cafeteria/, "Padarias e cafeterias"],
     [/barbearia/, "Barbearias"],
     [/imobili/, "Imobiliárias"],
     [/academia|fitness/, "Academias"],
@@ -116,11 +159,16 @@ export function extractProspectIntent(text: string) {
 }
 
 async function geocode(city: string): Promise<{ lat: number; lon: number } | null> {
-  const url = `${PHOTON}?q=${encodeURIComponent(city + ", Brasil")}&limit=1`;
-  const res = await fetch(url);
+  const q = /brasil/i.test(city) ? city : `${city}, Brasil`;
+  const url = typeof window !== "undefined"
+    ? `/api/maps/geocode?q=${encodeURIComponent(q)}`
+    : `${PHOTON}?q=${encodeURIComponent(q)}&limit=5`;
+  const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": UA } });
   if (!res.ok) return null;
   const data = await res.json();
-  const coords = data?.features?.[0]?.geometry?.coordinates;
+  const feats = Array.isArray(data?.features) ? data.features : [];
+  const feat = feats.find((f: any) => /city|town|municipality/i.test(String(f?.properties?.type || f?.properties?.osm_value || ""))) ?? feats[0];
+  const coords = feat?.geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return null;
   return { lon: Number(coords[0]), lat: Number(coords[1]) };
 }
@@ -168,44 +216,167 @@ export async function resolveSearchCities(opts: {
     return citiesForState(opts.state).slice(0, 6);
   }
   const raw = (opts.city ?? "").trim();
-  if (raw.includes(",")) {
-    return raw.split(/[;]/).map((c) => c.trim()).filter(Boolean);
-  }
-  if (raw.includes(" e ")) {
-    return raw.split(/\s+e\s+/i).map((c) => c.trim()).filter(Boolean);
-  }
-  const multi = raw.split(",").map((c) => c.trim()).filter(Boolean);
-  if (multi.length > 1) return multi.map((c) => (opts.state && opts.state !== "TODOS" && !c.includes(",") ? `${c}, ${opts.state}` : c));
-  if (raw) return [opts.state && opts.state !== "TODOS" && !raw.includes(",") ? `${raw}, ${opts.state}` : raw];
+  const listed = parseCityList(raw, opts.state);
+  if (listed.length) return listed;
   return NATIONAL_HUBS.slice(0, 6);
+}
+
+/** "São Paulo, Campinas, Andradina, SP" → cidades com UF. */
+export function parseCityList(raw: string, state?: string): string[] {
+  const s = raw.trim();
+  if (!s) return [];
+  const tokens = s.split(/\s*(?:,|;|\be\b)\s*/i).map((t) => t.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const t of tokens) {
+    if (/^[A-Z]{2}$/i.test(t) && out.length) {
+      const last = out[out.length - 1]!;
+      if (!/,\s*[A-Z]{2}$/i.test(last)) out[out.length - 1] = `${last}, ${t.toUpperCase()}`;
+    } else {
+      out.push(t);
+    }
+  }
+  return out.map((c) => {
+    if (state && state !== "TODOS" && !/,\s*[A-Z]{2}$/i.test(c)) return `${c}, ${state}`;
+    return c;
+  });
 }
 
 async function searchCity(segment: string, city: string, limit: number): Promise<MapPlace[]> {
   const geo = await geocode(city);
   if (!geo) return [];
-  const selector = queryForSegment(segment);
+  const inner = overpassClauses(segment)
+    .map((clause) => `${clause}(around:25000,${geo.lat},${geo.lon});`)
+    .join("\n");
   const ql = `
-[out:json][timeout:25];
+[out:json][timeout:40];
 (
-  ${selector}(around:18000,${geo.lat},${geo.lon});
+${inner}
 );
-out center ${Math.max(limit * 5, 50)};
+out center ${Math.max(limit * 12, 80)};
 `.trim();
 
-  const res = await fetch(OVERPASS, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-    body: `data=${encodeURIComponent(ql)}`,
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
+  let data: { elements?: unknown[] } | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/maps/overpass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ ql }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (res.ok) data = await res.json();
+    } catch {
+      data = null;
+    }
+  } else {
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            Accept: "application/json",
+            "User-Agent": UA,
+          },
+          body: `data=${encodeURIComponent(ql)}`,
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) continue;
+        data = await res.json();
+        break;
+      } catch {
+        /* próximo mirror */
+      }
+    }
+  }
+  if (!data) data = { elements: [] };
   const elements = Array.isArray(data?.elements) ? data.elements : [];
   const out: MapPlace[] = [];
   for (const el of elements) {
     const tags = el.tags ?? {};
-    const website = String(tags.website || tags["contact:website"] || "").trim();
-    if (website) continue;
-    const phone = normalizePhone(String(tags.phone || tags["contact:phone"] || tags.mobile || tags["contact:whatsapp"] || ""));
+    if (osmHasWebsiteOrMenu(tags)) continue;
+    const phone = normalizePhone(String(tags.phone || tags["contact:phone"] || tags.mobile || tags["contact:mobile"] || tags["contact:whatsapp"] || ""));
+    const name = String(tags.name || "").trim();
+    if (!name) continue;
+    out.push({
+      name,
+      phone,
+      city,
+      address: [tags["addr:street"], tags["addr:housenumber"], city].filter(Boolean).join(", "),
+      contactName: name,
+    });
+    if (out.length >= limit) break;
+  }
+  if (out.filter((p) => isValidBrazilWhatsApp(p.phone)).length < limit && geo) {
+    const phones = await searchPhonesAround(geo, city, limit);
+    for (const p of phones) {
+      if (out.some((x) => digits(x.phone) === digits(p.phone) || x.name === p.name)) continue;
+      out.push(p);
+      if (out.length >= limit) break;
+    }
+  }
+  if (out.length < limit && geo) {
+    const extra = await photonPlaces(segment, city, geo, limit - out.length);
+    for (const p of extra) {
+      if (out.some((x) => x.name === p.name)) continue;
+      out.push(p);
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+async function searchPhonesAround(geo: { lat: number; lon: number }, city: string, limit: number): Promise<MapPlace[]> {
+  const ql = `
+[out:json][timeout:40];
+(
+  node["name"]["phone"](around:18000,${geo.lat},${geo.lon});
+  node["name"]["contact:phone"](around:18000,${geo.lat},${geo.lon});
+  node["name"]["contact:mobile"](around:18000,${geo.lat},${geo.lon});
+  node["name"]["contact:whatsapp"](around:18000,${geo.lat},${geo.lon});
+);
+out 180;
+`.trim();
+  let data: { elements?: any[] } | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/maps/overpass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ ql }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (res.ok) data = await res.json();
+    } catch {
+      data = null;
+    }
+  } else {
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            Accept: "application/json",
+            "User-Agent": UA,
+          },
+          body: `data=${encodeURIComponent(ql)}`,
+          signal: AbortSignal.timeout(25_000),
+        });
+        if (!res.ok) continue;
+        data = await res.json();
+        break;
+      } catch {
+        /* próximo */
+      }
+    }
+  }
+  const elements = Array.isArray(data?.elements) ? data!.elements! : [];
+  const out: MapPlace[] = [];
+  for (const el of elements) {
+    const tags = el.tags ?? {};
+    if (osmHasWebsiteOrMenu(tags)) continue;
+    const phone = normalizePhone(String(tags.phone || tags["contact:phone"] || tags.mobile || tags["contact:mobile"] || tags["contact:whatsapp"] || ""));
     if (!isValidBrazilWhatsApp(phone)) continue;
     const name = String(tags.name || "").trim();
     if (!name) continue;
@@ -221,6 +392,52 @@ out center ${Math.max(limit * 5, 50)};
   return out;
 }
 
+async function photonPlaces(
+  segment: string,
+  city: string,
+  geo: { lat: number; lon: number },
+  limit: number,
+): Promise<MapPlace[]> {
+  const q = `${segment.replace(/sem site/gi, "").trim()} ${city}`;
+  const url = typeof window !== "undefined"
+    ? `/api/maps/photon?q=${encodeURIComponent(q)}&lat=${geo.lat}&lon=${geo.lon}&limit=${Math.max(limit, 12)}`
+    : `${PHOTON}?q=${encodeURIComponent(q)}&lat=${geo.lat}&lon=${geo.lon}&limit=${Math.max(limit, 12)}`;
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": UA }, signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const feats = Array.isArray(data?.features) ? data.features : [];
+    const cityHint = city.split(",")[0]!.trim().toLowerCase();
+    const out: MapPlace[] = [];
+    for (const f of feats) {
+      const p = f?.properties ?? {};
+      const name = String(p.name || "").trim();
+      if (!name) continue;
+      const featCity = String(p.city || p.state || "").toLowerCase();
+      if (cityHint && featCity && !featCity.includes(cityHint) && !cityHint.includes(featCity)) continue;
+      if (osmHasWebsiteOrMenu(p)) continue;
+      out.push({
+        name,
+        phone: normalizePhone(String(p.phone || p["osm:phone"] || "")),
+        city,
+        address: [p.street, p.housenumber, p.city || city].filter(Boolean).join(", "),
+        contactName: name,
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function osmHasWebsiteOrMenu(tags: Record<string, unknown> = {}) {
+  const site = String(tags.website || tags["contact:website"] || "").trim();
+  const menu = String(tags.menu || tags["website:menu"] || tags["contact:menu"] || "").trim();
+  if (site || menu) return true;
+  return /ifood|rappi|aiqfome|cardapio\.|menudino/i.test(`${site} ${menu}`);
+}
+
 export async function searchBusinessesWithoutWebsite(opts: {
   segment: string;
   city?: string;
@@ -228,13 +445,17 @@ export async function searchBusinessesWithoutWebsite(opts: {
   nationwide?: boolean;
   limit?: number;
 }): Promise<MapPlace[]> {
-  const limit = Math.min(opts.limit ?? 10, 40);
-  const cities = await resolveSearchCities({
+  const limit = Math.min(opts.limit ?? 10, 150);
+  let cities = await resolveSearchCities({
     city: opts.city,
     state: opts.state,
     nationwide: opts.nationwide,
     niche: opts.segment,
   });
+  if (limit >= 20 && /s[aã]o paulo/i.test(`${opts.city ?? ""} ${opts.state ?? ""}`)) {
+    const extra = citiesForState("SP").slice(0, 5);
+    cities = [...new Set([...cities, ...extra.map((c) => (c.includes(",") ? c : `${c}, SP`))])];
+  }
   const perCity = Math.max(2, Math.ceil(limit / Math.max(cities.length, 1)));
   const seen = new Set<string>();
   const out: MapPlace[] = [];
@@ -265,8 +486,8 @@ export function placesToHunterLeads(places: MapPlace[], niche: string, state = "
     state: p.city.includes(",") ? p.city.split(",").pop()!.trim() : state,
     address: p.address,
     phone: p.phone,
-    isCellPhone: true,
-    whatsappVerified: true,
+    isCellPhone: isValidBrazilWhatsApp(p.phone),
+    whatsappVerified: isValidBrazilWhatsApp(p.phone),
     website: p.website,
     hasWebsite: Boolean(p.website),
     rating: 0,

@@ -27,12 +27,16 @@ export interface Organization {
   createdAt: string;
 }
 
+export type AccountKind = "platform" | "customer";
+export type SaasPlanId = "trial" | "impulso" | "maquina" | "whitelabel";
+
 export interface User {
   id: ID;
   organizationId: ID;
   name: string;
   email: string;
   username: string;
+  password?: string;
   role: Role;
   title: string;
   color: ColorToken;
@@ -41,6 +45,24 @@ export interface User {
   goal: number;
   achieved: number;
   lastSeen: string;
+  kind?: AccountKind;
+  planId?: SaasPlanId;
+  trialEndsAt?: string;
+  dailyProspectUsed?: number;
+  dailyProspectDate?: string;
+  companyName?: string;
+  phone?: string;
+}
+
+export interface QuoteRequest {
+  id: ID;
+  userId: ID;
+  name: string;
+  email: string;
+  company: string;
+  message: string;
+  createdAt: string;
+  status: "aberta" | "em_conversa" | "fechada";
 }
 
 export interface Invite {
@@ -191,6 +213,65 @@ export interface Conversation {
   sentiment: "positivo" | "neutro" | "negativo";
   lastMessageAt: string;
   messages: Message[];
+  /** JID WhatsApp na Evolution (ex: 5511...@s.whatsapp.net). */
+  remoteJid?: string;
+  /** Acompanhamento do funil no número comercial compartilhado. */
+  flow?: ConversationFlow;
+}
+
+/** Estado da conversa iniciada pela prospecção no número compartilhado. */
+export type FlowState = "abordado" | "visualizou" | "respondeu" | "closer" | "reuniao_agendada" | "esfriou";
+
+export interface ConversationFlow {
+  origin: "prospeccao" | "inbound";
+  state: FlowState;
+  campaignId?: ID;
+  lastOutboundAt: string;
+  readAt?: string;
+  repliedAt?: string;
+  closerAttempts: number;
+  closerSince?: string;
+  /** Horários oferecidos pela Closer na última mensagem (ISO). */
+  proposedSlots?: string[];
+}
+
+/** Regras do número único usado por todo o time comercial. */
+export interface SalesFlowSettings {
+  enabled: boolean;
+  sharedConnectionId: ID;
+  teamUserIds: ID[];
+  onlyAfterProspecting: boolean;
+  noReplyHours: number;
+  readNoReplyHours: number;
+  maxCloserAttempts: number;
+  closerAgentId: ID;
+  respectBusinessHours: boolean;
+  businessStart: number;
+  businessEnd: number;
+  meetingDurationMin: number;
+  autoBookMeetings: boolean;
+}
+
+export type MeetingStatus = "agendada" | "confirmada" | "realizada" | "cancelada" | "nao_compareceu";
+export type MeetingLocation = "google_meet" | "whatsapp" | "telefone" | "presencial";
+
+export interface Meeting {
+  id: ID;
+  organizationId: ID;
+  title: string;
+  contactId?: ID;
+  dealId?: ID;
+  ownerId: ID;
+  ownerType: OwnerType;
+  startAt: string;
+  durationMin: number;
+  location: MeetingLocation;
+  link?: string;
+  status: MeetingStatus;
+  source: "closer" | "helena" | "manual" | "sdr";
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface QuickReply {
@@ -656,6 +737,47 @@ export interface Invoice {
   status: "paga" | "aberta" | "vencida" | "cancelada";
 }
 
+export interface SitePreviewReview {
+  author: string;
+  rating: number;
+  text: string;
+}
+
+export interface SitePreviewItem {
+  name: string;
+  description: string;
+  price: number;
+}
+
+export interface SitePreview {
+  id: ID;
+  organizationId: ID;
+  slug: string;
+  companyId: ID;
+  contactId: ID;
+  dealId?: ID;
+  name: string;
+  segment: string;
+  city: string;
+  address: string;
+  phone: string;
+  rating: number;
+  reviewCount: number;
+  reviews: SitePreviewReview[];
+  hours: string;
+  tagline: string;
+  about: string;
+  palette: { bg: string; fg: string; accent: string };
+  photos: string[];
+  menu?: { category: string; items: SitePreviewItem[] }[];
+  services?: { name: string; description: string }[];
+  mapsUrl: string;
+  previewPath: string;
+  status: "pronta" | "enviada" | "aprovada_cliente";
+  createdBy: string;
+  createdAt: string;
+}
+
 export type ServiceBilling = "unico" | "mensal" | "campanha" | "a_partir";
 
 export interface ServiceOffer {
@@ -686,6 +808,8 @@ export interface DB {
   activities: Activity[];
   tasks: Task[];
   calendarEvents: CalendarEvent[];
+  meetings: Meeting[];
+  salesFlow: SalesFlowSettings;
   conversations: Conversation[];
   quickReplies: QuickReply[];
   agents: Agent[];
@@ -707,6 +831,8 @@ export interface DB {
   cadences: Cadence[];
   automations: Automation[];
   serviceOffers: ServiceOffer[];
+  sitePreviews: SitePreview[];
+  quoteRequests: QuoteRequest[];
   connections: WhatsAppConnection[];
   templates: WaTemplate[];
   webhooks: Webhook[];

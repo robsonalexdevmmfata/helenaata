@@ -3,6 +3,8 @@ import { useRouter } from "@tanstack/react-router";
 import { Moon, LogOut, Sparkles } from "lucide-react";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { ALL_NAV } from "@/components/app/nav";
+import { currentUser } from "@/lib/store";
+import { isPlatformAdmin } from "@/lib/saas";
 import { helenaUi, sendToHelena } from "@/lib/helena/orchestrator";
 import { useDB } from "@/lib/store";
 import { applyTheme, getTheme } from "@/lib/theme";
@@ -61,7 +63,7 @@ export function CommandPalette() {
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Ir para">
-          {ALL_NAV.map((n) => (
+          {ALL_NAV.filter((n) => isPlatformAdmin(currentUser(db)) || n.to !== "/configuracoes/usuarios").map((n) => (
             <CommandItem key={n.to as string} value={`ir ${n.label}`} onSelect={() => go(n.to as string)}>
               <n.icon /> {n.label}
             </CommandItem>

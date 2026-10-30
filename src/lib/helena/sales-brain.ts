@@ -2,8 +2,10 @@
 // Info Tech Ltda · Target: R$ 15.000,00
 import type { Contact, DB, Deal, Task, Activity } from "@/lib/types";
 import { getDB, nowISO, uid, update } from "@/lib/store";
+import { quoteEntryPrices } from "@/lib/catalog";
 import { brl } from "@/lib/format";
 import { formatForWhatsApp } from "./whatsapp-formatter";
+import { shouldHoldOutbound } from "./sales-flow";
 
 // ============================================================================
 // 1. AS 3 TRAVAS ANTI-DUPLICIDADE DA HELENA
@@ -190,57 +192,89 @@ export const OBJECTION_MATRIX: ObjectionDef[] = [
     id: "obj_instagram",
     title: "Já tenho Instagram, não preciso de site",
     clientQuote: "Já tenho Instagram, não preciso de site.",
-    triggerRegex: /(j[aá]\s*tenho\s*insta|s[oó]\s*uso\s*instagram|n[aã]o\s*preciso\s*de\s*site|meu\s*insta\s*basta)/i,
+    triggerRegex: /(j[aá]\s*tenho\s*insta|s[oó]\s*uso\s*instagram|meu\s*insta\s*basta|facebook\s*(j[aá]\s*)?basta|j[aá]\s*tenho\s*face)/i,
     getAutonomousResponse: ({ clientName, companyName, niche }) =>
-      `O Instagram é excelente para atração visual, ${clientName}, mas hoje mais de 80% dos clientes que procuram por ${niche || "seus serviços"} com urgência na sua cidade pesquisam direto no Google Maps. Sem um site oficial integrado com agendamento direto, a ${companyName} perde pacientes/clientes qualificados todas as noites para a concorrência que aparece no topo do Google. Preparei um demonstrativo visual de como um site de alta conversão dobra seus agendamentos:`,
+      `Instagram é vitrine, ${clientName}. Quem pesquisa ${niche || "seus serviços"} com urgência vai no Google. Sem site, a ${companyName} some nessa busca. 80% dos clientes locais começam assim. Não preciso te vender agora: topa 10 minutos pra eu te mostrar o que acontece quando alguém te busca?`,
     actionType: "send_demo_media",
-    actionDescription: "Envia print/mídia demonstrativo de modelo rápido para o nicho dele.",
+    actionDescription: "Mostra a diferença Maps vs Instagram, sem citar preço.",
     demoMockMedia: {
       type: "image",
       title: "Modelo de Alta Conversão · Google Maps Ready",
       url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop&q=80",
-      preview: "⚡ Demonstração: Site Institucional responsivo com botão WhatsApp flutuante, SEO Local e Agendamento em 1-clique.",
+      preview: "Site com WhatsApp, SEO local e botão de conversa. Sem tabela de preço nesta etapa.",
     },
+  },
+  {
+    id: "obj_whatsapp_basta",
+    title: "WhatsApp já resolve",
+    clientQuote: "Meu WhatsApp já resolve.",
+    triggerRegex: /(whatsapp\s*(j[aá]\s*)?(resolve|basta|chega)|s[oó]\s*uso\s*zap|n[aã]o\s*preciso\s*de\s*site)/i,
+    getAutonomousResponse: ({ clientName }) =>
+      `${clientName}, WhatsApp fecha quem já te achou. O furo é quem te procura e cai no concorrente porque você não aparece. 10 minutos e te mostro isso na prática, sem compromisso.`,
+    actionType: "schedule_direct",
+    actionDescription: "Separa captação (Google) de fechamento (WhatsApp).",
   },
   {
     id: "obj_preco",
     title: "Quanto custa? / Qual o valor?",
     clientQuote: "Quanto custa? / Me passa o valor.",
-    triggerRegex: /(quanto\s*custa|qual\s*o\s*pre[cç]o|qual\s*o\s*valor|tabela\s*de\s*pre[cç]o|valores\?)/i,
-    getAutonomousResponse: ({ clientName, companyName }) =>
-      `Nós temos projetos sob medida para a ${companyName}, ${clientName}. Para não te tomar tempo e você ver exatamente o retorno sobre o investimento, criei uma prévia demonstrativa do sistema para o seu segmento. Você prefere ver em um vídeo rápido ou em uma ligação de apenas 3 minutos hoje às 16h ou amanhã às 10h?`,
+    triggerRegex: /(quanto\s*custa|qual\s*o\s*pre[cç]o|qual\s*o\s*valor|tabela\s*de\s*pre[cç]o|me\s*passa\s*(o\s*)?valor|valores\?)/i,
+    getAutonomousResponse: ({ clientName }) => {
+      const quoted = quoteEntryPrices(getDB().serviceOffers ?? []);
+      return `${clientName}, ${quoted}`;
+    },
     actionType: "schedule_direct",
-    actionDescription: "Tenta o agendamento direto em vez de dar o preço solto de primeira (2 opções de horário).",
+    actionDescription: "Só agora cita 1–2 itens do catálogo e convida 10 min.",
   },
   {
     id: "obj_ocupado",
     title: "Agora não posso conversar / Estou ocupado",
     clientQuote: "Agora não posso conversar / Estou na correria.",
-    triggerRegex: /(n[aã]o\s*posso\s*conversar|estou\s*ocupad[oa]|na\s*correria|sem\s*tempo|depois\s*nos\s*falamos)/i,
+    triggerRegex: /(n[aã]o\s*posso\s*conversar|estou\s*ocupad[oa]|na\s*correria|sem\s*tempo|depois\s*nos\s*falamos|agora\s*n[aã]o)/i,
     getAutonomousResponse: ({ clientName }) =>
-      `Tranquilo, ${clientName}! Sei bem como é a rotina. Posso te recontactar amanhã às 10h ou você prefere no final da tarde, por volta das 17h?`,
+      `Tranquilo, ${clientName}. Não te pego no meio do expediente. Prefere amanhã 10h ou no fim da tarde, umas 17h? São 10 minutos.`,
     actionType: "reschedule_task",
-    actionDescription: "Atualiza a tarefa (tasks) e agenda um follow-up automático na pipeline.",
+    actionDescription: "Marca retorno curto, sem insistir agora.",
   },
   {
     id: "obj_caro",
     title: "Achei o valor elevado / Sem orçamento",
     clientQuote: "Achei caro / Está fora do meu orçamento.",
-    triggerRegex: /(achei\s*caro|muito\s*caro|fora\s*do\s*or[cç]amento|sem\s*verba|pesado\s*pro\s*bolso)/i,
-    getAutonomousResponse: ({ clientName, companyName, niche }) =>
-      `Entendo perfeitamente, ${clientName}. Mas veja pelo lado do retorno: no seu segmento de ${niche || "serviços"}, se esse sistema oficial trouxer apenas 1 ou 2 novos clientes por mês vindos do Google, o projeto inteiro já se paga sozinho. Além disso, a diretoria liberou parcelamento em até 12x no cartão ou condição especial no Pix para fecharmos esta semana. Faz sentido agendarmos 5 minutos para você avaliar?`,
+    triggerRegex: /(achei\s*caro|muito\s*caro|t[aá]\s*caro|fora\s*do\s*or[cç]amento|sem\s*verba|pesado\s*pro\s*bolso)/i,
+    getAutonomousResponse: ({ clientName, niche }) =>
+      `Entendo, ${clientName}. No ${niche || "seu ramo"}, 1 cliente novo no mês que hoje vai pro concorrente no Google já paga o projeto. Parcelo no que está em Orçamentos. Sem pressão: 10 minutos e você decide se faz sentido.`,
     actionType: "offer_roi",
-    actionDescription: "Apresenta cálculo de ROI imediato (1 cliente paga o site) e condição especial.",
+    actionDescription: "ROI de 1 cliente, parcelamento do catálogo, sem inventar 12x.",
+  },
+  {
+    id: "obj_sobrinho",
+    title: "Meu sobrinho / conhecido faz",
+    clientQuote: "Meu sobrinho faz site.",
+    triggerRegex: /(sobrinho|conhecido\s*faz|meu\s*filho\s*faz|faz\s*de\s*gra[cç]a|j[aá]\s*tenho\s*quem\s*fa[cç]a)/i,
+    getAutonomousResponse: ({ clientName }) =>
+      `Ótimo ter alguém próximo, ${clientName}. A pergunta não é quem monta a página, é se você aparece quando a pessoa busca o serviço na cidade. Se hoje não aparece, o site não está trabalhando. Te mostro isso em 10 minutos.`,
+    actionType: "schedule_direct",
+    actionDescription: "Respeita o conhecido e desloca para resultado no Google.",
+  },
+  {
+    id: "obj_depois",
+    title: "Depois a gente vê",
+    clientQuote: "Depois a gente vê / no próximo mês.",
+    triggerRegex: /(depois\s*(a\s*gente|eu\s*vejo)|m[eê]s\s*que\s*vem|no\s*pr[oó]ximo\s*m[eê]s|agora\s*n[aã]o\s*[eé]\s*prioridade)/i,
+    getAutonomousResponse: ({ clientName }) =>
+      `${clientName}, deixo quieto. Só um horário na agenda pra não ficar no vácuo: terça 10h ou quinta 16h. Se não rolar, eu não cobro.`,
+    actionType: "reschedule_task",
+    actionDescription: "Um horário, sem cadência agressiva.",
   },
   {
     id: "obj_sem_interesse",
     title: "Não tenho interesse no momento",
     clientQuote: "Não tenho interesse agora.",
-    triggerRegex: /(n[aã]o\s*tenho\s*interesse|n[aã]o\s*quero|deixa\s*pra\s*l[aá]|n[aã]o\s*preciso)/i,
+    triggerRegex: /(n[aã]o\s*tenho\s*interesse|n[aã]o\s*quero|deixa\s*pra\s*l[aá])/i,
     getAutonomousResponse: ({ clientName }) =>
-      `Sem problemas, ${clientName}! Obrigado pela sinceridade. Vou deixar o link do nosso portfólio salvo aqui. Se futuramente quiser acelerar suas vendas pelo Google, estou à disposição! Tenha uma excelente semana.`,
+      `Combinado, ${clientName}. Não te incomodo mais. Se um dia quiser aparecer no Google da região, é só chamar.`,
     actionType: "reactivation_cadence",
-    actionDescription: "Envia link institucional cordial e programa cadência de reaquecimento para 45 dias.",
+    actionDescription: "Encerra educado, sem portfolio dump.",
   },
 ];
 
@@ -438,7 +472,7 @@ export function executeRescueColdLeads(db: DB, actorName = "Helena"): { rescuedC
       const conv = d.conversations.find((c) => c.contactId === stale.contactId);
       const rescueText = formatForWhatsApp(`Olá ${contact?.name || "amigo(a)"}! Passando para te avisar que conversei com o time técnico da Info Tech Ltda e consegui uma condição especial de parcelamento com liberação de domínio e SEO grátis se fecharmos a criação do seu site esta semana. Gostaria de aproveitar essa condição?`);
 
-      if (conv) {
+      if (conv && !shouldHoldOutbound(conv)) {
         conv.messages.push({
           id: uid("msg_resgate_"),
           from: "agent",

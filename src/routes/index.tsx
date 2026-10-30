@@ -1,10 +1,11 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { LandingPage } from "@/components/marketing/LandingPage";
 import { pageHead } from "@/lib/head";
 
-// "/" sends the user into the app; the app layout redirects to /login when signed out.
 export const Route = createFileRoute("/")({
-  head: () => pageHead("Início", "HELENA AI: CRM, atendimento, prospecção e agentes de IA."),
-  beforeLoad: () => {
-    throw redirect({ to: "/visao-geral" });
-  },
+  head: () => pageHead(
+    "Helena AI",
+    "A máquina que encontra quem não tem site, monta a prévia e chega no WhatsApp do dono.",
+  ),
+  component: LandingPage,
 });

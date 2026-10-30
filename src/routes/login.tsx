@@ -1,12 +1,12 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { login } from "@/lib/auth";
+import { loginWithServer } from "@/lib/auth";
 import { pageHead } from "@/lib/head";
-import { HelenaOrb } from "@/components/helena/HelenaOrb";
+import { HelenaAvatar } from "@/components/helena/HelenaAvatar";
 
 export const Route = createFileRoute("/login")({
   head: () => pageHead("Entrar", "Acesse o HELENA AI, o sistema operacional empresarial com IA."),
@@ -20,25 +20,23 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      if (login(username, password)) {
-        navigate({ to: "/visao-geral" });
-      } else {
-        setError("Usuário ou senha inválidos.");
-        setLoading(false);
-      }
-    }, 350);
+    if (await loginWithServer(username, password)) {
+      navigate({ to: "/visao-geral" });
+    } else {
+      setError("Usuário ou senha inválidos.");
+      setLoading(false);
+    }
   };
 
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-[1.1fr_1fr]">
       <div className="relative hidden flex-col justify-between overflow-hidden border-r bg-surface p-12 lg:flex">
         <div className="flex items-center gap-2.5">
-          <HelenaOrb className="size-7" />
+          <HelenaAvatar className="size-9" />
           <span className="text-sm font-semibold tracking-[0.18em]">HELENA AI</span>
         </div>
         <div className="max-w-lg">
@@ -66,7 +64,7 @@ function LoginPage() {
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm space-y-6">
           <div className="space-y-2">
-            <HelenaOrb className="size-9 lg:hidden" />
+            <HelenaAvatar className="size-9 lg:hidden" />
             <h1 className="text-2xl font-semibold tracking-tight">Entrar na sua organização</h1>
             <p className="text-sm text-muted-foreground">Use suas credenciais para acessar o HELENA AI.</p>
           </div>
@@ -90,9 +88,10 @@ function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Entrando…" : "Entrar"} <ArrowRight />
           </Button>
-          <div className="rounded-lg border border-dashed bg-surface p-3 text-xs text-muted-foreground">
-            Acesso de demonstração: usuário <span className="font-mono text-foreground">admin</span> · senha{" "}
-            <span className="font-mono text-foreground">123456</span>
+          <div className="rounded-lg border border-dashed bg-surface p-3 text-xs text-muted-foreground space-y-1">
+            <div>Admin: <span className="font-mono text-foreground">admin</span> · <span className="font-mono text-foreground">123456</span></div>
+            <div>Conta de teste (trial): <span className="font-mono text-foreground">demo</span> · <span className="font-mono text-foreground">123456</span></div>
+            <div><Link to="/cadastro" className="underline">Criar conta</Link> · <Link to="/" className="underline">Landing</Link></div>
           </div>
         </form>
       </div>

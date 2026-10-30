@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -23,14 +24,14 @@ import {
   FREE_LLM_MODELS, FREE_LLM_PROVIDERS_LIST, getFreeLLMConfig, saveFreeLLMConfig,
   testFreeLLMConnection,
 } from "@/lib/helena/freellmapi";
-import { AgentForm } from "./components/AgentForm";
+import { AgentForm } from "./components/-AgentForm";
 
 export const Route = createFileRoute("/_app/ia/agentes")({
   head: () => pageHead("Agentes IA · FreeLLMAPI", "Gerencie os agentes autônomos com suporte gratuito ao repositório tashfeenahmed/freellmapi."),
   component: AgentesPage,
 });
 
-const STATUS_ICON: Record<AgentStatus, JSX.Element> = {
+const STATUS_ICON: Record<AgentStatus, ReactElement> = {
   trabalhando: <CheckCircle2 className="size-3.5 text-success" />,
   aguardando: <Clock className="size-3.5 text-muted-foreground" />,
   pausado: <AlertTriangle className="size-3.5 text-warning" />,
@@ -114,7 +115,7 @@ function AgentesPage() {
       <PageHeader
         eyebrow="IA · Força de Trabalho"
         title="Agentes Autônomos"
-        description="Agentes especializados (SDRs, Closers, Qualificadores e Suporte) coordenados pela Helena AI."
+        description="Time comercial e de atendimento com nome, cargo e tom profissional — coordenado pela Helena."
       />
 
       {/* FreeLLMAPI Showcase & Hub Banner */}
@@ -200,54 +201,54 @@ function AgentesPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {filtered.map((agent) => {
           const team = db.teams.find((t) => t.agentIds.includes(agent.id));
           const isFree = agent.model.startsWith("freellm/");
           return (
-            <div key={agent.id} className="rounded-xl border bg-card p-5 space-y-4 hover:border-foreground/20 transition-all flex flex-col justify-between">
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
+            <div key={agent.id} className="flex min-h-[280px] min-w-0 flex-col overflow-hidden rounded-xl border bg-card p-4 hover:border-foreground/20 transition-all">
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex items-start gap-3 min-w-0">
                   <div className="size-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-sm font-bold text-primary shrink-0">
                     {agent.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <h3 className="font-semibold text-sm truncate">{agent.name}</h3>
                       {STATUS_ICON[agent.status]}
                     </div>
-                    <p className="text-xs text-muted-foreground capitalize">{agent.role}</p>
-                    {team && <p className="text-[10px] text-primary mt-0.5">{team.name}</p>}
+                    <p className="text-xs text-muted-foreground truncate">{agent.description || agent.role}</p>
+                    {team && <p className="text-[10px] text-primary mt-0.5 truncate">{team.name}</p>}
                   </div>
                 </div>
 
                 {agent.currentTask && (
-                  <div className="rounded-lg bg-muted/40 px-3 py-2">
+                  <div className="rounded-lg bg-muted/40 px-3 py-2 min-w-0">
                     <p className="text-[10px] text-muted-foreground">Executando:</p>
-                    <p className="text-xs line-clamp-2">{agent.currentTask}</p>
+                    <p className="text-xs line-clamp-2 break-words">{agent.currentTask}</p>
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="rounded-lg bg-muted/30 p-2">
+                  <div className="rounded-lg bg-muted/30 p-2 min-w-0">
                     <div className="text-sm font-bold">{agentStats(db, agent).outbound}</div>
                     <div className="text-[10px] text-muted-foreground">Disparos</div>
                   </div>
-                  <div className="rounded-lg bg-muted/30 p-2">
+                  <div className="rounded-lg bg-muted/30 p-2 min-w-0">
                     <div className="text-sm font-bold text-success">{agentStats(db, agent).conversions}</div>
                     <div className="text-[10px] text-muted-foreground">Conversões</div>
                   </div>
                 </div>
 
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">Modelo Atual:</span>
+                <div className="space-y-1.5 pt-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
+                    <span className="text-muted-foreground shrink-0">Modelo Atual:</span>
                     {isFree ? (
-                      <span className="font-mono text-[10px] text-success font-semibold flex items-center gap-1">
-                        <Zap className="size-3" /> {agent.model.replace("freellm/", "")} (Free)
+                      <span className="font-mono text-[10px] text-success font-semibold flex items-center gap-1 min-w-0 truncate">
+                        <Zap className="size-3 shrink-0" /> <span className="truncate">{agent.model.replace("freellm/", "")} (Free)</span>
                       </span>
                     ) : (
-                      <span className="font-mono text-[10px] text-muted-foreground">{agent.model}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground truncate">{agent.model}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1 flex-wrap">
@@ -261,33 +262,33 @@ function AgentesPage() {
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-3 border-t">
+              <div className="mt-auto grid grid-cols-3 gap-1.5 pt-3 border-t min-w-0">
                 {agent.status === "pausado" ? (
-                  <Button size="sm" className="flex-1 h-8 text-xs gap-1" onClick={() => handleResume(agent.id)}>
-                    <Zap className="size-3.5" /> Retomar
+                  <Button size="sm" className="h-8 min-w-0 px-1 text-[11px] gap-1" onClick={() => handleResume(agent.id)}>
+                    <Zap className="size-3 shrink-0" /> <span className="truncate">Retomar</span>
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="flex-1 h-8 text-xs gap-1" onClick={() => handlePause(agent.id)}>
-                    <Clock className="size-3.5" /> Pausar
+                  <Button size="sm" variant="outline" className="h-8 min-w-0 px-1 text-[11px] gap-1" onClick={() => handlePause(agent.id)}>
+                    <Clock className="size-3 shrink-0" /> <span className="truncate">Pausar</span>
                   </Button>
                 )}
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 px-2.5 text-xs gap-1"
+                  className="h-8 min-w-0 px-1 text-[11px] gap-1"
                   onClick={() => setSelectedAgentForModel(agent.id)}
                   title="Alterar modelo do agente"
                 >
-                  <Cpu className="size-3.5" /> Modelo
+                  <Cpu className="size-3 shrink-0" /> <span className="truncate">Modelo</span>
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 px-2.5 text-xs gap-1"
+                  className="h-8 min-w-0 px-1 text-[11px] gap-1"
                   onClick={() => { setPromptAgentId(agent.id); setPromptDraft(agent.prompt || ""); }}
                   title="Editar prompt de abordagem"
                 >
-                  <Edit2 className="size-3.5" /> Prompt
+                  <Edit2 className="size-3 shrink-0" /> <span className="truncate">Prompt</span>
                 </Button>
               </div>
             </div>

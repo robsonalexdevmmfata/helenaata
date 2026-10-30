@@ -11,12 +11,15 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
 import { Route as AppAutomacoesRouteImport } from './routes/_app/automacoes'
 import { Route as AppEquipeRouteImport } from './routes/_app/equipe'
 import { Route as AppOperacoesRouteImport } from './routes/_app/operacoes'
+import { Route as AppPlanosRouteImport } from './routes/_app/planos'
 import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
+import { Route as VSlugRouteImport } from './routes/v.$slug'
 import { Route as AppAtendimentoInboxRouteImport } from './routes/_app/atendimento/inbox'
 import { Route as AppAtendimentoRadarRouteImport } from './routes/_app/atendimento/radar'
 import { Route as AppAtendimentoRespostasRouteImport } from './routes/_app/atendimento/respostas'
@@ -37,6 +40,7 @@ import { Route as AppIaCustosRouteImport } from './routes/_app/ia/custos'
 import { Route as AppIaExecucoesRouteImport } from './routes/_app/ia/execucoes'
 import { Route as AppIaHelenaRouteImport } from './routes/_app/ia/helena'
 import { Route as AppIaMemoriaRouteImport } from './routes/_app/ia/memoria'
+import { Route as AppIaPreviewsRouteImport } from './routes/_app/ia/previews'
 import { Route as AppIaSkillsRouteImport } from './routes/_app/ia/skills'
 import { Route as AppIaTimesRouteImport } from './routes/_app/ia/times'
 import { Route as AppIntegracoesApiRouteImport } from './routes/_app/integracoes/api'
@@ -58,6 +62,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CadastroRoute = CadastroRouteImport.update({
+  id: '/cadastro',
+  path: '/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -85,10 +94,20 @@ const AppOperacoesRoute = AppOperacoesRouteImport.update({
   path: '/operacoes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPlanosRoute = AppPlanosRouteImport.update({
+  id: '/planos',
+  path: '/planos',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppVisaoGeralRoute = AppVisaoGeralRouteImport.update({
   id: '/visao-geral',
   path: '/visao-geral',
   getParentRoute: () => AppRoute,
+} as any)
+const VSlugRoute = VSlugRouteImport.update({
+  id: '/v/$slug',
+  path: '/v/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppAtendimentoInboxRoute = AppAtendimentoInboxRouteImport.update({
   id: '/atendimento/inbox',
@@ -194,6 +213,11 @@ const AppIaMemoriaRoute = AppIaMemoriaRouteImport.update({
   path: '/ia/memoria',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIaPreviewsRoute = AppIaPreviewsRouteImport.update({
+  id: '/ia/previews',
+  path: '/ia/previews',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIaSkillsRoute = AppIaSkillsRouteImport.update({
   id: '/ia/skills',
   path: '/ia/skills',
@@ -263,12 +287,15 @@ const AppProspeccaoOrcamentosRoute = AppProspeccaoOrcamentosRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
   '/equipe': typeof AppEquipeRoute
   '/operacoes': typeof AppOperacoesRouteWithChildren
+  '/planos': typeof AppPlanosRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/v/$slug': typeof VSlugRoute
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
@@ -289,6 +316,7 @@ export interface FileRoutesByFullPath {
   '/ia/execucoes': typeof AppIaExecucoesRoute
   '/ia/helena': typeof AppIaHelenaRoute
   '/ia/memoria': typeof AppIaMemoriaRoute
+  '/ia/previews': typeof AppIaPreviewsRoute
   '/ia/skills': typeof AppIaSkillsRoute
   '/ia/times': typeof AppIaTimesRoute
   '/integracoes/api': typeof AppIntegracoesApiRoute
@@ -305,11 +333,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
   '/equipe': typeof AppEquipeRoute
+  '/planos': typeof AppPlanosRoute
   '/visao-geral': typeof AppVisaoGeralRoute
+  '/v/$slug': typeof VSlugRoute
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
@@ -330,6 +361,7 @@ export interface FileRoutesByTo {
   '/ia/execucoes': typeof AppIaExecucoesRoute
   '/ia/helena': typeof AppIaHelenaRoute
   '/ia/memoria': typeof AppIaMemoriaRoute
+  '/ia/previews': typeof AppIaPreviewsRoute
   '/ia/skills': typeof AppIaSkillsRoute
   '/ia/times': typeof AppIaTimesRoute
   '/integracoes/api': typeof AppIntegracoesApiRoute
@@ -348,12 +380,15 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
   '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/automacoes': typeof AppAutomacoesRoute
   '/_app/equipe': typeof AppEquipeRoute
   '/_app/operacoes': typeof AppOperacoesRouteWithChildren
+  '/_app/planos': typeof AppPlanosRoute
   '/_app/visao-geral': typeof AppVisaoGeralRoute
+  '/v/$slug': typeof VSlugRoute
   '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/_app/atendimento/respostas': typeof AppAtendimentoRespostasRoute
@@ -374,6 +409,7 @@ export interface FileRoutesById {
   '/_app/ia/execucoes': typeof AppIaExecucoesRoute
   '/_app/ia/helena': typeof AppIaHelenaRoute
   '/_app/ia/memoria': typeof AppIaMemoriaRoute
+  '/_app/ia/previews': typeof AppIaPreviewsRoute
   '/_app/ia/skills': typeof AppIaSkillsRoute
   '/_app/ia/times': typeof AppIaTimesRoute
   '/_app/integracoes/api': typeof AppIntegracoesApiRoute
@@ -392,12 +428,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/cadastro'
     | '/login'
     | '/analytics'
     | '/automacoes'
     | '/equipe'
     | '/operacoes'
+    | '/planos'
     | '/visao-geral'
+    | '/v/$slug'
     | '/atendimento/inbox'
     | '/atendimento/radar'
     | '/atendimento/respostas'
@@ -418,6 +457,7 @@ export interface FileRouteTypes {
     | '/ia/execucoes'
     | '/ia/helena'
     | '/ia/memoria'
+    | '/ia/previews'
     | '/ia/skills'
     | '/ia/times'
     | '/integracoes/api'
@@ -434,11 +474,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cadastro'
     | '/login'
     | '/analytics'
     | '/automacoes'
     | '/equipe'
+    | '/planos'
     | '/visao-geral'
+    | '/v/$slug'
     | '/atendimento/inbox'
     | '/atendimento/radar'
     | '/atendimento/respostas'
@@ -459,6 +502,7 @@ export interface FileRouteTypes {
     | '/ia/execucoes'
     | '/ia/helena'
     | '/ia/memoria'
+    | '/ia/previews'
     | '/ia/skills'
     | '/ia/times'
     | '/integracoes/api'
@@ -476,12 +520,15 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/cadastro'
     | '/login'
     | '/_app/analytics'
     | '/_app/automacoes'
     | '/_app/equipe'
     | '/_app/operacoes'
+    | '/_app/planos'
     | '/_app/visao-geral'
+    | '/v/$slug'
     | '/_app/atendimento/inbox'
     | '/_app/atendimento/radar'
     | '/_app/atendimento/respostas'
@@ -502,6 +549,7 @@ export interface FileRouteTypes {
     | '/_app/ia/execucoes'
     | '/_app/ia/helena'
     | '/_app/ia/memoria'
+    | '/_app/ia/previews'
     | '/_app/ia/skills'
     | '/_app/ia/times'
     | '/_app/integracoes/api'
@@ -520,7 +568,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  CadastroRoute: typeof CadastroRoute
   LoginRoute: typeof LoginRoute
+  VSlugRoute: typeof VSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -537,6 +587,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cadastro': {
+      id: '/cadastro'
+      path: '/cadastro'
+      fullPath: '/cadastro'
+      preLoaderRoute: typeof CadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -574,12 +631,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOperacoesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/planos': {
+      id: '/_app/planos'
+      path: '/planos'
+      fullPath: '/planos'
+      preLoaderRoute: typeof AppPlanosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/visao-geral': {
       id: '/_app/visao-geral'
       path: '/visao-geral'
       fullPath: '/visao-geral'
       preLoaderRoute: typeof AppVisaoGeralRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/v/$slug': {
+      id: '/v/$slug'
+      path: '/v/$slug'
+      fullPath: '/v/$slug'
+      preLoaderRoute: typeof VSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/atendimento/inbox': {
       id: '/_app/atendimento/inbox'
@@ -721,6 +792,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIaMemoriaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/ia/previews': {
+      id: '/_app/ia/previews'
+      path: '/ia/previews'
+      fullPath: '/ia/previews'
+      preLoaderRoute: typeof AppIaPreviewsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/ia/skills': {
       id: '/_app/ia/skills'
       path: '/ia/skills'
@@ -834,6 +912,7 @@ interface AppRouteChildren {
   AppAutomacoesRoute: typeof AppAutomacoesRoute
   AppEquipeRoute: typeof AppEquipeRoute
   AppOperacoesRoute: typeof AppOperacoesRouteWithChildren
+  AppPlanosRoute: typeof AppPlanosRoute
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
   AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
   AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
@@ -855,6 +934,7 @@ interface AppRouteChildren {
   AppIaExecucoesRoute: typeof AppIaExecucoesRoute
   AppIaHelenaRoute: typeof AppIaHelenaRoute
   AppIaMemoriaRoute: typeof AppIaMemoriaRoute
+  AppIaPreviewsRoute: typeof AppIaPreviewsRoute
   AppIaSkillsRoute: typeof AppIaSkillsRoute
   AppIaTimesRoute: typeof AppIaTimesRoute
   AppIntegracoesApiRoute: typeof AppIntegracoesApiRoute
@@ -873,6 +953,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAutomacoesRoute: AppAutomacoesRoute,
   AppEquipeRoute: AppEquipeRoute,
   AppOperacoesRoute: AppOperacoesRouteWithChildren,
+  AppPlanosRoute: AppPlanosRoute,
   AppVisaoGeralRoute: AppVisaoGeralRoute,
   AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
   AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
@@ -894,6 +975,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIaExecucoesRoute: AppIaExecucoesRoute,
   AppIaHelenaRoute: AppIaHelenaRoute,
   AppIaMemoriaRoute: AppIaMemoriaRoute,
+  AppIaPreviewsRoute: AppIaPreviewsRoute,
   AppIaSkillsRoute: AppIaSkillsRoute,
   AppIaTimesRoute: AppIaTimesRoute,
   AppIntegracoesApiRoute: AppIntegracoesApiRoute,
@@ -912,7 +994,9 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  CadastroRoute: CadastroRoute,
   LoginRoute: LoginRoute,
+  VSlugRoute: VSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

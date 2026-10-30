@@ -7,6 +7,7 @@ import {
   Sliders, Sparkles, StopCircle, Trash2, Volume2, VolumeX, Zap,
 } from "lucide-react";
 import { PageHeader, StatCard, Status } from "@/components/app/kit";
+import { HelenaOrb } from "@/components/helena/HelenaOrb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,7 @@ function HelenaPage() {
     if (!ytIframeRef.current?.contentWindow) return;
     try {
       if (action === "play") {
+        ytIframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [12, true] }), "*");
         ytIframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [] }), "*");
         setYtPlaying(true);
       } else if (action === "pause") {
@@ -401,13 +403,60 @@ function HelenaPage() {
                   </div>
                 </div>
 
+                <div className="relative overflow-hidden rounded-xl border bg-black">
+                  <iframe
+                    width="100%"
+                    height="180"
+                    src={`https://www.youtube.com/embed/${currentYtId}?rel=0&modestbranding=1`}
+                    title="Miniatura Helena no YouTube"
+                    allow="encrypted-media"
+                    className="block aspect-video h-[180px] w-full"
+                  />
+                  <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-end bg-gradient-to-t from-black/70 via-transparent to-transparent pb-2">
+                    <HelenaOrb
+                      className="size-20"
+                      state={isPlayingBriefing ? "executando" : "ocioso"}
+                      talking={isPlayingBriefing}
+                    />
+                    <span className="mt-1 rounded-full bg-black/70 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.16em] text-white">
+                      HELENA
+                    </span>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="font-medium text-foreground">Link / ID de Vídeo do YouTube:</label>
+                  <label className="font-medium text-foreground">Link da trilha de entrada:</label>
                   <Input
                     value={briefingCfg.musicUrl}
                     onChange={(e) => saveConfig({ musicUrl: e.target.value })}
                     className="mt-1 h-8 text-xs font-mono"
                     placeholder="https://www.youtube.com/watch?v=HWjCStB6k4o"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-medium text-foreground">Trilha de despedida:</label>
+                  <p className="text-[11px] text-muted-foreground mb-1">Toca quando você diz a frase de saída.</p>
+                  <div className="grid gap-1.5">
+                    {MUSIC_PRESETS.map((p) => {
+                      const isSelected = (briefingCfg.exitMusicUrl || "").includes(p.id);
+                      return (
+                        <button
+                          key={`exit-${p.id}`}
+                          type="button"
+                          onClick={() => saveConfig({ exitMusicUrl: p.url })}
+                          className={`w-full text-left p-2.5 rounded-lg border text-xs ${isSelected ? "border-helena bg-helena/10 font-semibold" : "hover:bg-muted/40"}`}
+                        >
+                          {p.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Input
+                    value={briefingCfg.exitMusicUrl || ""}
+                    onChange={(e) => saveConfig({ exitMusicUrl: e.target.value })}
+                    className="mt-2 h-8 text-xs font-mono"
+                    placeholder="Cole o YouTube da despedida"
                   />
                 </div>
 
@@ -471,7 +520,7 @@ function HelenaPage() {
               ref={ytIframeRef}
               width="200"
               height="200"
-              src={`https://www.youtube-nocookie.com/embed/${currentYtId}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : ""}&loop=1&playlist=${currentYtId}`}
+              src={`https://www.youtube-nocookie.com/embed/${currentYtId}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : ""}&start=12`}
               title="YouTube background music"
               allow="autoplay; encrypted-media"
             />

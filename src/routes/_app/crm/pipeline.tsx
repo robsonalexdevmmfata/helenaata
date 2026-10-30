@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { EntityAvatar, PageHeader, StatusBadge } from "@/components/app/kit";
 import { currentUser, getDB, ownerName, useDB } from "@/lib/store";
+import { liveBoard } from "@/lib/analytics";
 import { runTool } from "@/lib/helena/engine";
 import { brl, fmtDate } from "@/lib/format";
 import { pageHead } from "@/lib/head";
@@ -72,6 +73,7 @@ function PipelinePage() {
     return true;
   });
 
+  const board = liveBoard(db);
   const openDeals = deals.filter((d) => d.status === "aberto");
   const totalOpenValue = openDeals.reduce((sum, d) => sum + d.value, 0);
   const wonDeals = deals.filter((d) => d.status === "ganho");
@@ -165,6 +167,12 @@ function PipelinePage() {
           </div>
           <div className="mt-1 text-xs text-muted-foreground">por oportunidade fechada</div>
         </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4 text-xs">
+        <div className="rounded-lg border bg-card px-3 py-2">Abordagens Inbox <span className="font-mono font-semibold">{board.abordados}</span></div>
+        <div className="rounded-lg border bg-card px-3 py-2">Responderam <span className="font-mono font-semibold">{board.responderam}</span></div>
+        <div className="rounded-lg border bg-card px-3 py-2">Reuniões Agenda <span className="font-mono font-semibold">{board.meetings.length}</span></div>
+        <div className="rounded-lg border bg-card px-3 py-2">Disparos Evolution <span className="font-mono font-semibold">{board.campaignSent}</span></div>
       </div>
 
       {/* Filters Bar */}

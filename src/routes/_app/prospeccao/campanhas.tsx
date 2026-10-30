@@ -170,7 +170,7 @@ function CampaignsPage() {
                 <Select value={form.agent} onValueChange={(v) => setForm({ ...form, agent: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="both">SDR 01 e SDR 02</SelectItem>
+                    <SelectItem value="both">Marina e Camila</SelectItem>
                     {db.agents.filter((a) => a.role === "SDR").map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                   </SelectContent>
                 </Select>

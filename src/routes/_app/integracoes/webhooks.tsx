@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  ArrowDown, ArrowUp, CheckCircle2, Copy, Edit2, Plus, Search, Shield, Switch as SwitchIcon, Trash2, Webhook,
+  ArrowDown, ArrowUp, CheckCircle2, Copy, Edit2, Plus, Search, Shield, Trash2, Webhook,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";

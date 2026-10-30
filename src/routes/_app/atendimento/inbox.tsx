@@ -8,6 +8,9 @@ import { EmptyState, EntityAvatar, StatusBadge, Status, colorFor } from "@/compo
 import { currentUser, nowISO, ownerName, update, useDB } from "@/lib/store";
 import { userAction } from "@/lib/helena/engine";
 import { openHelena } from "@/lib/helena/orchestrator";
+import { hydrateConversationFromEvolution } from "@/lib/evolution/inboxPoller";
+import { getEvolutionConfigUI } from "@/lib/evolution/evolutionapi";
+import { sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
 import { fmtTime, timeAgo } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { cn } from "@/lib/utils";
@@ -30,6 +33,7 @@ function InboxPage() {
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [text, setText] = useState("");
+  const [evoLabel, setEvoLabel] = useState("Evolution");
   const endRef = useRef<HTMLDivElement>(null);
 
   const list = useMemo(
@@ -50,8 +54,23 @@ function InboxPage() {
   const deals = contact ? db.deals.filter((d) => d.contactId === contact.id) : [];
 
   useEffect(() => {
+    const cfg = getEvolutionConfigUI();
+    setEvoLabel(`Evolution · ${cfg.instance}`);
+    update((d) => {
+      for (const c of d.conversations) {
+        for (const m of c.messages) m.text = sanitizeChatText(m.text);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [conv?.id, conv?.messages.length]);
+
+  useEffect(() => {
+    if (!conv?.id || !conv.remoteJid) return;
+    void hydrateConversationFromEvolution(conv.id);
+  }, [conv?.id, conv?.remoteJid]);
 
   useEffect(() => {
     if (conv && conv.unread > 0) update((d) => { const c = d.conversations.find((x) => x.id === conv.id); if (c) c.unread = 0; });
@@ -94,6 +113,9 @@ function InboxPage() {
               <TabsTrigger value="resolvida" className="text-xs">Resolvidas</TabsTrigger>
             </TabsList>
           </Tabs>
+          <div className="text-[10px] text-muted-foreground">
+            {evoLabel} · {list.length} conversas · {db.contacts.filter((c) => c.tags.includes("evolution") || c.source === "WhatsApp" || c.source === "Prospecção").length} contatos
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {list.map((c) => {
@@ -112,7 +134,7 @@ function InboxPage() {
                     <span className="truncate text-sm font-medium">{ct?.name ?? "Contato"}</span>
                     <span className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(c.lastMessageAt)}</span>
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{last?.text}</div>
+                  <div className="truncate text-xs text-muted-foreground">{sanitizeChatText(last?.text ?? "")}</div>
                   <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
                     <span>{CHANNEL_LABEL[c.channel]}</span>·
                     <span className="inline-flex items-center gap-0.5">
@@ -174,7 +196,7 @@ function InboxPage() {
                     )}
                   >
                     {m.from !== "contact" && <div className="mb-0.5 text-[10px] font-semibold opacity-70">{m.authorName}</div>}
-                    <div className="whitespace-pre-line">{m.text}</div>
+                    <div className="whitespace-pre-line">{sanitizeChatText(m.text)}</div>
                     <div className="mt-0.5 text-right text-[10px] opacity-60">{fmtTime(m.at)}</div>
                   </div>
                 </div>

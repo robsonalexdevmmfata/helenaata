@@ -5,15 +5,17 @@
 // tool calling when the real backend exists. The execution path stays the same.
 import type { Agent, DB, HelenaCard } from "@/lib/types";
 import { createUiStore, currentUser, getDB } from "@/lib/store";
-import { brl, greeting, normalize, pct } from "@/lib/format";
+import { brl, greeting, normalize } from "@/lib/format";
 import { computeSummary, needsApproval, pushHelenaMessage, requestApproval, runTool, toolRisk, updateHelenaCard } from "./engine";
+import { liveBoard } from "@/lib/analytics";
 import { getToolDef } from "./registry";
 import { callGroqOrchestrator } from "./groq";
 import { computeDynamicCadence, getWhatsAppWorkerStatus, OBJECTION_MATRIX, FINANCIAL_GOAL } from "./sales-brain";
 import { computeRevenuePlan, parseDeadline, parseRevenueGoal } from "./revenue-goal";
 import { generateBriefingScript, getBriefingConfig, isHelenaArrivalGreeting } from "./briefing";
-import { playHappyNation } from "./music";
+import { pauseHappyNation, playFarewellMusic, playHappyNation } from "./music";
 import { extractProspectIntent } from "@/lib/prospect/mapsSearch";
+import { isPresenceIntent } from "@/lib/dev/presence";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
@@ -62,7 +64,7 @@ export async function sendToHelena(text: string) {
 
     // Automatically trigger Happy Nation background soundtrack
     if (briefingCfg.autoPlayMusic) {
-      playHappyNation(briefingCfg.musicVolume);
+      playHappyNation(briefingCfg.musicVolume, { linger: false });
     }
 
     const briefing = generateBriefingScript(getDB(), briefingCfg, "entrada");
@@ -87,6 +89,8 @@ export async function sendToHelena(text: string) {
   ) {
     pushHelenaMessage(clean, undefined, "user");
     helenaUi.set({ state: "pensando", draft: "" });
+    pauseHappyNation();
+    if (briefingCfg.autoPlayMusic) playFarewellMusic(briefingCfg.musicVolume);
     await sleep(250);
 
     const briefing = generateBriefingScript(getDB(), briefingCfg, "encerramento");
@@ -99,6 +103,24 @@ export async function sendToHelena(text: string) {
     helenaUi.set({ state: "concluindo" });
     await sleep(400);
     helenaUi.set({ state: "ocioso" });
+    return;
+  }
+
+  if (
+    /\b(toca|toque|tocar|pode tocar|ponha|coloca)\b/.test(nClean) &&
+    /\b(musica|música|trilha|happy nation|som)\b/.test(nClean)
+  ) {
+    pushHelenaMessage(clean, undefined, "user");
+    playHappyNation(briefingCfg.musicVolume, { linger: true });
+    pushHelenaMessage("Toquei a trilha a partir de 0:12. Digo para pausar quando quiser.");
+    helenaUi.set({ draft: "", state: "ocioso" });
+    return;
+  }
+  if (/\b(pausa|pause|para|parar|desliga)\b/.test(nClean) && /\b(musica|música|trilha|som|happy)\b/.test(nClean)) {
+    pushHelenaMessage(clean, undefined, "user");
+    pauseHappyNation();
+    pushHelenaMessage("Pausado.");
+    helenaUi.set({ draft: "", state: "ocioso" });
     return;
   }
 
@@ -120,7 +142,13 @@ export async function sendToHelena(text: string) {
 
     const user = currentUser(getDB());
     for (const tc of groqRes.toolCalls) {
-      if (tc.name === "prospect_scan_maps") {
+      if (tc.name === "dev_build_presence" || (tc.name === "prospect_scan_maps" && isPresenceIntent(clean))) {
+        const res = runTool("dev.build_presence", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        pushHelenaMessage(
+          groqRes.text || res.message,
+          { type: "result", ok: res.ok, title: "Time Desenvolvimento IA · prévia", detail: res.message }
+        );
+      } else if (tc.name === "prospect_scan_maps") {
         const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
         pushHelenaMessage(
           groqRes.text || `Executei a varredura no Google Maps para ${tc.arguments.segment || "empresas"} em ${tc.arguments.city || "São Paulo"}. Encontrei empresas sem site e injetei no CRM com a tag #sem-site. O SDR já iniciou a abordagem!`,
@@ -291,27 +319,54 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
+  // Time Dev IA: nicho sem site / sem cardápio → prévia → comercial aborda com o link
+  if (isPresenceIntent(text)) {
+    const intent = extractProspectIntent(text);
+    const segment = intent.segment;
+    const nationwide = intent.nationwide;
+    const city = intent.city;
+    const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 10), 50);
+    return [
+      perform(
+        "dev.build_presence",
+        { segment, city, nationwide, limit },
+        `Prévia digital: ${segment} · ${nationwide ? "Brasil inteiro" : city}`,
+        [
+          { label: "Nicho", value: segment },
+          { label: "Escopo", value: nationwide ? "Brasil inteiro" : city },
+          { label: "Critério", value: /restaurante|comida|cardapio|pizzaria|lanchonete/.test(n) ? "Sem site e sem cardápio online" : "Sem site" },
+          { label: "Time Dev", value: "Caio (front) · Diego (back) · Sofia (design)" },
+          { label: "Depois", value: "Time Comercial aborda o proprietário com o link da prévia" },
+        ],
+        `Orquestrei o Time Desenvolvimento IA para ${limit} ${segment} (${nationwide ? "Brasil inteiro" : city}). Quem não tem site${/cardapio|restaurante|pizzaria/.test(n) ? " nem cardápio online" : ""} ganha prévia. O Time Comercial manda o link e pergunta se fala com o dono. Veja as prévias em IA → Prévia de sites.`,
+      ),
+    ];
+  }
+
   // Prospecção autônoma: qualquer nicho que o gestor pedir (não só dentista)
   if (/sem.?site|google maps|maps|varr\w*|prospect|cacar lead|caçar lead|buscar cliente|buscar lead|ativar o time/.test(n)) {
     const intent = extractProspectIntent(text);
     const segment = intent.segment;
     const nationwide = intent.nationwide;
     const city = intent.city;
-    const limit = Number(n.match(/(\d{1,3})/)?.[1] ?? 10);
+    const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 10), 150);
+    const wave = limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|150 pessoas|diversos nichos/.test(n);
 
     return [
       perform(
         "prospect.scan_maps",
-        { segment, city, nationwide, state: nationwide ? "TODOS" : undefined, limit },
-        `Varredura Maps: ${segment} · ${nationwide ? "Brasil inteiro" : city}`,
+        { segment, city: wave ? "São Paulo, Campinas, Araçatuba, Andradina" : city, nationwide: wave ? false : nationwide, state: wave ? "SP" : nationwide ? "TODOS" : undefined, limit: wave ? Math.max(limit, 150) : limit, wave },
+        `Varredura Maps: ${segment} · ${wave ? "SP + interior" : nationwide ? "Brasil inteiro" : city}`,
         [
-          { label: "Nicho", value: segment },
-          { label: "Escopo", value: nationwide ? "Brasil inteiro" : city },
-          { label: "Critério", value: "Sem site + WhatsApp celular válido" },
-          { label: "Roteamento", value: "SDR 01 → SDR 02 → Qualificador → Closer" },
-          { label: "WhatsApp", value: "Evolution helena · +55 18 98101-1186" },
+          { label: "Nicho", value: wave ? "Vários (saúde e serviços locais)" : segment },
+          { label: "Escopo", value: wave ? "São Paulo, Campinas, Araçatuba, Andradina e próximas" : nationwide ? "Brasil inteiro" : city },
+          { label: "Critério", value: "Sem site + WhatsApp celular válido · sem inventar número" },
+          { label: "Roteamento", value: "Marina / Camila → Rafael → André" },
+          { label: "WhatsApp", value: "Evolution helena · +55 18 98101-1186 · intervalo 8s" },
         ],
-        `Orquestrei o FreeLLMAPI para planejar as cidades e a varredura de ${segment} (${nationwide ? "Brasil inteiro" : city}). Só entram leads sem site e com WhatsApp. O Time Comercial assume em rodízio com o script do Robson Alex; disparo real na instância helena.`
+        wave
+          ? `Onda de vendas: até 150 WhatsApp reais em São Paulo, Campinas, Araçatuba, Andradina e redor. Marina cuida de saúde; Camila de comércio e serviço. Só fala preço se perguntarem.`
+          : `Orquestrei a varredura de ${segment} (${nationwide ? "Brasil inteiro" : city}). Só entram leads sem site e com WhatsApp. O Time Comercial dispara na instância helena.`
       ),
     ];
   }
@@ -343,7 +398,7 @@ export function interpret(text: string): Reply[] {
   const revenueGoal = parseRevenueGoal(text);
   if (revenueGoal) {
     const plan = computeRevenuePlan(revenueGoal, {}, parseDeadline(text));
-    const sdrNames = sdrs.map((a) => a.name).join(" e ") || "SDR 01 e SDR 02";
+    const sdrNames = sdrs.map((a) => a.name).join(" e ") || "Marina Costa e Camila Alves";
     const perSdr = Math.ceil(plan.leads / Math.max(1, sdrs.length));
     return planOperation({
       intro: `${greeting()}, ${first}. Meta recebida: ${brl(plan.goal)} ${plan.deadline}.\n\nMatemática de vendas da ${db.organization.name}:\n• Ticket médio site/sistema: ${brl(plan.ticket)} → ${plan.sales} clientes fechados\n• Conversão do Closer: ${Math.round(plan.closeRate * 100)}% → ${plan.meetings} reuniões agendadas\n• Agendamento dos SDRs: ${Math.round(plan.meetingRate * 100)}% → ${plan.leads} leads abordados`,
@@ -355,9 +410,9 @@ export function interpret(text: string): Reply[] {
       suggestions: [
         `Caçador / Scraper: filtrar ${plan.leads} leads da região sem site no Google Maps (#sem-site)`,
         `${sdrNames}: disparar abordagens pelo WhatsApp de forma espaçada (~${perSdr} por SDR, evitando bloqueios)`,
-        `Qualificador: de prontidão para agendar no Google Calendar / Cal.com assim que o dono responder "Sim, quero ver a demonstração"`,
-        `Closer: conduzir as ${plan.meetings} reuniões com meta de ${plan.sales} fechamentos`,
-        "Supervisor Comercial: acompanhar o funil e me alertar se a taxa de resposta cair",
+        `Rafael Mendes: de prontidão para agendar no Google Calendar / Cal.com assim que o dono responder "Sim, quero ver a demonstração"`,
+        `André Lima: conduzir as ${plan.meetings} reuniões com meta de ${plan.sales} fechamentos`,
+        "Marcos Rivera: acompanhar o funil e me alertar se a taxa de resposta cair",
       ],
     });
   }
@@ -600,15 +655,16 @@ export function interpret(text: string): Reply[] {
   if (/como esta|vendas|desempenho|resultado|relatorio|quantas|quantos|metricas|faturamento|caira?m|comercial/.test(n)) {
     runTool("analytics.query", {}, { actor: "Helena", actorType: "helena", requestedBy: user.name });
     const s = summary;
-    const why = /cair|caira|queda/.test(n) ? `\n\nPrincipais causas que encontrei: ${s.staleDeals} oportunidades sem follow-up há mais de 48h e o agente Suporte pausado, o que atrasou respostas no Atendimento.` : "";
+    const b = liveBoard(db);
+    const why = /cair|caira|queda/.test(n) ? `\n\nPrincipais causas: ${s.staleDeals} oportunidades sem follow-up há mais de 48h.` : "";
     return [{
-      text: `Nos últimos 7 dias entraram ${s.leads7d} leads.\n\nPipeline aberto: ${brl(s.openPipeline)} em ${s.openDeals} oportunidades. ${s.won} vendas ganhas (${brl(s.wonValue)}).\n\n${s.bestAgent ? `O ${s.bestAgent.name} possui a maior taxa de resposta (${pct(s.bestAgent.rate)}).` : ""}\n\nPorém encontrei ${s.staleDeals} oportunidades sem follow-up há mais de 48 horas. Posso redistribuí-las.${why}`,
-      card: { type: "stats", title: "Comercial", items: [
-        { label: "Leads 7 dias", value: String(s.leads7d) },
-        { label: "Pipeline aberto", value: brl(s.openPipeline) },
-        { label: "Vendas ganhas", value: String(s.won) },
-        { label: "Conversão", value: pct(s.conversion) },
-        { label: "Reuniões (operações)", value: String(s.meetings) },
+      text: `Espelho ao vivo (mesmo número da Visão geral e do Pipeline):\n${b.abordados} abordagens, ${b.responderam} respostas, ${b.meetings.length} reuniões na Agenda, pipeline ${brl(b.pipelineValue)} em ${b.openDealsCount} deals.\nLeads 7 dias: ${b.leads7d}. Ganhos: ${b.wonCount} (${brl(b.totalRevenue)}).${why}`,
+      card: { type: "stats", title: "Comercial ao vivo", items: [
+        { label: "Abordagens", value: String(b.abordados) },
+        { label: "Responderam", value: String(b.responderam) },
+        { label: "Pipeline aberto", value: brl(b.pipelineValue) },
+        { label: "Reuniões", value: String(b.meetings.length) },
+        { label: "Leads 7 dias", value: String(b.leads7d) },
         { label: "Sem follow-up 48h", value: String(s.staleDeals) },
       ] },
     }];
@@ -627,6 +683,7 @@ export function interpret(text: string): Reply[] {
   return [{
     text: "Ainda não tenho uma ferramenta para executar isso, então não vou fingir que fiz. Posso ajudar com:",
     card: { type: "list", title: "Exemplos", items: [
+      { label: "Helena, procure 50 restaurantes que não tenham site nem cardápio online" },
       { label: "Ative o time comercial e comece a prospectar" },
       { label: "Mostre os leads quentes" },
       { label: "Quem precisa de follow-up hoje?" },

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { runTool } from "@/lib/helena/engine";
-import { getDB, resetDB } from "@/lib/store";
+import { getDB, resetDB, uid, update } from "@/lib/store";
 import {
   checkDuplicateContact,
   deduplicateProspectList,
@@ -12,12 +12,39 @@ import {
   FINANCIAL_GOAL,
 } from "@/lib/helena/sales-brain";
 
+function seedContact(overrides: Partial<{ phone: string; ownerId: string; name: string }> = {}) {
+  const id = uid("p_test_");
+  update((d) => {
+    d.contacts.unshift({
+      id,
+      organizationId: d.organization.id,
+      name: overrides.name ?? "Lead Teste",
+      email: "lead@teste.com",
+      phone: overrides.phone ?? "+55 11 98888-0001",
+      title: "Dono",
+      tags: ["#sem-site"],
+      source: "Prospecção",
+      ownerId: overrides.ownerId ?? "a_sdr1",
+      status: "lead",
+      score: 70,
+      consent: true,
+      createdAt: new Date().toISOString(),
+      lastContactAt: new Date().toISOString(),
+    });
+  });
+  return getDB().contacts.find((c) => c.id === id)!;
+}
+
 describe("Helena Sales Brain & Autonomous SDR Engine", () => {
+  beforeEach(() => {
+    resetDB();
+  });
+
   it("Trava 1: Impede duplicidade de telefone no CRM", () => {
-    const db = getDB();
-    const existingContact = db.contacts[0];
+    const existingContact = seedContact();
 
     // Checa duplicação com o telefone existente
+    const db = getDB();
     const check = checkDuplicateContact(existingContact.phone, db);
     expect(check.isDuplicate).toBe(true);
     expect(check.reason).toBeDefined();
@@ -29,7 +56,7 @@ describe("Helena Sales Brain & Autonomous SDR Engine", () => {
 
   it("Trava 2: Deduplica listas de prospecção antes de cadastrar", () => {
     const db = getDB();
-    const existingContact = db.contacts[0];
+    const existingContact = seedContact();
 
     const rawList = [
       { name: "Empresa Nova 1", phone: "+55 11 99999-1111" },
@@ -45,7 +72,7 @@ describe("Helena Sales Brain & Autonomous SDR Engine", () => {
 
   it("Trava 3: Trava de Handoff entre SDRs impede colisão de atendimento", () => {
     const db = getDB();
-    const contact = db.contacts.find((c) => c.ownerId === "a_sdr1") || db.contacts[0];
+    const contact = seedContact({ ownerId: "a_sdr1" });
 
     // Se o SDR 02 tentar abordar o lead do SDR 01
     const lockCheck = isLeadHandledByAnotherSdr(contact.id, "a_sdr2", db);
@@ -56,8 +83,7 @@ describe("Helena Sales Brain & Autonomous SDR Engine", () => {
   });
 
   it("Pilar 1: Matriz de Objeções contorna 'Já tenho Instagram' e envia demonstração", () => {
-    const db = getDB();
-    const contact = db.contacts[0];
+    const contact = seedContact();
 
     const matched = matchObjection("já tenho instagram, não preciso de site");
     expect(matched).not.toBeNull();
@@ -76,8 +102,7 @@ describe("Helena Sales Brain & Autonomous SDR Engine", () => {
   });
 
   it("Pilar 2: BANT e Fechamento com Pix gera cobrança instantânea", () => {
-    const db = getDB();
-    const contact = db.contacts[0];
+    const contact = seedContact();
 
     const resPix = runTool(
       "sales.generate_checkout_pix",

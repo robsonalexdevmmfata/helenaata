@@ -94,6 +94,107 @@ function headers(cfg: EvolutionConfig) {
   };
 }
 
+function evoUrl(path: string, cfg: EvolutionConfig) {
+  const clean = path.startsWith("/") ? path : `/${path}`;
+  if (typeof window !== "undefined") return `/api/evolution${clean}`;
+  return `${cfg.baseUrl.replace(/\/$/, "")}${clean}`;
+}
+
+export function jidToPhone(jid: string) {
+  const id = String(jid || "").replace(/@.*/, "");
+  if (!id || id === "0" || /@g\.us$/.test(jid) || /@lid$/.test(jid) || !/^\d+$/.test(id)) return "";
+  return id.startsWith("55") ? `+${id}` : `+55${id}`;
+}
+
+export function extractWaText(raw: any): string {
+  const m = raw?.message ?? raw;
+  const text = String(
+    m?.conversation ??
+      m?.extendedTextMessage?.text ??
+      m?.imageMessage?.caption ??
+      m?.videoMessage?.caption ??
+      m?.documentMessage?.caption ??
+      m?.buttonsResponseMessage?.selectedDisplayText ??
+      "",
+  );
+  return text.replace(/\uFFFD/g, "").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+export function waTimestampISO(ts: unknown) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return new Date().toISOString();
+  return new Date(n > 1e12 ? n : n * 1000).toISOString();
+}
+
+async function evoJson(path: string, init: RequestInit, cfg?: EvolutionConfig) {
+  const config = cfg ?? getEvolutionConfigUI();
+  const res = await fetch(evoUrl(path, config), {
+    ...init,
+    headers: { ...headers(config), ...(init.headers as Record<string, string> | undefined) },
+  });
+  const data = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, data };
+}
+
+export async function evolutionFindChats(cfg?: EvolutionConfig) {
+  const config = cfg ?? getEvolutionConfigUI();
+  const { ok, data } = await evoJson(`/chat/findChats/${encodeURIComponent(config.instance)}`, {
+    method: "POST",
+    body: "{}",
+  }, config);
+  if (!ok) return { ok: false as const, chats: [] as any[], error: `HTTP` };
+  const chats = Array.isArray(data) ? data : data?.chats ?? data?.data ?? [];
+  return { ok: true as const, chats };
+}
+
+export async function evolutionFindContacts(cfg?: EvolutionConfig) {
+  const config = cfg ?? getEvolutionConfigUI();
+  const { ok, data } = await evoJson(`/chat/findContacts/${encodeURIComponent(config.instance)}`, {
+    method: "POST",
+    body: "{}",
+  }, config);
+  if (!ok) return { ok: false as const, contacts: [] as any[], error: "HTTP" };
+  const contacts = Array.isArray(data) ? data : data?.contacts ?? data?.data ?? [];
+  return { ok: true as const, contacts };
+}
+
+export async function evolutionFindChatMessages(remoteJid: string, count = 40, cfg?: EvolutionConfig) {
+  const config = cfg ?? getEvolutionConfigUI();
+  const { ok, data } = await evoJson(`/chat/findMessages/${encodeURIComponent(config.instance)}`, {
+    method: "POST",
+    body: JSON.stringify({ where: { key: { remoteJid } }, page: 1, offset: count }),
+  }, config);
+  if (!ok) return { ok: false as const, messages: [] as any[] };
+  let records =
+    data?.messages?.records ??
+    data?.messages ??
+    (Array.isArray(data) ? data : []);
+  if (!Array.isArray(records)) records = [];
+  if (records.length === 0) {
+    const all = await evolutionListAllMessages(cfg);
+    records = all.filter((m) => (m?.key?.remoteJid ?? m?.remoteJid) === remoteJid);
+  }
+  return { ok: true as const, messages: records };
+}
+
+export async function evolutionListAllMessages(cfg?: EvolutionConfig, maxPages = 6) {
+  const config = cfg ?? getEvolutionConfigUI();
+  const out: any[] = [];
+  let pages = 1;
+  for (let page = 1; page <= Math.min(pages, maxPages); page++) {
+    const { ok, data } = await evoJson(`/chat/findMessages/${encodeURIComponent(config.instance)}`, {
+      method: "POST",
+      body: JSON.stringify({ page, offset: 50 }),
+    }, config);
+    if (!ok) break;
+    const rec = data?.messages?.records ?? (Array.isArray(data) ? data : []);
+    pages = Number(data?.messages?.pages ?? pages);
+    if (Array.isArray(rec)) out.push(...rec);
+    if (!rec.length) break;
+  }
+  return out;
+}
+
 // ── Tipos de resposta ────────────────────────────────────────────────────────
 
 export interface EvoSendResult {
@@ -127,7 +228,7 @@ export async function getEvolutionStatus(
   cfg?: EvolutionConfig
 ): Promise<EvoStatusResult> {
   const config = cfg ?? getEvolutionConfigUI();
-  const url = `${config.baseUrl}/instance/connectionState/${config.instance}`;
+  const url = evoUrl(`/instance/connectionState/${config.instance}`, config);
 
   try {
     const res = await fetch(url, {
@@ -184,7 +285,7 @@ export async function evolutionSendText(
   // Garante que o número não tem + ou espaços
   const cleanNumber = number.replace(/\D/g, "");
 
-  const url = `${config.baseUrl}/message/sendText/${config.instance}`;
+  const url = evoUrl(`/message/sendText/${config.instance}`, config);
 
   try {
     const res = await fetch(url, {
@@ -238,7 +339,7 @@ export async function evolutionSendMedia(
 ): Promise<EvoSendResult> {
   const config = cfg ?? getEvolutionConfigUI();
   const cleanNumber = number.replace(/\D/g, "");
-  const url = `${config.baseUrl}/message/sendMedia/${config.instance}`;
+  const url = evoUrl(`/message/sendMedia/${config.instance}`, config);
 
   try {
     const res = await fetch(url, {
@@ -275,7 +376,7 @@ export async function evolutionSetWebhook(
   cfg?: EvolutionConfig
 ): Promise<EvoWebhookResult> {
   const config = cfg ?? getEvolutionConfigUI();
-  const url = `${config.baseUrl}/webhook/set/${config.instance}`;
+  const url = evoUrl(`/webhook/set/${config.instance}`, config);
 
   try {
     const res = await fetch(url, {
@@ -308,7 +409,7 @@ export async function evolutionGetWebhook(
   cfg?: EvolutionConfig
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   const config = cfg ?? getEvolutionConfigUI();
-  const url = `${config.baseUrl}/webhook/find/${config.instance}`;
+  const url = evoUrl(`/webhook/find/${config.instance}`, config);
 
   try {
     const res = await fetch(url, { method: "GET", headers: headers(config) });
@@ -333,7 +434,7 @@ export async function evolutionFindMessages(
 ): Promise<{ ok: boolean; messages?: any[]; error?: string }> {
   const config = cfg ?? getEvolutionConfigUI();
   const cleanNumber = number.replace(/\D/g, "");
-  const url = `${config.baseUrl}/chat/findMessages/${config.instance}?number=${cleanNumber}&count=${count}`;
+  const url = evoUrl(`/chat/findMessages/${config.instance}?number=${cleanNumber}&count=${count}`, config);
 
   try {
     const res = await fetch(url, { method: "GET", headers: headers(config) });
