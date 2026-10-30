@@ -290,37 +290,20 @@ export async function evolutionSendText(
 
   const cleanNumber = number.replace(/\D/g, "");
   let last = "Falha ao enviar mensagem";
+  const instance = encodeURIComponent(config.instance || "helena");
 
   for (const origin of helenaApiBases()) {
     try {
-      const res = await fetch(`${origin}/api/whatsapp/send`, {
+      const res = await fetch(`${origin}/api/evolution/message/sendText/${instance}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: cleanNumber, text }),
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.ok) {
-        return { ok: true, messageId: data.to ?? "sent", raw: data };
-      }
-      if (res.status === 409) {
-        return { ok: false, error: data?.error ?? "WhatsApp desconectado. Escaneie o QR em Integrações." };
-      }
-      last = data?.error ?? `HTTP ${res.status}`;
-    } catch (err: any) {
-      last = err?.message ?? last;
-    }
-
-    try {
-      const res = await fetch(evoUrl(`/message/sendText/${config.instance}`, config), {
-        method: "POST",
-        headers: headers(config),
-        body: JSON.stringify({ number: cleanNumber, text, delay: 1200, linkPreview: false }),
+        body: JSON.stringify({ number: cleanNumber, text }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok) {
         return { ok: true, messageId: data?.key?.id ?? data?.id ?? "sent", raw: data };
       }
-      last = data?.message ?? data?.error ?? `HTTP ${res.status}`;
+      last = data?.error ?? data?.message ?? `HTTP ${res.status}`;
     } catch (err: any) {
       last = err?.message ?? last;
     }
@@ -470,84 +453,39 @@ function wipeLocalEvolutionUrl() {
   }
 }
 
-async function pingWhatsAppBackend(): Promise<EvoStatusResult> {
-  let last = "sem resposta";
-  for (const origin of helenaApiBases()) {
-    const url = `${origin}/api/whatsapp/status`;
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
-      if (!res.ok) {
-        last = `HTTP ${res.status}`;
-        continue;
-      }
-      const data = await res.json().catch(() => null);
-      if (!data || typeof data.status !== "string") {
-        last = "resposta inválida";
-        continue;
-      }
-      return {
-        ok: true,
-        connected: data.status === "connected",
-        instance: "helena",
-        number: data.phone || "",
-        status: data.status || "disconnected",
-      };
-    } catch (err: any) {
-      last = err?.message ?? "sem resposta";
-    }
-  }
-  return { ok: false, connected: false, error: last };
-}
-
 export async function testEvolutionConnection(
-  cfg?: EvolutionConfig
+  _cfg?: EvolutionConfig
 ): Promise<{ ok: boolean; connected: boolean; latencyMs: number; message: string; number?: string }> {
   wipeLocalEvolutionUrl();
   const start = Date.now();
-  const config = { ...(cfg ?? getEvolutionConfigUI()) };
-  if (isLocalEvolutionHost(config.baseUrl)) config.baseUrl = "";
-  const baileys = await pingWhatsAppBackend();
-  const latencyMs = Date.now() - start;
-  if (baileys.ok) {
-    if (!baileys.connected) {
+  const { whatsappApi } = await import("@/lib/backend");
+  try {
+    const st = await whatsappApi.status();
+    const latencyMs = Date.now() - start;
+    if (st.status === "connected") {
       return {
         ok: true,
-        connected: false,
+        connected: true,
         latencyMs,
-        message: `Baileys no ar. WhatsApp ainda sem QR (state: ${baileys.status}). Clique em Gerar QR / Conectar.`,
-        number: baileys.number,
+        message: `WhatsApp conectado. Número ${st.phone}. Agentes enviam por este chip.`,
+        number: st.phone ?? undefined,
       };
     }
     return {
       ok: true,
-      connected: true,
+      connected: false,
       latencyMs,
-      message: `Conectado via Baileys! Número: ${baileys.number} · ${latencyMs}ms`,
-      number: baileys.number,
+      message: `Servidor no ar, estado: ${st.status}. Escaneie o QR nesta página.`,
+      number: st.phone ?? undefined,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      connected: false,
+      latencyMs: Date.now() - start,
+      message: `Não falou com o Render (${err?.message ?? "erro"}). Confira se https://helenaata.onrender.com/health está ok.`,
     };
   }
-
-  if (config.baseUrl) {
-    const status = await getEvolutionStatus(config);
-    if (status.ok) {
-      return {
-        ok: true,
-        connected: status.connected,
-        latencyMs: Date.now() - start,
-        message: status.connected
-          ? `Conectado! Número: ${status.number} · Latência: ${Date.now() - start}ms`
-          : `API online mas WhatsApp desconectado (state: ${status.status}). Escaneie o QR Code.`,
-        number: status.number,
-      };
-    }
-  }
-
-  return {
-    ok: false,
-    connected: false,
-    latencyMs,
-    message: `WhatsApp (Baileys) não respondeu (${baileys.error}). No PC: npm run dev e use http://localhost:8081. Sem isso o QR não existe.`,
-  };
 }
 
 // ── 8. Parser de webhook recebido ────────────────────────────────────────────

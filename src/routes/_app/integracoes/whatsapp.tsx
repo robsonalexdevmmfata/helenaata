@@ -145,13 +145,13 @@ function BaileysPanel() {
         <Badge variant={st?.status === "connected" ? "default" : "secondary"}>{label}</Badge>
       </div>
 
-      {err && (
+      {err && st?.status !== "connected" && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {err}
         </div>
       )}
 
-      {testResult && (
+      {testResult && !(st?.status === "connected" && !testResult.ok) && (
         <div className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${
           testResult.connected
             ? "bg-success/5 border-success/30 text-success"

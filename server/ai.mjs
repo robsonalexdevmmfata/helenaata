@@ -3,8 +3,12 @@
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+function groqKey() {
+  return process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || "";
+}
+
 export function aiProvider() {
-  if (process.env.GROQ_API_KEY) return "groq";
+  if (groqKey()) return "groq";
   if (process.env.FREELLMAPI_URL) return "freellmapi";
   return null;
 }
@@ -20,7 +24,7 @@ export async function chatCompletion(body) {
 
   const isGroq = provider === "groq";
   const url = isGroq ? GROQ_URL : `${process.env.FREELLMAPI_URL.replace(/\/$/, "")}/chat/completions`;
-  const key = isGroq ? process.env.GROQ_API_KEY : process.env.FREELLMAPI_KEY;
+  const key = isGroq ? groqKey() : process.env.FREELLMAPI_KEY;
   const model = body.model || (isGroq ? process.env.GROQ_MODEL || "llama-3.3-70b-versatile" : process.env.FREELLMAPI_MODEL || "auto");
 
   const controller = new AbortController();

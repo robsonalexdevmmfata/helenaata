@@ -18,7 +18,7 @@ const wa = (g.__helenaWhatsApp ??= {
   lastConnectedAt: null,
   lastError: null,
   manualStop: false,
-  autoReply: String(process.env.HELENA_AUTO_REPLY || "false").toLowerCase() === "true",
+  autoReply: String(process.env.HELENA_AUTO_REPLY || "true").toLowerCase() !== "false",
   log: [],
   conversations: new Map(), // jid -> { stage, history: [{role, content}] }
 });
@@ -168,6 +168,7 @@ async function handleIncoming(jid, name, text) {
     return;
   }
   if (!wa.autoReply || !aiProvider()) {
+    console.warn("[WhatsApp] Mensagem recebida sem resposta automática. Defina GROQ_API_KEY no Render.");
     convo.history.push({ role: "user", content: text });
     return;
   }

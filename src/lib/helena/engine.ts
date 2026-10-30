@@ -88,6 +88,10 @@ function connectionCheck(db: DB, connectionId?: string): string | null {
   if (!connectionId && !conn) return null;
   const c = conn;
   if (!c) return "a conexão de WhatsApp da agência não existe";
+  if (c.status === "offline" || c.status === "conectando") {
+    const live = db.connections.find((x) => x.status === "online");
+    if (live) return null;
+  }
   if (c.status !== "online") return `a conexão ${c.name} está ${c.status}`;
   return null;
 }
