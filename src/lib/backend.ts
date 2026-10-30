@@ -127,13 +127,54 @@ export interface WhatsAppLogEntry {
   text: string;
 }
 
+function mapEvolutionWa(data: unknown): WhatsAppStatus {
+  const raw = Array.isArray(data) ? data[0] : data;
+  const inst = (raw as { instance?: Record<string, unknown> } | null)?.instance ?? raw ?? {};
+  const rec = inst as Record<string, unknown>;
+  const state = String(rec.state ?? rec.connectionStatus ?? rec.status ?? "close");
+  const qrObj = rec.qrcode as { base64?: string } | undefined;
+  const qr = String(qrObj?.base64 ?? rec.qrCode ?? "") || null;
+  let status: WhatsAppStatus["status"] = "disconnected";
+  if (state === "open" || state === "connected") status = "connected";
+  else if (qr) status = "awaiting_qr";
+  else if (state === "connecting") status = "connecting";
+  return {
+    status,
+    qrCode: qr,
+    phone: String(rec.owner ?? rec.phone ?? "") || null,
+    lastConnectedAt: null,
+    lastError: null,
+    autoReply: true,
+    aiProvider: null,
+    hasSavedSession: false,
+  };
+}
+
 export const whatsappApi = {
-  status: () => api<WhatsAppStatus>("/api/whatsapp/status", { timeoutMs: 45_000 }),
-  connect: () => api<WhatsAppStatus>("/api/whatsapp/connect", { method: "POST", timeoutMs: 45_000 }),
-  logout: () => api<WhatsAppStatus>("/api/whatsapp/logout", { method: "POST", timeoutMs: 20_000 }),
-  messages: () => api<{ messages: WhatsAppLogEntry[] }>("/api/whatsapp/messages", { timeoutMs: 20_000 }),
-  send: (to: string, text: string) => api<{ ok: boolean }>("/api/whatsapp/send", { body: { to, text }, timeoutMs: 20_000 }),
-  autoReply: (enabled: boolean) => api<{ autoReply: boolean }>("/api/whatsapp/auto-reply", { body: { enabled } }),
+  async status() {
+    try {
+      return mapEvolutionWa(await api<unknown>("/api/evolution/instance/fetchInstances", { timeoutMs: 45_000 }));
+    } catch {
+      return mapEvolutionWa(await api<unknown>("/api/evolution/instance/connectionState/helena", { timeoutMs: 45_000 }));
+    }
+  },
+  async connect() {
+    const connected = await api<unknown>("/api/evolution/instance/connect/helena", { method: "GET", timeoutMs: 45_000 });
+    const mapped = mapEvolutionWa(connected);
+    if (mapped.qrCode || mapped.status === "connected") return mapped;
+    try {
+      return mapEvolutionWa(await api<unknown>("/api/evolution/instance/fetchInstances", { timeoutMs: 45_000 }));
+    } catch {
+      return mapped;
+    }
+  },
+  logout: () => api<WhatsAppStatus>("/api/whatsapp/logout", { method: "POST", timeoutMs: 20_000 }).catch(async () =>
+    mapEvolutionWa(await api<unknown>("/api/evolution/instance/connectionState/helena")),
+  ),
+  messages: () => api<{ messages: WhatsAppLogEntry[] }>("/api/whatsapp/messages", { timeoutMs: 20_000 }).catch(() => ({ messages: [] as WhatsAppLogEntry[] })),
+  send: (to: string, text: string) =>
+    api<{ ok: boolean }>("/api/evolution/message/sendText/helena", { body: { number: to, text }, timeoutMs: 20_000 }),
+  autoReply: (enabled: boolean) => api<{ autoReply: boolean }>("/api/whatsapp/auto-reply", { body: { enabled } }).catch(() => ({ autoReply: enabled })),
 };
 
 /** Chat de IA pelo servidor (chave guardada no servidor). Retorna null se indisponível. */
