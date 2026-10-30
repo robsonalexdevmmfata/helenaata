@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,11 @@ function PlanosPage() {
   const db = useDB();
   const user = currentUser(db);
   const blocked = mustSubscribe(user);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [company, setCompany] = useState(user.companyName || "");
   const [message, setMessage] = useState("Quero a Helena white-label na minha operação.");

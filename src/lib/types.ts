@@ -52,6 +52,7 @@ export interface User {
   dailyProspectDate?: string;
   companyName?: string;
   phone?: string;
+  createdAt?: string;
 }
 
 export interface QuoteRequest {

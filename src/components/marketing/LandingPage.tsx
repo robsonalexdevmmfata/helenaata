@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check, MapPin, MessageCircle, Moon, Sparkles, Sun } from "lucide-react";
 import { HelenaAvatar } from "@/components/helena/HelenaAvatar";
 import { TestimonialsSlider } from "@/components/marketing/TestimonialsSlider";
-import { caktoCheckoutUrl, SAAS_PLANS } from "@/lib/saas";
+import { SAAS_PLANS } from "@/lib/saas";
 import { applyTheme, getTheme } from "@/lib/theme";
 
 const STEPS = [
@@ -124,7 +124,7 @@ export function LandingPage() {
 
       <section id="planos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20">
         <h2 className="font-serif text-3xl sm:text-4xl">Três portas. A última é a sua marca.</h2>
-        <p className="mt-3 max-w-xl text-sm text-muted-foreground">Assinatura entra via Cakto. O white-label não tem preço na prateleira — a gente senta e desenha a operação com você.</p>
+        <p className="mt-3 max-w-xl text-sm text-muted-foreground">Primeiro o cadastro. Depois o checkout Cakto. O white-label não tem preço na prateleira — a gente senta e desenha a operação com você.</p>
         <div className="mt-10 grid gap-5 lg:grid-cols-3">
           {SAAS_PLANS.map((p) => (
             <div
@@ -143,19 +143,12 @@ export function LandingPage() {
                 <Link to="/cadastro" className="mt-6 rounded-full border border-helena px-4 py-2.5 text-center text-sm font-medium text-helena">
                   Solicite um orçamento
                 </Link>
-              ) : p.id === "maquina" ? (
-                <a
-                  href={caktoCheckoutUrl("maquina")}
-                  className="mt-6 rounded-full bg-helena px-4 py-2.5 text-center text-sm font-semibold text-helena-foreground"
-                >
-                  Assinar Máquina
-                </a>
               ) : (
                 <a
-                  href={caktoCheckoutUrl("impulso")}
-                  className="mt-6 rounded-full bg-muted px-4 py-2.5 text-center text-sm font-semibold text-foreground"
+                  href={p.id === "maquina" ? "/cadastro?plano=maquina" : "/cadastro?plano=impulso"}
+                  className={`mt-6 rounded-full px-4 py-2.5 text-center text-sm font-semibold ${p.highlight ? "bg-helena text-helena-foreground" : "bg-muted text-foreground"}`}
                 >
-                  Impulso · 2 dias grátis
+                  {p.id === "maquina" ? "Assinar Máquina" : "Impulso · 2 dias grátis"}
                 </a>
               )}
             </div>
@@ -184,7 +177,14 @@ export function LandingPage() {
               <HelenaAvatar className="size-10" />
               <div>
                 <div className="text-[11px] font-semibold tracking-[0.22em]">HELENA AI</div>
-                <div className="text-[11px] text-muted-foreground">Info Tech Ltda</div>
+                <a
+                  href="https://agenciainfotech.com.br/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-muted-foreground transition-colors hover:text-helena"
+                >
+                  Info Tech Ltda
+                </a>
               </div>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
@@ -220,7 +220,18 @@ export function LandingPage() {
           </div>
         </div>
         <div className="mx-auto flex max-w-6xl flex-col gap-2 border-t border-border px-5 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Info Tech Ltda. HELENA AI. Todos os direitos reservados.</p>
+          <p>
+            © {new Date().getFullYear()}{" "}
+            <a
+              href="https://agenciainfotech.com.br/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-helena"
+            >
+              Info Tech Ltda
+            </a>
+            . HELENA AI. Todos os direitos reservados.
+          </p>
           <p>Trial sem cartão. Assinatura e white-label sob contrato.</p>
         </div>
       </footer>

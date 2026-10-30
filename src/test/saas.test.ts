@@ -21,17 +21,22 @@ describe("SaaS trial e planos", () => {
   });
 
   it("trial estourado força assinatura", () => {
+    const created = new Date(Date.now() - 3 * 86_400_000).toISOString();
     update((d) => {
       const u = d.users.find((x) => x.id === "u_demo");
       if (u) {
         u.planId = "trial";
-        u.trialEndsAt = new Date(Date.now() - 60_000).toISOString();
+        u.createdAt = created;
+        u.trialEndsAt = trialEndsAtFrom(new Date(created));
       }
     });
     expect(mustSubscribe(getDB().users.find((u) => u.id === "u_demo"))).toBe(true);
     update((d) => {
       const u = d.users.find((x) => x.id === "u_demo");
-      if (u) u.trialEndsAt = trialEndsAtFrom();
+      if (u) {
+        u.createdAt = new Date().toISOString();
+        u.trialEndsAt = trialEndsAtFrom();
+      }
     });
   });
 
@@ -60,6 +65,9 @@ describe("SaaS trial e planos", () => {
     const u = getDB().users.find((x) => x.email === email);
     expect(u?.kind).toBe("customer");
     expect(u?.planId).toBe("trial");
+    expect(u?.createdAt).toBeTruthy();
+    expect(new Date(u!.trialEndsAt!).getTime() - new Date(u!.createdAt!).getTime()).toBe(2 * 86_400_000);
+    expect(mustSubscribe(u)).toBe(false);
     expect(workspaceDisplayName(u, "Info Tech Ltda")).toBe("Loja Bia");
   });
 

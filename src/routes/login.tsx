@@ -15,7 +15,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -88,11 +88,11 @@ function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Entrando…" : "Entrar"} <ArrowRight />
           </Button>
-          <div className="rounded-lg border border-dashed bg-surface p-3 text-xs text-muted-foreground space-y-1">
-            <div>Admin: <span className="font-mono text-foreground">admin</span> · <span className="font-mono text-foreground">123456</span></div>
-            <div>Conta de teste (trial): <span className="font-mono text-foreground">demo</span> · <span className="font-mono text-foreground">123456</span></div>
-            <div><Link to="/cadastro" className="underline">Criar conta</Link> · <Link to="/" className="underline">Landing</Link></div>
-          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            Não tem conta? <Link to="/cadastro" className="text-foreground underline">Criar conta</Link>
+            {" · "}
+            <Link to="/" className="text-foreground underline">Landing</Link>
+          </p>
         </form>
       </div>
     </div>

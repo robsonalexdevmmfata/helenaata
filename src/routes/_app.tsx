@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, redirect, useRouter, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Bell, ChevronDown, LogOut, Moon, RotateCcw, Search, Sun } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarInset,
@@ -148,6 +148,11 @@ function TrialStrip() {
   const db = useDB();
   const user = currentUser(db);
   const router = useRouter();
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
   if (isPlatformAdmin(user) || mustSubscribe(user)) return null;
   const label = formatTrialLabel(user);
   if (!label) return null;
@@ -164,7 +169,14 @@ function TrialStrip() {
 }
 
 function AppLayout() {
+  const router = useRouter();
   useEffect(() => {
+    const paywall = window.setInterval(() => {
+      const user = currentUser(getDB());
+      if (user && mustSubscribe(user) && !window.location.pathname.startsWith("/planos")) {
+        router.history.push("/planos");
+      }
+    }, 1000);
     const id = setInterval(() => { tickOperations(); tickSalesFlow(); }, 3000);
     const stopPoll = startEvolutionInboxPoller(10000);
     const onKey = (e: KeyboardEvent) => {
@@ -174,8 +186,13 @@ function AppLayout() {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => { clearInterval(id); stopPoll(); window.removeEventListener("keydown", onKey); };
-  }, []);
+    return () => {
+      clearInterval(paywall);
+      clearInterval(id);
+      stopPoll();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [router]);
   return (
     <SidebarProvider>
       <AppSidebar />

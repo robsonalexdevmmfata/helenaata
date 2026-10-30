@@ -6,15 +6,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { startSession } from "@/lib/auth";
 import { pageHead } from "@/lib/head";
-import { registerCustomer } from "@/lib/saas";
+import { caktoCheckoutUrl, registerCustomer } from "@/lib/saas";
 
 export const Route = createFileRoute("/cadastro")({
   head: () => pageHead("Criar conta", "Trial de 2 dias. 30 abordagens por dia. Sem cartão agora."),
+  validateSearch: (s: Record<string, unknown>) => ({
+    plano: s.plano === "maquina" || s.plano === "impulso" ? s.plano : undefined,
+  }),
   component: CadastroPage,
 });
 
 function CadastroPage() {
   const navigate = useNavigate();
+  const { plano } = Route.useSearch();
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
@@ -33,6 +37,10 @@ function CadastroPage() {
       return;
     }
     startSession(res.userId);
+    if (plano === "impulso" || plano === "maquina") {
+      window.location.assign(caktoCheckoutUrl(plano, { name, email }));
+      return;
+    }
     navigate({ to: "/visao-geral" });
   };
 
@@ -47,16 +55,24 @@ function CadastroPage() {
           <p className="font-serif text-5xl leading-tight">Dois dias para ver a máquina trabalhar.</p>
           <p className="mt-4 max-w-md text-sm text-[#f4efe6]/65">
             30 prospecções por dia. Site e cardápio gerados. Link no WhatsApp do dono.
-            Quando o trial acabar, você escolhe Impulso, Máquina ou pede orçamento white-label.
+            O timer começa na hora do cadastro. Depois de 2 dias, a conta só segue com um plano.
           </p>
         </div>
-        <p className="text-xs text-[#f4efe6]/40">Cakto entra na hora de assinar. O trial não pede cartão.</p>
+        <p className="text-xs text-[#f4efe6]/40">
+          {plano ? "Conta primeiro. Em seguida o checkout Cakto, com nome e e-mail já preenchidos." : "Cakto entra na hora de assinar. O trial não pede cartão."}
+        </p>
       </div>
       <div className="flex items-center justify-center bg-[#f7f3ec] p-6 text-foreground">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div>
             <h1 className="text-2xl font-semibold">Criar sua conta</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Trial de 2 dias. Depois, plano ou orçamento.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {plano === "maquina"
+                ? "Cadastro e, em seguida, checkout do plano Máquina."
+                : plano === "impulso"
+                  ? "Cadastro e, em seguida, checkout do Impulso (2 dias grátis na Cakto)."
+                  : "Trial de 2 dias a partir de agora. Depois, plano ou orçamento."}
+            </p>
           </div>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -78,11 +94,10 @@ function CadastroPage() {
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <Button type="submit" className="w-full bg-[#e07a3d] text-[#1c1410] hover:bg-[#c96a32]" disabled={loading}>
-            {loading ? "Criando…" : "Começar trial"}
+            {loading ? "Criando…" : plano ? "Criar conta e ir ao checkout" : "Começar trial"}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
             Já tem conta? <Link to="/login" className="text-foreground underline">Entrar</Link>
-            {" · "}conta de teste: <span className="font-mono">demo</span> / <span className="font-mono">123456</span>
           </p>
         </form>
       </div>

@@ -51,6 +51,7 @@ export function ensureSaasUsers(db: DB) {
       goal: 8000,
       achieved: 0,
       lastSeen: start.toISOString(),
+      createdAt: start.toISOString(),
       kind: "customer",
       planId: "trial",
       trialEndsAt: new Date(start.getTime() + 2 * 86_400_000).toISOString(),
@@ -59,6 +60,18 @@ export function ensureSaasUsers(db: DB) {
       companyName: "Estúdio Ana",
       phone: "+55 11 98888-0001",
     });
+  }
+  const nowIso = new Date().toISOString();
+  for (const u of db.users) {
+    if (u.kind !== "customer") continue;
+    if (!u.createdAt) {
+      u.createdAt = u.trialEndsAt
+        ? new Date(new Date(u.trialEndsAt).getTime() - 2 * 86_400_000).toISOString()
+        : nowIso;
+    }
+    if (!u.trialEndsAt && u.createdAt) {
+      u.trialEndsAt = new Date(new Date(u.createdAt).getTime() + 2 * 86_400_000).toISOString();
+    }
   }
 }
 
@@ -140,7 +153,7 @@ export function createSeed(now = new Date()): DB {
 
   const users: User[] = [
     { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robson@infotech.com.br", username: "admin", password: "123456", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
-    { id: "u_demo", organizationId: ORG, name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
+    { id: "u_demo", organizationId: ORG, name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), createdAt: now.toISOString(), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
   ];
 
   const mkAgent = (a: Partial<Agent> & Pick<Agent, "id" | "name" | "role">): Agent => ({

@@ -120,9 +120,17 @@ export function dailyLimitFor(user?: User | null) {
   return TRIAL_DAILY_PROSPECTS;
 }
 
+export function trialDeadlineMs(user?: User | null) {
+  if (!user) return 0;
+  if (user.createdAt) return new Date(user.createdAt).getTime() + TRIAL_DAYS * 86_400_000;
+  if (user.trialEndsAt) return new Date(user.trialEndsAt).getTime();
+  return 0;
+}
+
 export function trialMsLeft(user?: User | null) {
-  if (!user?.trialEndsAt) return 0;
-  return new Date(user.trialEndsAt).getTime() - Date.now();
+  const end = trialDeadlineMs(user);
+  if (!end) return 0;
+  return end - Date.now();
 }
 
 export function isTrialActive(user?: User | null) {
@@ -223,9 +231,10 @@ export function registerCustomer(input: {
       goal: 15_000,
       achieved: 0,
       lastSeen: now,
+      createdAt: now,
       kind: "customer",
       planId: "trial",
-      trialEndsAt: trialEndsAtFrom(),
+      trialEndsAt: trialEndsAtFrom(new Date(now)),
       dailyProspectUsed: 0,
       dailyProspectDate: todayKey(),
       companyName: input.company.trim(),
@@ -289,7 +298,12 @@ export function formatTrialLabel(user?: User | null) {
   }
   const ms = trialMsLeft(user);
   if (ms <= 0) return "Trial encerrado";
-  const h = Math.ceil(ms / 3_600_000);
-  if (h >= 24) return `Trial · ${Math.ceil(h / 24)} dia(s)`;
-  return `Trial · ${h}h restantes`;
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (d > 0) return `Trial · ${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `Trial · ${pad(h)}:${pad(m)}:${pad(s)}`;
 }
