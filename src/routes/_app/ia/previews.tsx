@@ -1,15 +1,20 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { ExternalLink, Globe, Search } from "lucide-react";
 import { useState } from "react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { previewUrl } from "@/lib/dev/presence";
 import { pageHead } from "@/lib/head";
-import { currentUser, useDB } from "@/lib/store";
+import { currentUser, getDB, useDB } from "@/lib/store";
 import { canUseDevTeam } from "@/lib/saas";
 
 export const Route = createFileRoute("/_app/ia/previews")({
+  ssr: false,
+  beforeLoad: () => {
+    if (!canUseDevTeam(currentUser(getDB()))) throw redirect({ to: "/ia/times" });
+  },
   head: () => pageHead("Prévia de sites", "Sites e cardápios gerados pelo Time Desenvolvimento IA para o Time Comercial abordar o dono."),
   component: PreviewsPage,
 });
@@ -17,7 +22,6 @@ export const Route = createFileRoute("/_app/ia/previews")({
 function PreviewsPage() {
   const db = useDB();
   const router = useRouter();
-  const allowDev = canUseDevTeam(currentUser(db));
   const [q, setQ] = useState("");
   const list = (db.sitePreviews ?? []).filter((p) =>
     `${p.name} ${p.segment} ${p.city}`.toLowerCase().includes(q.toLowerCase()),
@@ -29,7 +33,7 @@ function PreviewsPage() {
       <PageHeader
         eyebrow="IA"
         title="Prévia de sites"
-        description="O Time Desenvolvimento IA (Caio, Diego e Sofia) monta a página. O Time Comercial envia o link e fala com o proprietário."
+        description="O Time Desenvolvimento IA monta o site e o cardápio. O Time Comercial envia ao cliente o link público https://helenaata.vercel.app/v/…"
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard label="Prévias" value={list.length} icon={<Globe />} tone="helena" />
@@ -40,14 +44,7 @@ function PreviewsPage() {
         <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
         <Input className="pl-9" placeholder="Buscar prévia..." value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      {!allowDev ? (
-        <div className="rounded-xl border border-dashed p-5">
-          <p className="text-sm text-muted-foreground">
-            Prévia de site e cardápio é do Time Dev (engenheiros). No trial e no Impulso o comercial prospecta sem montar página. Assine Máquina para liberar.
-          </p>
-          <Button className="mt-3" size="sm" onClick={() => router.history.push("/planos")}>Ver plano Máquina</Button>
-        </div>
-      ) : list.length === 0 ? (
+      {list.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Nenhuma prévia ainda. Peça à Helena: “procure 50 restaurantes que não tenham site nem cardápio online”.
         </p>
@@ -63,9 +60,17 @@ function PreviewsPage() {
                 <Badge variant="outline">{p.menu ? "Site + cardápio" : "Site"}</Badge>
               </div>
               <p className="text-sm text-muted-foreground line-clamp-2">{p.tagline}</p>
-              <div className="flex gap-2">
+              <p className="break-all font-mono text-[11px] text-muted-foreground">{previewUrl(p.slug)}</p>
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => router.history.push(p.previewPath)}>
                   Abrir prévia <ExternalLink className="size-3.5" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigator.clipboard.writeText(previewUrl(p.slug))}
+                >
+                  Copiar link do cliente
                 </Button>
               </div>
             </div>

@@ -8,8 +8,8 @@ import { applyTheme, getTheme } from "@/lib/theme";
 
 const STEPS = [
   { n: "01", title: "Ela varre o mapa", text: "Você fala o nicho. A Helena acha quem aparece no Google — e ainda não tem site nem cardápio online." },
-  { n: "02", title: "O time de IA constrói", text: "Front, back e design seniores montam a prévia com fotos, avaliações e WhatsApp. Em minutos, não em semanas." },
-  { n: "03", title: "O comercial chega com o link", text: "Não é ‘oi, tudo bem?’. É ‘olha como a sua casa já fica na internet’. O dono vê. A conversa muda." },
+  { n: "02", title: "O comercial aborda no WhatsApp", text: "Helena orquestra. O time fala com o dono, no tom da casa, sem ‘oi, tudo bem?’ genérico." },
+  { n: "03", title: "Tudo cai no CRM", text: "Inbox, pipeline e agenda no mesmo lugar. Você vê o que a máquina fez hoje." },
 ];
 
 function toggleTheme() {
@@ -115,8 +115,8 @@ export function LandingPage() {
         </div>
         <div className="mt-8 flex flex-wrap gap-4 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-2"><MapPin className="size-4 text-helena" /> Maps sem site / sem cardápio</span>
-          <span className="inline-flex items-center gap-2"><Sparkles className="size-4 text-helena" /> Time Desenvolvimento IA</span>
-          <span className="inline-flex items-center gap-2"><MessageCircle className="size-4 text-helena" /> Abordagem com o dono</span>
+          <span className="inline-flex items-center gap-2"><Sparkles className="size-4 text-helena" /> Time Comercial no WhatsApp</span>
+          <span className="inline-flex items-center gap-2"><MessageCircle className="size-4 text-helena" /> CRM e agenda juntos</span>
         </div>
       </section>
 
@@ -214,7 +214,7 @@ export function LandingPage() {
             <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
               <li>30 prospecções/dia no trial</li>
               <li>Pagamento via Cakto</li>
-              <li>WhatsApp, CRM e prévia de site</li>
+              <li>WhatsApp, CRM e agenda</li>
               <li>São Paulo · Brasil</li>
             </ul>
           </div>

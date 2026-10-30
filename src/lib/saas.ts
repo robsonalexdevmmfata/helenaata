@@ -1,6 +1,5 @@
 import type { QuoteRequest, SaasPlanId, User } from "@/lib/types";
 import { getDB, listAccounts, nowISO, patchUserEverywhere, provisionCustomerAccount, syncDevTeamForAccount, uid, update } from "@/lib/store";
-import { planAllowsDevTeam } from "@/lib/seed";
 
 export const TRIAL_DAYS = 2;
 export const TRIAL_DAILY_PROSPECTS = 30;
@@ -54,8 +53,8 @@ export const SAAS_PLANS: SaasPlan[] = [
     highlight: true,
     features: [
       "150 abordagens de prospecção por dia",
-      "Time Dev IA + Comercial + Closer",
-      "Prévia com link para o dono no WhatsApp",
+      "Time Comercial + Closer no WhatsApp",
+      "Inbox, pipeline e agenda no mesmo lugar",
       "Objeções, Pix e reunião na Agenda",
       "Automações e analytics",
       "Suporte prioritário",
@@ -109,9 +108,7 @@ export function isPlatformAdmin(user?: User | null) {
 }
 
 export function canUseDevTeam(user?: User | null) {
-  if (!user) return false;
-  if (isPlatformAdmin(user)) return true;
-  return planAllowsDevTeam(user.planId, user.kind);
+  return isPlatformAdmin(user);
 }
 
 export function planOf(user?: User | null): SaasPlan | undefined {

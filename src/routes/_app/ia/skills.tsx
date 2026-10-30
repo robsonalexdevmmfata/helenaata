@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { useDB, update } from "@/lib/store";
+import { currentUser, useDB, update } from "@/lib/store";
 import { TOOL_REGISTRY } from "@/lib/helena/registry";
+import { canUseDevTeam } from "@/lib/saas";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
@@ -50,9 +51,11 @@ function SkillsPage() {
     return { ...ts, label: def?.label ?? ts.name, description: def?.description ?? "", category: def?.category ?? "Outros" };
   });
 
-  const filtered = enriched.filter((t) =>
-    `${t.name} ${t.label} ${t.description} ${t.category}`.toLowerCase().includes(search.toLowerCase())
-  );
+  const allowDev = canUseDevTeam(currentUser(db));
+  const filtered = enriched.filter((t) => {
+    if (!allowDev && t.name === "dev.build_presence") return false;
+    return `${t.name} ${t.label} ${t.description} ${t.category}`.toLowerCase().includes(search.toLowerCase());
+  });
 
   const enabled = db.toolSettings.filter((t) => t.enabled).length;
   const highRisk = db.toolSettings.filter((t) => t.risk === "alto").length;

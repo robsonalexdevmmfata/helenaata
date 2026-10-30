@@ -27,8 +27,7 @@ import {
   computeDynamicCadence,
 } from "./sales-brain";
 import { runPresencePipeline } from "@/lib/dev/presence";
-import { reserveProspects } from "@/lib/saas";
-import { planAllowsDevTeam } from "@/lib/seed";
+import { canUseDevTeam, reserveProspects } from "@/lib/saas";
 
 export interface ToolContext {
   actor: string;
@@ -1127,8 +1126,8 @@ const handlers: Record<string, Handler> = {
   },
   "dev.build_presence": (p) => {
     const user = currentUser(getDB());
-    if (!planAllowsDevTeam(user?.planId, user?.kind)) {
-      return fail("O Time Dev (engenheiros de software) entra no plano Máquina. No Impulso e no trial, o Time Comercial prospecta e a Helena orquestra. Assine Máquina para prévia de site e cardápio.");
+    if (!canUseDevTeam(user)) {
+      return fail("O Time Dev (Caio, Diego e Sofia) é da operação Info Tech. No seu plano o Time Comercial prospecta no WhatsApp.");
     }
     const quota = reserveProspects(Math.min(Number(p.limit) || 10, 50));
     if (!quota.ok) return fail(quota.message);

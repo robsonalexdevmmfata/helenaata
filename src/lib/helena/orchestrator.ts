@@ -142,14 +142,15 @@ export async function sendToHelena(text: string) {
     await sleep(350);
 
     const user = currentUser(getDB());
+    const allowDev = canUseDevTeam(user);
     for (const tc of groqRes.toolCalls) {
-      if (tc.name === "dev_build_presence" || (tc.name === "prospect_scan_maps" && isPresenceIntent(clean))) {
+      if (allowDev && (tc.name === "dev_build_presence" || (tc.name === "prospect_scan_maps" && isPresenceIntent(clean)))) {
         const res = runTool("dev.build_presence", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Time Desenvolvimento IA · prévia", detail: res.message }
         );
-      } else if (tc.name === "prospect_scan_maps") {
+      } else if (tc.name === "prospect_scan_maps" || tc.name === "dev_build_presence") {
         const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
         pushHelenaMessage(
           groqRes.text || `Executei a varredura no Google Maps para ${tc.arguments.segment || "empresas"} em ${tc.arguments.city || "São Paulo"}. Encontrei empresas sem site e injetei no CRM com a tag #sem-site. O SDR já iniciou a abordagem!`,
@@ -320,13 +321,8 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
-  // Time Dev IA: nicho sem site / sem cardápio → prévia → comercial aborda com o link
-  if (isPresenceIntent(text) && !canUseDevTeam(currentUser(getDB()))) {
-    return [{
-      text: "Prévia de site e cardápio com o Time Dev (Caio, Diego e Sofia) entra no plano Máquina. No trial e no Impulso o Time Comercial prospecta no WhatsApp. Assine Máquina em Planos para liberar os engenheiros.",
-    }];
-  }
-  if (isPresenceIntent(text)) {
+  // Time Dev IA: só na conta admin. Cliente cai na prospecção comercial abaixo.
+  if (isPresenceIntent(text) && canUseDevTeam(currentUser(getDB()))) {
     const intent = extractProspectIntent(text);
     const segment = intent.segment;
     const nationwide = intent.nationwide;

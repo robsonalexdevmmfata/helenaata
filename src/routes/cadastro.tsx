@@ -54,7 +54,7 @@ function CadastroPage() {
         <div>
           <p className="font-serif text-5xl leading-tight">Dois dias para ver a máquina trabalhar.</p>
           <p className="mt-4 max-w-md text-sm text-[#f4efe6]/65">
-            30 prospecções por dia. Site e cardápio gerados. Link no WhatsApp do dono.
+            30 prospecções por dia. Time Comercial no WhatsApp.
             O timer começa na hora do cadastro. Depois de 2 dias, a conta só segue com um plano.
           </p>
         </div>

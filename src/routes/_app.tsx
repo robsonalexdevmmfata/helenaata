@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EntityAvatar } from "@/components/app/kit";
-import { ALL_NAV, NAV_BOTTOM, NAV_GROUPS, NAV_GROUPS_2, NAV_MIDDLE, NAV_TOP, settingsNavFor, type NavItem } from "@/components/app/nav";
+import { NAV_BOTTOM, NAV_GROUPS_2, NAV_MIDDLE, NAV_TOP, allNavFor, navGroupsFor, settingsNavFor, type NavItem } from "@/components/app/nav";
 import { HelenaPanel } from "@/components/helena/HelenaPanel";
 import { CommandPalette } from "@/components/helena/CommandPalette";
 import { ApprovalBlock } from "@/components/helena/HelenaCards";
@@ -73,7 +73,7 @@ function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup><NavLinks items={NAV_TOP} /></SidebarGroup>
-        {NAV_GROUPS.map((g) => (
+        {navGroupsFor(isPlatformAdmin(user)).map((g) => (
           <SidebarGroup key={g.label}><SidebarGroupLabel>{g.label}</SidebarGroupLabel><NavLinks items={g.items} /></SidebarGroup>
         ))}
         <SidebarGroup><NavLinks items={NAV_MIDDLE} /></SidebarGroup>
@@ -100,7 +100,7 @@ function Topbar() {
   const db = useDB();
   const router = useRouter();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const current = ALL_NAV.find((n) => path.startsWith(n.to as string));
+  const current = allNavFor(isPlatformAdmin(user)).find((n) => path.startsWith(n.to as string));
   const pending = db.approvals.filter((a) => a.status === "pendente");
   const user = currentUser(db);
   return (

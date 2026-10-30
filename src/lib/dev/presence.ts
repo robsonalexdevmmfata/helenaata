@@ -28,15 +28,17 @@ export function isPresenceIntent(text: string) {
   return false;
 }
 
+/** URL pública enviada a cliente real — sempre o site na Vercel, não localhost. */
+export const PUBLIC_SITE_ORIGIN = String(
+  import.meta.env.VITE_PUBLIC_SITE_URL ?? "https://helenaata.vercel.app",
+).replace(/\/$/, "");
+
 export function previewOrigin() {
-  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
-  return "";
+  return PUBLIC_SITE_ORIGIN;
 }
 
 export function previewUrl(slug: string) {
-  const path = `/v/${slug}`;
-  const origin = previewOrigin();
-  return origin ? `${origin}${path}` : path;
+  return `${previewOrigin()}/v/${slug}`;
 }
 
 export function slugify(name: string) {
@@ -332,6 +334,7 @@ export function applyPresenceFromPlaces(opts: {
   const food = isFoodNiche(opts.segment);
   const previewIds: string[] = [];
   const slugs: string[] = [];
+  const published: SitePreview[] = [];
   const createdContactIds: string[] = [];
   const dispatchMeta: { contactId: string; withMenu: boolean; slug: string }[] = [];
 
@@ -432,6 +435,7 @@ export function applyPresenceFromPlaces(opts: {
       d.sitePreviews.unshift(preview);
       previewIds.push(preview.id);
       slugs.push(slug);
+      published.push(preview);
       dispatchMeta.push({ contactId, withMenu: food, slug });
       const url = previewUrl(slug);
       d.conversations.unshift({
@@ -500,6 +504,10 @@ export function applyPresenceFromPlaces(opts: {
     });
     bumpAutomation(d, "lead_criado", opts.places.length);
   });
+
+  import("@/lib/dev/previewPublish").then(({ publishSitePreviews }) => {
+    publishSitePreviews(published);
+  }).catch(() => { /* ignore */ });
 
   if (createdContactIds.length && typeof process !== "undefined" && !process.env?.VITEST) {
     const db2 = getDB();

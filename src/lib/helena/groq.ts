@@ -1,5 +1,6 @@
 // Groq Cloud & FreeLLMAPI Integration for HELENA AI Orchestrator
-import { getDB } from "@/lib/store";
+import { currentUser, getDB } from "@/lib/store";
+import { canUseDevTeam } from "@/lib/saas";
 import { callFreeLLMOrchestrator, getFreeLLMConfig } from "./freellmapi";
 import { CALENDAR_TOOL_PROMPT, ROBSON_OPENING_SCRIPT } from "./calendar";
 import { formatCatalogForAgents } from "@/lib/catalog";
@@ -238,6 +239,8 @@ export async function callGroqOrchestrator(
   const org = db.organization.name;
   const user = db.users.find((u) => u.id === db.currentUserId)?.name || "Gestor";
 
+  const allowDev = canUseDevTeam(currentUser(db));
+  const tools = allowDev ? GROQ_TOOLS : GROQ_TOOLS.filter((t) => t.function.name !== "dev_build_presence");
   const systemPrompt = `Você é a HELENA, diretora de operações da agência Info Tech Ltda (${org}). Fale como uma executiva humana: calma, precisa, profissional. Nunca diga que é uma IA.
 Seu interlocutor é ${user}.
 Você NÃO faz a abordagem individual do WhatsApp: delega ao time (Marcos Rivera na direção comercial, Marina Costa em saúde, Camila Alves em serviços, Rafael Mendes na qualificação, André Lima e Valentina Ribeiro no fechamento).
@@ -258,7 +261,7 @@ Diretrizes:
 4. Se o cliente fechar horário, chame calendar_agendar_reuniao / calendar_create_event na hora.
 5. Respeite limites de disparo e logs de auditoria.
 6. Prospecção só de lista: chame prospect_scan_maps com o NICHO pedido. nationwide=true se não citar cidade.
-7. Site / cardápio / “procure N restaurantes sem site”: chame dev_build_presence. O Time Desenvolvimento IA (Caio, Diego, Sofia) monta a prévia; o Time Comercial aborda o dono com o link. Qualquer nicho, não só restaurante.
+${allowDev ? "7. Site / cardápio / “procure N restaurantes sem site”: chame dev_build_presence. O Time Desenvolvimento IA (Caio, Diego, Sofia) monta a prévia; o Time Comercial aborda o dono com o link. Qualquer nicho, não só restaurante." : "7. Pedido de site ou cardápio: use prospect_scan_maps. O Time Comercial prospecta. Não chame engenheiros."}
 
 Quando o usuário pedir para prospectar, ative o time e inicie a operação — as abordagens individuais ficam com o Time Comercial.
 Responda sempre em Português do Brasil.`;
@@ -271,7 +274,7 @@ Responda sempre em Português do Brasil.`;
 
   if (!apiKey) {
     // Sem chave no navegador: usa a IA do servidor (chave fica guardada lá).
-    const viaServer = await serverChatCompletion({ messages, tools: GROQ_TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 1024 });
+    const viaServer = await serverChatCompletion({ messages, tools, tool_choice: "auto", temperature: 0.3, max_tokens: 1024 });
     const serverChoice = viaServer?.choices?.[0]?.message;
     if (serverChoice) return parseChoice(serverChoice);
     const freeConfig = getFreeLLMConfig();
@@ -292,7 +295,7 @@ Responda sempre em Português do Brasil.`;
       body: JSON.stringify({
         model: getGroqModel(),
         messages,
-        tools: GROQ_TOOLS,
+        tools,
         tool_choice: "auto",
         temperature: 0.3,
         max_tokens: 1024,

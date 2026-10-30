@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Activity, Bot, ChevronRight, Network, Plus, Search, Sparkles, Users, Zap,
@@ -49,7 +49,7 @@ function TimesPage() {
         title="Times de Agentes"
         description={allowDev
           ? "Comercial aborda. Desenvolvimento IA monta a prévia de site e cardápio. Atendimento cobre o cliente ativo."
-          : "Comercial e Atendimento no seu plano. O Time Dev (engenheiros) libera no plano Máquina."}
+          : "Comercial e Atendimento no seu plano. A Helena orquestra a prospecção no WhatsApp."}
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -130,18 +130,6 @@ function TimesPage() {
           );
         })}
       </div>
-      {!allowDev && (
-        <div className="rounded-xl border border-dashed p-5">
-          <h3 className="font-semibold">Time Dev · engenheiros de software</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Caio (front), Diego (back) e Sofia (design) montam a prévia de site e cardápio. Liberado no plano Máquina.
-          </p>
-          <Button asChild className="mt-3" size="sm">
-            <Link to="/planos">Assinar Máquina</Link>
-          </Button>
-        </div>
-      )}
-
       {/* Modal: Criar Novo Time */}
       <TeamForm
         open={showCreateTeamModal}

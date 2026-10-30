@@ -90,6 +90,21 @@ export function settingsNavFor(isAdmin: boolean): NavGroup {
   };
 }
 
+export function navGroupsFor(isAdmin: boolean): NavGroup[] {
+  return NAV_GROUPS.map((g) => {
+    if (g.label !== "IA") return g;
+    return { ...g, items: isAdmin ? g.items : g.items.filter((i) => i.to !== "/ia/previews") };
+  });
+}
+
+export function allNavFor(isAdmin: boolean): NavItem[] {
+  return ALL_NAV.filter((n) => {
+    if (!isAdmin && n.to === "/configuracoes/usuarios") return false;
+    if (!isAdmin && n.to === "/ia/previews") return false;
+    return true;
+  });
+}
+
 export const ALL_NAV: NavItem[] = [
   ...NAV_TOP,
   ...NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, label: `${g.label} · ${i.label}` }))),

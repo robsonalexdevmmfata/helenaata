@@ -4,6 +4,7 @@
 import { checkLogin, issueToken, verifyToken } from "./auth.mjs";
 import { aiProvider, chatCompletion } from "./ai.mjs";
 import { evolutionApiKey, handleEvolutionLocal, remoteEvolutionUrl } from "./evolution-bridge.mjs";
+import { loadPreview, savePreview } from "./previews.mjs";
 
 const VERSION = "1.0.0";
 const startedAt = Date.now();
@@ -184,6 +185,23 @@ export async function handleApi(req, res) {
       });
       if (!r.ok) return send(res, 502, { error: `Photon HTTP ${r.status}` }), true;
       send(res, 200, await r.json());
+      return true;
+    }
+
+    if (p === "/api/previews" && req.method === "POST") {
+      const body = await readJson(req, 2_000_000);
+      const list = Array.isArray(body.previews) ? body.previews : body.preview ? [body.preview] : [body];
+      const slugs = [];
+      for (const preview of list.slice(0, 50)) slugs.push(savePreview(preview).slug);
+      send(res, 200, { ok: true, slugs });
+      return true;
+    }
+
+    if (p.startsWith("/api/previews/") && req.method === "GET") {
+      const slug = decodeURIComponent(p.slice("/api/previews/".length).split("/")[0] || "");
+      const preview = loadPreview(slug);
+      if (!preview) return send(res, 404, { error: "Prévia não encontrada." }), true;
+      send(res, 200, { preview });
       return true;
     }
 

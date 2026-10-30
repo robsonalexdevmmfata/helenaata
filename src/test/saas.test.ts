@@ -4,6 +4,7 @@ import { canUseDevTeam, caktoCheckoutUrl, CAKTO_CHECKOUT, dailyLimitFor, isPlatf
 import { applyDevTeamGate, planAllowsDevTeam } from "@/lib/seed";
 import { findLocalUser } from "@/lib/auth";
 import { isPresenceIntent } from "@/lib/dev/presence";
+import { runTool } from "@/lib/helena/engine";
 
 describe("SaaS trial e planos", () => {
   it("admin da plataforma não entra no paywall", () => {
@@ -88,11 +89,12 @@ describe("SaaS trial e planos", () => {
     expect(ws.campaigns).toEqual([]);
   });
 
-  it("Time Dev só libera no plano Máquina", () => {
+  it("Time Dev só na conta admin", () => {
     expect(planAllowsDevTeam("trial", "customer")).toBe(false);
-    expect(planAllowsDevTeam("impulso", "customer")).toBe(false);
-    expect(planAllowsDevTeam("maquina", "customer")).toBe(true);
+    expect(planAllowsDevTeam("maquina", "customer")).toBe(false);
+    expect(planAllowsDevTeam("whitelabel", "platform")).toBe(true);
     expect(canUseDevTeam(getDB().users.find((u) => u.id === "u1"))).toBe(true);
+    expect(canUseDevTeam(getDB().users.find((u) => u.id === "u_demo"))).toBe(false);
     const email = `devgate${Date.now()}@loja.com`;
     const res = registerCustomer({ name: "Leo", email, password: "1234", company: "Oficina Leo" });
     expect(res.ok).toBe(true);
@@ -102,6 +104,8 @@ describe("SaaS trial e planos", () => {
     expect(ws.agents.filter((a) => a.teamId === "t_dev").every((a) => a.status === "pausado")).toBe(true);
     const db = getDB();
     applyDevTeamGate(db, "maquina", "customer");
+    expect(db.teams.find((t) => t.id === "t_dev")?.status).toBe("pausado");
+    applyDevTeamGate(db, "whitelabel", "platform");
     expect(db.teams.find((t) => t.id === "t_dev")?.status).toBe("ativo");
   });
 
@@ -122,5 +126,17 @@ describe("SaaS trial e planos", () => {
 
   it("pedido de restaurante continua no time Dev", () => {
     expect(isPresenceIntent("Helena, procure 50 restaurantes que não tenham site nem cardápio online")).toBe(true);
+  });
+
+  it("cliente não dispara o Time Dev", () => {
+    update((d) => { d.currentUserId = "u_demo"; });
+    const res = runTool(
+      "dev.build_presence",
+      { segment: "Restaurantes", city: "Campinas, SP", limit: 1 },
+      { actor: "Helena", actorType: "helena", requestedBy: "demo" },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.message.toLowerCase()).toMatch(/info tech|comercial/);
+    update((d) => { d.currentUserId = "u1"; });
   });
 });

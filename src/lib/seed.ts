@@ -484,9 +484,8 @@ export function createSeed(now = new Date()): DB {
   };
 }
 
-export function planAllowsDevTeam(planId?: string, kind?: string) {
-  if (kind === "platform") return true;
-  return planId === "maquina" || planId === "whitelabel";
+export function planAllowsDevTeam(_planId?: string, kind?: string) {
+  return kind === "platform";
 }
 
 export function applyDevTeamGate(db: DB, planId?: string, kind?: string) {
@@ -499,10 +498,10 @@ export function applyDevTeamGate(db: DB, planId?: string, kind?: string) {
     if (a.teamId !== "t_dev") continue;
     if (allow) {
       if (a.status === "pausado") a.status = "aguardando";
-      if (a.currentTask === "Disponível no plano Máquina") a.currentTask = undefined;
+      if (a.currentTask === "Disponível no plano Máquina" || a.currentTask === "Reservado à operação Info Tech") a.currentTask = undefined;
     } else {
       a.status = "pausado";
-      a.currentTask = "Disponível no plano Máquina";
+      a.currentTask = "Reservado à operação Info Tech";
     }
   }
 }

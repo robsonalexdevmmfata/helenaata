@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { interpret } from "@/lib/helena/orchestrator";
 import { runTool } from "@/lib/helena/engine";
 import { getDB } from "@/lib/store";
-import { isFoodNiche, isPresenceIntent } from "@/lib/dev/presence";
+import { isFoodNiche, isPresenceIntent, previewUrl, PUBLIC_SITE_ORIGIN } from "@/lib/dev/presence";
 
 describe("Time Desenvolvimento IA", () => {
   it("reconhece pedido de restaurante sem site e sem cardápio", () => {
@@ -34,7 +34,9 @@ describe("Time Desenvolvimento IA", () => {
     expect(prev.previewPath).toMatch(/^\/v\//);
     const conv = db.conversations.find((c) => c.contactId === prev.contactId);
     expect(conv?.messages[0]?.text).toMatch(/prévia|proprietár/i);
-    expect(conv?.messages[0]?.text).toContain(prev.previewPath);
+    expect(conv?.messages[0]?.text).toContain(previewUrl(prev.slug));
+    expect(previewUrl(prev.slug)).toMatch(/^https:\/\/helenaata\.vercel\.app\/v\//);
+    expect(PUBLIC_SITE_ORIGIN).toBe("https://helenaata.vercel.app");
     expect(db.contacts.find((c) => c.id === prev.contactId)?.tags).toEqual(
       expect.arrayContaining(["#sem-site", "#sem-cardapio"]),
     );
