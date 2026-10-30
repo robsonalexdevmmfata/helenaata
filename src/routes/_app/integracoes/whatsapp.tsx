@@ -60,7 +60,7 @@ function EvolutionPanel() {
 
   const handleSave = async () => {
     setSaving(true);
-    saveEvolutionConfigUI(cfg);
+    setCfg(saveEvolutionConfigUI(cfg));
     toast.success("Configuração salva!");
     setSaving(false);
   };
@@ -68,7 +68,9 @@ function EvolutionPanel() {
   const handleTest = async () => {
     setTesting(true);
     setConnectionStatus(null);
-    const result = await testEvolutionConnection(cfg);
+    const saved = saveEvolutionConfigUI(cfg);
+    setCfg(saved);
+    const result = await testEvolutionConnection(saved);
     setConnectionStatus(result);
     setTesting(false);
     if (result.connected) {
@@ -217,7 +219,7 @@ function EvolutionPanel() {
           <Button
             className="gap-2"
             onClick={handleTest}
-            disabled={testing || !cfg.apiKey}
+            disabled={testing}
           >
             {testing
               ? <><RefreshCw className="size-3.5 animate-spin" /> Testando...</>

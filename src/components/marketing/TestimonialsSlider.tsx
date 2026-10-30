@@ -161,18 +161,18 @@ export function TestimonialsSlider() {
       onMouseLeave={() => setPaused(false)}
     >
       <div className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20">
-        <p className="text-[11px] uppercase tracking-[0.28em] text-helena">Quem já ligou a máquina</p>
-        <h2 className="mt-3 font-serif text-3xl sm:text-4xl">Não é depoimento de agência. É dono falando de resultado.</h2>
+        <p className="lp-reveal text-[11px] uppercase tracking-[0.28em] text-helena">Quem já ligou a máquina</p>
+        <h2 className="lp-reveal mt-3 font-serif text-3xl sm:text-4xl">Não é depoimento de agência. É dono falando de resultado.</h2>
         <div key={page} className="mt-12 grid gap-5 md:grid-cols-3">
           {slice.map((item) => (
-            <article key={item.photo} className="rounded-2xl border border-border bg-card p-6">
+            <article key={item.photo} className="lp-card rounded-2xl border border-border bg-card p-6">
               <div className="flex items-center gap-3">
                 <img
                   src={item.photo}
                   alt={`Foto de ${item.name}`}
                   width={56}
                   height={56}
-                  className="size-14 rounded-full object-cover"
+                  className="size-14 rounded-full object-cover ring-2 ring-helena/30 transition-transform duration-300 hover:scale-105"
                 />
                 <div className="min-w-0">
                   <div className="truncate font-medium">{item.name}</div>

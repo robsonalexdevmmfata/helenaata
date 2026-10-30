@@ -1,6 +1,7 @@
+import { RENDER_API_ORIGIN } from "@/lib/api-origin";
 import type { SitePreview } from "@/lib/types";
 
-export const RENDER_API_ORIGIN = "https://helena-ai.onrender.com";
+export { RENDER_API_ORIGIN };
 
 function previewApiBases() {
   const env = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");

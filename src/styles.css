@@ -579,6 +579,167 @@ img, video, canvas, svg {
   .helena-widget-ring--lg { width: 4.5rem; height: 4.5rem; }
 }
 
+/* Landing — claro e escuro usam os tokens --helena / --card / --border */
+@keyframes lp-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes lp-glow {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.06); }
+}
+@keyframes lp-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes lp-shine {
+  0% { transform: translateX(-120%) rotate(12deg); }
+  100% { transform: translateX(220%) rotate(12deg); }
+}
+@keyframes lp-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes lp-pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--helena) 35%, transparent); }
+  50% { box-shadow: 0 0 0 10px color-mix(in oklab, var(--helena) 0%, transparent); }
+}
+
+.lp {
+  position: relative;
+  isolation: isolate;
+}
+.lp::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: -20% -10% auto;
+  height: 55vh;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 50% 40% at 15% 20%, color-mix(in oklab, var(--helena) 22%, transparent), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 90% 10%, color-mix(in oklab, var(--helena) 14%, transparent), transparent 65%);
+  animation: lp-glow 9s ease-in-out infinite;
+}
+html {
+  scroll-behavior: smooth;
+}
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+.lp-reveal.is-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+.lp-nav a,
+.lp-nav button {
+  transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.lp-nav a:hover,
+.lp-nav button:hover {
+  transform: translateY(-1px);
+}
+.lp-card,
+.lp-plan,
+.lp-stat,
+.lp-chip,
+.lp-btn {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease, border-color 0.35s ease, background 0.35s ease, filter 0.2s ease;
+}
+.lp-card::before,
+.lp-plan::before,
+.lp-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: linear-gradient(165deg, color-mix(in oklab, var(--helena) 22%, transparent), transparent 58%);
+}
+.lp-card:hover::before,
+.lp-plan:hover::before,
+.lp-stat:hover::before {
+  opacity: 1;
+}
+.lp-card::after,
+.lp-plan::after {
+  content: "";
+  position: absolute;
+  inset: -40% auto -40% -40%;
+  width: 40%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--helena) 28%, white 14%), transparent);
+  opacity: 0;
+}
+.lp-card:hover,
+.lp-stat:hover {
+  transform: translateY(-8px) scale(1.02);
+  border-color: color-mix(in oklab, var(--helena) 55%, var(--border));
+  box-shadow:
+    0 22px 44px -20px color-mix(in oklab, var(--helena) 55%, black),
+    0 0 0 1px color-mix(in oklab, var(--helena) 22%, transparent);
+}
+.lp-card:hover::after,
+.lp-plan:hover::after {
+  opacity: 1;
+  animation: lp-shine 0.85s ease;
+}
+.lp-plan:hover {
+  transform: translateY(-10px) scale(1.03);
+  border-color: color-mix(in oklab, var(--helena) 80%, var(--border));
+  box-shadow:
+    0 28px 56px -18px color-mix(in oklab, var(--helena) 60%, black),
+    0 0 48px -10px color-mix(in oklab, var(--helena) 40%, transparent);
+}
+.lp-plan--hot {
+  animation: lp-pulse-ring 3.2s ease-in-out infinite;
+}
+.lp-btn:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 14px 32px -12px color-mix(in oklab, var(--helena) 75%, black);
+}
+.lp-btn--helena:hover {
+  filter: brightness(1.08);
+}
+.lp-chip {
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 80%, transparent);
+}
+.lp-chip:hover {
+  transform: translateY(-3px) scale(1.04);
+  border-color: color-mix(in oklab, var(--helena) 60%, var(--border));
+  color: var(--foreground);
+  box-shadow: 0 10px 24px -14px color-mix(in oklab, var(--helena) 50%, black);
+}
+.lp-stat:hover .lp-stat-k {
+  color: var(--helena);
+}
+.lp-hero-orb {
+  animation: lp-float 5.5s ease-in-out infinite;
+}
+.lp-check {
+  transition: transform 0.2s ease;
+}
+.lp-plan:hover .lp-check {
+  transform: scale(1.15);
+}
+.dark .lp-plan--hot {
+  background: color-mix(in oklab, var(--helena) 16%, var(--card));
+}
+.dark .lp::before {
+  opacity: 0.85;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .helena-vtuber__body,
   .helena-vtuber__lids,
@@ -587,7 +748,21 @@ img, video, canvas, svg {
   .helena-widget-ring::before,
   .helena-widget-wave,
   .helena-widget-dot,
-  .helena-widget--live {
+  .helena-widget--live,
+  .lp::before,
+  .lp-reveal,
+  .lp-plan--hot,
+  .lp-hero-orb {
     animation: none !important;
+  }
+  .lp-reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .lp-card:hover,
+  .lp-plan:hover,
+  .lp-stat:hover,
+  .lp-btn:hover {
+    transform: none;
   }
 }

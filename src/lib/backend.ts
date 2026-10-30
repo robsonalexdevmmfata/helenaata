@@ -2,7 +2,9 @@
 // mesmo endereço do site (mesma porta). Defina VITE_API_URL para usar outro endereço.
 import { useEffect, useState } from "react";
 
-const BASE = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+import { helenaApiOrigin } from "@/lib/api-origin";
+
+const BASE = helenaApiOrigin();
 const TOKEN_KEY = "helena-backend-token";
 
 export class BackendError extends Error {

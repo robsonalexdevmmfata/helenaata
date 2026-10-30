@@ -5,29 +5,32 @@
  * Toda comunicação real com o WhatsApp passa por aqui.
  *
  * Configuração via .env.local:
- *   VITE_EVOLUTION_URL=http://localhost:8080
+ *   VITE_EVOLUTION_URL=https://evo.seudominio.com.br  (vazio = WhatsApp do Render)
  *   VITE_EVOLUTION_KEY=sua_global_api_key
  *   VITE_EVOLUTION_INSTANCE=helena
  *
  * Documentação Evolution API: https://doc.evolution-api.com
  */
 
+import { helenaApiOrigin, isLocalEvolutionHost, RENDER_API_ORIGIN } from "@/lib/api-origin";
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 export interface EvolutionConfig {
-  baseUrl: string;       // ex: http://localhost:8080
+  baseUrl: string;       // vazio = Render/Baileys; senão URL da Evolution na VPS
   apiKey: string;        // Global API Key (cabeçalho apikey)
   instance: string;      // Nome da instância (ex: "helena")
 }
 
-/** Lê configuração do .env.local (VITE_*) */
+/** Lê configuração do .env.local (VITE_*). URL vazia = WhatsApp do Render (Baileys). */
 export function getEvolutionConfig(): EvolutionConfig {
-  const baseUrl =
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_URL) ||
-    "http://localhost:8080";
-  const apiKey =
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_KEY) ||
-    "429683C4C977415CAAFCCE10F7D57E11";
+  const rawUrl = String(
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_URL) || "",
+  ).trim();
+  const baseUrl = isLocalEvolutionHost(rawUrl) ? "" : rawUrl.replace(/\/$/, "");
+  const apiKey = String(
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_KEY) || "",
+  );
   const instance =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) ||
     "helena";
@@ -69,7 +72,8 @@ export function getEvolutionConfigUI(): EvolutionConfig {
     if (raw) {
       const saved = JSON.parse(raw) as EvolutionConfig;
       const merged = { ...env, ...saved, instance: canonicalInstance(saved.instance || env.instance) };
-      if (saved.instance !== merged.instance) {
+      if (isLocalEvolutionHost(merged.baseUrl)) merged.baseUrl = "";
+      if (saved.instance !== merged.instance || saved.baseUrl !== merged.baseUrl) {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
       }
       return merged;
@@ -81,6 +85,7 @@ export function getEvolutionConfigUI(): EvolutionConfig {
 export function saveEvolutionConfigUI(cfg: Partial<EvolutionConfig>): EvolutionConfig {
   const current = getEvolutionConfigUI();
   const updated = { ...current, ...cfg, instance: canonicalInstance(cfg.instance ?? current.instance) };
+  if (isLocalEvolutionHost(updated.baseUrl)) updated.baseUrl = "";
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch {}
   return updated;
 }
@@ -94,10 +99,9 @@ function headers(cfg: EvolutionConfig) {
   };
 }
 
-function evoUrl(path: string, cfg: EvolutionConfig) {
+function evoUrl(path: string, _cfg: EvolutionConfig) {
   const clean = path.startsWith("/") ? path : `/${path}`;
-  if (typeof window !== "undefined") return `/api/evolution${clean}`;
-  return `${cfg.baseUrl.replace(/\/$/, "")}${clean}`;
+  return `${helenaApiOrigin()}/api/evolution${clean}`;
 }
 
 export function jidToPhone(jid: string) {
@@ -234,6 +238,7 @@ export async function getEvolutionStatus(
     const res = await fetch(url, {
       method: "GET",
       headers: headers(config),
+      signal: AbortSignal.timeout(45_000),
     });
 
     if (!res.ok) {
@@ -461,12 +466,15 @@ export async function testEvolutionConnection(
   const status = await getEvolutionStatus(config);
   const latencyMs = Date.now() - start;
 
+  const viaRender = !config.baseUrl || isLocalEvolutionHost(config.baseUrl);
   if (!status.ok) {
     return {
       ok: false,
       connected: false,
       latencyMs,
-      message: `Evolution API offline: ${status.error}. Verifique se está rodando em ${config.baseUrl}`,
+      message: viaRender
+        ? `Backend WhatsApp (${helenaApiOrigin() || RENDER_API_ORIGIN}) não respondeu (${status.error}). Confira no Render se o serviço helena-ai está Live e espere ~40s se estiver acordando.`
+        : `Evolution API offline: ${status.error}. Confira a URL ${config.baseUrl}`,
     };
   }
 
@@ -475,7 +483,9 @@ export async function testEvolutionConnection(
       ok: true,
       connected: false,
       latencyMs,
-      message: `API online mas WhatsApp desconectado (state: ${status.status}). Escaneie o QR Code.`,
+      message: viaRender
+        ? `Servidor no ar, mas o WhatsApp ainda não está autenticado (state: ${status.status}). Escaneie o QR nesta página.`
+        : `API online mas WhatsApp desconectado (state: ${status.status}). Escaneie o QR Code.`,
       number: status.number,
     };
   }
