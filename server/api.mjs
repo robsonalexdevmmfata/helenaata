@@ -67,7 +67,9 @@ function bearer(req) {
 /** Inicia tarefas de fundo (ex.: retomar o WhatsApp salvo). */
 export async function startBackground() {
   try {
-    (await whatsapp()).resumeIfSaved();
+    const wa = await whatsapp();
+    console.log("[Helena] Baileys carregado.");
+    wa.resumeIfSaved();
     console.log("[Helena] WhatsApp: sessão salva será retomada se existir creds.json no disco.");
   } catch (e) {
     console.warn("[Helena] WhatsApp indisponível no boot (o site sobe mesmo assim):", e?.message || e);
@@ -205,6 +207,34 @@ export async function handleApi(req, res) {
       return true;
     }
 
+    if (p === "/api/whatsapp/status" && req.method === "GET") {
+      send(res, 200, (await whatsapp()).getStatus());
+      return true;
+    }
+    if (p === "/api/whatsapp/connect" && req.method === "POST") {
+      send(res, 200, await (await whatsapp()).connect());
+      return true;
+    }
+    if (p === "/api/whatsapp/logout" && req.method === "POST") {
+      send(res, 200, await (await whatsapp()).logout());
+      return true;
+    }
+    if (p === "/api/whatsapp/messages" && req.method === "GET") {
+      send(res, 200, { messages: (await whatsapp()).getMessages() });
+      return true;
+    }
+    if (p === "/api/whatsapp/send" && req.method === "POST") {
+      const { to, text } = await readJson(req);
+      if (!to || !text) return send(res, 400, { error: "Informe o número e a mensagem." }), true;
+      send(res, 200, await (await whatsapp()).sendText(to, text));
+      return true;
+    }
+    if (p === "/api/whatsapp/auto-reply" && req.method === "POST") {
+      const { enabled } = await readJson(req);
+      send(res, 200, { autoReply: (await whatsapp()).setAutoReply(enabled) });
+      return true;
+    }
+
     if (p.startsWith("/api/evolution/") || p === "/api/evolution") {
       const rest = p.slice("/api/evolution".length) || "/";
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
@@ -251,29 +281,6 @@ export async function handleApi(req, res) {
       case "GET /api/auth/me":
         send(res, 200, { ok: true });
         return true;
-      case "GET /api/whatsapp/status":
-        send(res, 200, (await whatsapp()).getStatus());
-        return true;
-      case "POST /api/whatsapp/connect":
-        send(res, 200, await (await whatsapp()).connect());
-        return true;
-      case "POST /api/whatsapp/logout":
-        send(res, 200, await (await whatsapp()).logout());
-        return true;
-      case "GET /api/whatsapp/messages":
-        send(res, 200, { messages: (await whatsapp()).getMessages() });
-        return true;
-      case "POST /api/whatsapp/send": {
-        const { to, text } = await readJson(req);
-        if (!to || !text) return send(res, 400, { error: "Informe o número e a mensagem." }), true;
-        send(res, 200, await (await whatsapp()).sendText(to, text));
-        return true;
-      }
-      case "POST /api/whatsapp/auto-reply": {
-        const { enabled } = await readJson(req);
-        send(res, 200, { autoReply: (await whatsapp()).setAutoReply(enabled) });
-        return true;
-      }
       case "POST /api/ai/chat": {
         const body = await readJson(req);
         if (!Array.isArray(body.messages)) return send(res, 400, { error: "Campo messages é obrigatório." }), true;

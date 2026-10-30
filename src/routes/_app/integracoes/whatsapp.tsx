@@ -18,6 +18,8 @@ import {
 import { useDB, update, uid, nowISO } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
+import { RENDER_API_ORIGIN } from "@/lib/api-origin";
+import { whatsappApi, type WhatsAppStatus } from "@/lib/backend";
 import {
   getEvolutionConfigUI, saveEvolutionConfigUI,
   testEvolutionConnection, evolutionSetWebhook, evolutionGetWebhook,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/evolution/evolutionapi";
 
 export const Route = createFileRoute("/_app/integracoes/whatsapp")({
-  head: () => pageHead("WhatsApp · Evolution API", "Conecte o número da agência via Evolution API para prospecção e atendimento real."),
+  head: () => pageHead("WhatsApp · Baileys", "Conecte o chip da agência pelo QR no Render. Evolution na VPS é opcional."),
   component: WhatsAppPage,
 });
 
@@ -38,6 +40,130 @@ const STATUS_CONFIG = {
 // ── Copia para clipboard ──────────────────────────────────────────────────────
 function copyText(text: string, label: string) {
   navigator.clipboard.writeText(text).then(() => toast.success(`${label} copiado!`));
+}
+
+function BaileysPanel() {
+  const [st, setSt] = useState<WhatsAppStatus | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async () => {
+    try {
+      const next = await whatsappApi.status();
+      setSt(next);
+      setErr("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Render indisponível.");
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    const t = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (st?.status !== "connected" || !st.phone) return;
+    update((d) => {
+      const conn = d.connections.find((c) => c.id === "wa_agency") ?? d.connections[0];
+      if (!conn) return;
+      conn.status = "online";
+      conn.phone = st.phone!.startsWith("+") ? st.phone! : `+${st.phone}`;
+      conn.lastSyncAt = nowISO();
+    });
+  }, [st?.status, st?.phone]);
+
+  const handleConnect = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const next = await whatsappApi.connect();
+      setSt(next);
+      toast.success(next.qrCode ? "QR gerado. Escaneie no WhatsApp do chip." : "WhatsApp conectando…");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao gerar QR.";
+      setErr(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setBusy(true);
+    try {
+      setSt(await whatsappApi.logout());
+      toast.success("Sessão WhatsApp encerrada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao sair.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label =
+    st?.status === "connected" ? "Conectado" :
+    st?.status === "awaiting_qr" ? "Escaneie o QR" :
+    st?.status === "connecting" ? "Conectando…" :
+    "Desconectado";
+
+  return (
+    <section className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <QrCode className="size-4 text-primary" /> WhatsApp no Render (Baileys)
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Sem Evolution e sem VPS. O servidor {RENDER_API_ORIGIN.replace("https://", "")} segura o socket.
+            Primeiro boot do plano grátis pode levar ~40s.
+          </p>
+        </div>
+        <Badge variant={st?.status === "connected" ? "default" : "secondary"}>{label}</Badge>
+      </div>
+
+      {err && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {err}. No Render o serviço tem que ser Web Service (Node), branch main do repo helenaata, e ficar Live.
+        </div>
+      )}
+
+      {st?.lastError && !err && (
+        <p className="text-xs text-warning">{st.lastError}</p>
+      )}
+
+      {st?.qrCode && (
+        <div className="flex flex-col items-center gap-2 py-2">
+          <img src={st.qrCode} alt="QR Code WhatsApp" className="size-56 rounded-lg border bg-white p-2" />
+          <p className="text-xs text-muted-foreground text-center">
+            WhatsApp → Aparelhos conectados → Conectar um aparelho
+          </p>
+        </div>
+      )}
+
+      {st?.status === "connected" && (
+        <p className="text-sm">
+          Número autenticado: <code className="font-mono">{st.phone}</code>
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button className="gap-2" onClick={handleConnect} disabled={busy || st?.status === "connected"}>
+          {busy ? <RefreshCw className="size-3.5 animate-spin" /> : <QrCode className="size-3.5" />}
+          {st?.qrCode ? "Gerar novo QR" : "Gerar QR / Conectar"}
+        </Button>
+        <Button variant="outline" onClick={() => void refresh()} disabled={busy}>
+          Atualizar
+        </Button>
+        {st?.status === "connected" && (
+          <Button variant="ghost" onClick={handleLogout} disabled={busy}>
+            Desconectar
+          </Button>
+        )}
+      </div>
+    </section>
+  );
 }
 
 // ── Painel de configuração da Evolution API ───────────────────────────────────
@@ -429,7 +555,7 @@ function WhatsAppPage() {
       <PageHeader
         eyebrow="Integrações"
         title="WhatsApp"
-        description="Conecte o número da agência via Evolution API. Todos os agentes SDR, Closer e Atendimento usam este número para prospecção e atendimento."
+        description="Conecte o chip pelo QR no Render (Baileys). Evolution na VPS fica opcional, na última aba."
         actions={
           <Button className="gap-2" onClick={() => setIsNewOpen(true)}>
             <Plus className="size-4" /> Adicionar Número
@@ -443,13 +569,20 @@ function WhatsAppPage() {
         <StatCard label="Na Fila" value={totalQueue} hint="Aguardando envio" icon={<Zap />} tone="helena" />
       </div>
 
-      <Tabs defaultValue="numeros">
+      <Tabs defaultValue="qr">
         <TabsList>
+          <TabsTrigger value="qr" className="gap-1.5">
+            <QrCode className="size-3.5" /> QR · Baileys
+          </TabsTrigger>
           <TabsTrigger value="numeros">Números ({db.connections.length})</TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5">
-            <Settings2 className="size-3.5" /> Configuração Evolution API
+            <Settings2 className="size-3.5" /> Evolution (opcional)
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="qr" className="mt-4">
+          <BaileysPanel />
+        </TabsContent>
 
         {/* ── ABA NÚMEROS ────────────────────────────────────────────────── */}
         <TabsContent value="numeros" className="mt-4 space-y-4">
@@ -459,7 +592,7 @@ function WhatsAppPage() {
               <div>
                 <p className="font-semibold">Nenhum número configurado</p>
                 <p className="text-sm text-muted-foreground">
-                  Configure a Evolution API na aba ao lado e clique em "Testar Conexão" para sincronizar automaticamente.
+                  Abra a aba QR · Baileys, gere o código e escaneie no celular do chip.
                 </p>
               </div>
               <Button variant="outline" className="gap-2" onClick={() => setIsNewOpen(true)}>

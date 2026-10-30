@@ -62,7 +62,7 @@ export interface BackendHealth {
 }
 
 export function getHealth() {
-  return api<BackendHealth>("/health", { timeoutMs: 4000 });
+  return api<BackendHealth>("/health", { timeoutMs: 45_000 });
 }
 
 /**
@@ -123,11 +123,11 @@ export interface WhatsAppLogEntry {
 }
 
 export const whatsappApi = {
-  status: () => api<WhatsAppStatus>("/api/whatsapp/status"),
-  connect: () => api<WhatsAppStatus>("/api/whatsapp/connect", { method: "POST", timeoutMs: 30000 }),
-  logout: () => api<WhatsAppStatus>("/api/whatsapp/logout", { method: "POST" }),
-  messages: () => api<{ messages: WhatsAppLogEntry[] }>("/api/whatsapp/messages"),
-  send: (to: string, text: string) => api<{ ok: boolean }>("/api/whatsapp/send", { body: { to, text } }),
+  status: () => api<WhatsAppStatus>("/api/whatsapp/status", { timeoutMs: 45_000 }),
+  connect: () => api<WhatsAppStatus>("/api/whatsapp/connect", { method: "POST", timeoutMs: 45_000 }),
+  logout: () => api<WhatsAppStatus>("/api/whatsapp/logout", { method: "POST", timeoutMs: 20_000 }),
+  messages: () => api<{ messages: WhatsAppLogEntry[] }>("/api/whatsapp/messages", { timeoutMs: 20_000 }),
+  send: (to: string, text: string) => api<{ ok: boolean }>("/api/whatsapp/send", { body: { to, text }, timeoutMs: 20_000 }),
   autoReply: (enabled: boolean) => api<{ autoReply: boolean }>("/api/whatsapp/auto-reply", { body: { enabled } }),
 };
 
