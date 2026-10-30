@@ -457,45 +457,90 @@ export async function evolutionFindMessages(
  * Testa rapidamente se a Evolution API está acessível e a instância conectada.
  * Retorna latência em ms.
  */
+function wipeLocalEvolutionUrl() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw || !/localhost|127\.0\.0\.1/.test(raw)) return;
+    const parsed = JSON.parse(raw) as EvolutionConfig;
+    parsed.baseUrl = "";
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  }
+}
+
+async function pingWhatsAppBackend(): Promise<EvoStatusResult> {
+  const origin = helenaApiOrigin();
+  const url = `${origin}/api/whatsapp/status`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+    if (!res.ok) return { ok: false, connected: false, error: `HTTP ${res.status}` };
+    const data = await res.json().catch(() => null);
+    if (!data) return { ok: false, connected: false, error: "HTTP 404" };
+    const connected = data.status === "connected";
+    return {
+      ok: true,
+      connected,
+      instance: "helena",
+      number: data.phone || "",
+      status: data.status || "disconnected",
+    };
+  } catch (err: any) {
+    return { ok: false, connected: false, error: err?.message ?? "sem resposta" };
+  }
+}
+
 export async function testEvolutionConnection(
   cfg?: EvolutionConfig
 ): Promise<{ ok: boolean; connected: boolean; latencyMs: number; message: string; number?: string }> {
+  wipeLocalEvolutionUrl();
   const start = Date.now();
-  const config = cfg ?? getEvolutionConfigUI();
+  const config = { ...(cfg ?? getEvolutionConfigUI()) };
+  if (isLocalEvolutionHost(config.baseUrl)) config.baseUrl = "";
+  const host = helenaApiOrigin() || RENDER_API_ORIGIN;
 
-  const status = await getEvolutionStatus(config);
+  const baileys = await pingWhatsAppBackend();
   const latencyMs = Date.now() - start;
-
-  const viaRender = !config.baseUrl || isLocalEvolutionHost(config.baseUrl);
-  if (!status.ok) {
+  if (baileys.ok) {
+    if (!baileys.connected) {
+      return {
+        ok: true,
+        connected: false,
+        latencyMs,
+        message: `Render no ar (${host}). WhatsApp ainda sem QR (state: ${baileys.status}). Abra Integrações → QR · Baileys.`,
+        number: baileys.number,
+      };
+    }
     return {
-      ok: false,
-      connected: false,
+      ok: true,
+      connected: true,
       latencyMs,
-      message: viaRender
-        ? `Backend WhatsApp (${helenaApiOrigin() || RENDER_API_ORIGIN}) não respondeu (${status.error}). Confira no Render se o serviço helena-ai está Live e espere ~40s se estiver acordando.`
-        : `Evolution API offline: ${status.error}. Confira a URL ${config.baseUrl}`,
+      message: `Conectado via Baileys! Número: ${baileys.number} · ${latencyMs}ms`,
+      number: baileys.number,
     };
   }
 
-  if (!status.connected) {
-    return {
-      ok: true,
-      connected: false,
-      latencyMs,
-      message: viaRender
-        ? `Servidor no ar, mas o WhatsApp ainda não está autenticado (state: ${status.status}). Escaneie o QR nesta página.`
-        : `API online mas WhatsApp desconectado (state: ${status.status}). Escaneie o QR Code.`,
-      number: status.number,
-    };
+  if (config.baseUrl) {
+    const status = await getEvolutionStatus(config);
+    if (status.ok) {
+      return {
+        ok: true,
+        connected: status.connected,
+        latencyMs: Date.now() - start,
+        message: status.connected
+          ? `Conectado! Número: ${status.number} · Latência: ${Date.now() - start}ms`
+          : `API online mas WhatsApp desconectado (state: ${status.status}). Escaneie o QR Code.`,
+        number: status.number,
+      };
+    }
   }
 
   return {
-    ok: true,
-    connected: true,
+    ok: false,
+    connected: false,
     latencyMs,
-    message: `Conectado! Número: ${status.number} · Latência: ${latencyMs}ms`,
-    number: status.number,
+    message: `WhatsApp do Render (${host}) não respondeu (${baileys.error}). O Web Service helena-ai precisa estar Live — isso não usa localhost:8080.`,
   };
 }
 

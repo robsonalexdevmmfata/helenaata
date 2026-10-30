@@ -46,6 +46,10 @@ function BaileysPanel() {
   const [st, setSt] = useState<WhatsAppStatus | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean; connected: boolean; message: string; number?: string; latencyMs?: number;
+  } | null>(null);
 
   const refresh = async () => {
     try {
@@ -90,6 +94,17 @@ function BaileysPanel() {
     }
   };
 
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    const result = await testEvolutionConnection();
+    setTestResult(result);
+    setTesting(false);
+    await refresh();
+    if (result.connected) toast.success(result.message);
+    else toast.error(result.message);
+  };
+
   const handleLogout = async () => {
     setBusy(true);
     try {
@@ -129,6 +144,26 @@ function BaileysPanel() {
         </div>
       )}
 
+      {testResult && (
+        <div className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${
+          testResult.connected
+            ? "bg-success/5 border-success/30 text-success"
+            : testResult.ok
+            ? "bg-warning/5 border-warning/30 text-warning"
+            : "bg-destructive/5 border-destructive/30 text-destructive"
+        }`}>
+          {testResult.connected
+            ? <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+            : <AlertTriangle className="size-4 shrink-0 mt-0.5" />}
+          <div>
+            <p className="font-medium">{testResult.message}</p>
+            {testResult.number && (
+              <p className="text-xs mt-0.5 opacity-80">Número: {testResult.number} · {testResult.latencyMs}ms</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {st?.lastError && !err && (
         <p className="text-xs text-warning">{st.lastError}</p>
       )}
@@ -149,7 +184,12 @@ function BaileysPanel() {
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Button className="gap-2" onClick={handleConnect} disabled={busy || st?.status === "connected"}>
+        <Button className="gap-2" onClick={handleTest} disabled={testing || busy}>
+          {testing
+            ? <><RefreshCw className="size-3.5 animate-spin" /> Testando...</>
+            : <><Zap className="size-3.5" /> Testar Conexão</>}
+        </Button>
+        <Button variant="outline" className="gap-2" onClick={handleConnect} disabled={busy || st?.status === "connected"}>
           {busy ? <RefreshCw className="size-3.5 animate-spin" /> : <QrCode className="size-3.5" />}
           {st?.qrCode ? "Gerar novo QR" : "Gerar QR / Conectar"}
         </Button>
