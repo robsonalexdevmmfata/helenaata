@@ -15,7 +15,7 @@ export function HelenaAvatarWidget() {
       <button
         type="button"
         onClick={() => setMinimized(false)}
-        className="helena-widget-restore fixed bottom-5 right-5 z-40"
+        className="helena-widget-restore fixed z-40"
         title="Mostrar Helena"
         aria-label="Mostrar Helena"
       >
@@ -29,7 +29,7 @@ export function HelenaAvatarWidget() {
   }
 
   return (
-    <div className="helena-widget group/hw fixed bottom-5 right-5 z-40">
+    <div className="helena-widget group/hw fixed z-40">
       <button
         type="button"
         className="helena-widget-ctrl absolute -right-1 -top-1 z-20"
@@ -51,7 +51,7 @@ export function HelenaAvatarWidget() {
       >
         <span className="helena-widget-ring helena-widget-ring--lg">
           <span className="helena-widget-core">
-            <HelenaAvatar className="size-[88px]" state={ui.state} />
+            <HelenaAvatar className="size-14 sm:size-[88px]" state={ui.state} />
           </span>
         </span>
         <span className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-foreground">

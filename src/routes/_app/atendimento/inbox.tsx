@@ -97,7 +97,7 @@ function InboxPage() {
   };
 
   return (
-    <div className="flex h-[calc(100svh-7.5rem)] min-h-[520px] overflow-hidden rounded-xl border bg-card">
+    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[24rem] overflow-hidden rounded-xl border bg-card sm:min-h-[520px]">
       {/* List */}
       <div className={cn("flex w-full flex-col border-r md:w-80", conv && "hidden md:flex")}>
         <div className="space-y-2 border-b p-3">
@@ -106,7 +106,7 @@ function InboxPage() {
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversas..." className="h-8 pl-8" />
           </div>
           <Tabs value={status} onValueChange={(v) => setStatus(v as typeof status)}>
-            <TabsList className="h-8 w-full">
+            <TabsList className="h-8 w-full overflow-x-auto">
               <TabsTrigger value="all" className="text-xs">Todas</TabsTrigger>
               <TabsTrigger value="aberta" className="text-xs">Abertas</TabsTrigger>
               <TabsTrigger value="pendente" className="text-xs">Pendentes</TabsTrigger>

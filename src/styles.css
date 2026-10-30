@@ -559,6 +559,26 @@
   backdrop-filter: none;
 }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+img, video, canvas, svg {
+  max-width: 100%;
+}
+.helena-widget,
+.helena-widget-restore {
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  right: calc(1.25rem + env(safe-area-inset-right));
+}
+@media (max-width: 640px) {
+  .helena-widget {
+    width: 5.6rem;
+    padding: 0.45rem 0.35rem 0.4rem;
+  }
+  .helena-widget-ring--lg { width: 4.5rem; height: 4.5rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .helena-vtuber__body,
   .helena-vtuber__lids,

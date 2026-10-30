@@ -8,8 +8,8 @@ import { applyTheme, getTheme } from "@/lib/theme";
 
 const STEPS = [
   { n: "01", title: "Ela varre o mapa", text: "Você fala o nicho. A Helena acha quem aparece no Google — e ainda não tem site nem cardápio online." },
-  { n: "02", title: "O comercial aborda no WhatsApp", text: "Helena orquestra. O time fala com o dono, no tom da casa, sem ‘oi, tudo bem?’ genérico." },
-  { n: "03", title: "Tudo cai no CRM", text: "Inbox, pipeline e agenda no mesmo lugar. Você vê o que a máquina fez hoje." },
+  { n: "02", title: "O time de IA constrói", text: "No plano Máquina, front, back e design seniores montam a prévia com fotos, avaliações e WhatsApp." },
+  { n: "03", title: "O comercial chega com o link", text: "Não é ‘oi, tudo bem?’. É ‘olha como a sua casa já fica na internet’. O dono vê. A conversa muda." },
 ];
 
 function toggleTheme() {
@@ -24,12 +24,12 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-          <a href="#topo" className="flex items-center gap-2.5">
-            <HelenaAvatar className="size-9" />
-            <span className="text-[11px] font-semibold tracking-[0.22em]">HELENA AI</span>
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-3 pt-[env(safe-area-inset-top)] sm:h-16 sm:px-5">
+          <a href="#topo" className="flex min-w-0 items-center gap-2">
+            <HelenaAvatar className="size-8 sm:size-9" />
+            <span className="truncate text-[10px] font-semibold tracking-[0.22em] sm:text-[11px]">HELENA AI</span>
           </a>
-          <nav className="flex items-center gap-2 text-sm sm:gap-3">
+          <nav className="flex shrink-0 items-center gap-1.5 text-sm sm:gap-3">
             <a href="#como" className="hidden text-muted-foreground hover:text-foreground sm:inline">Como funciona</a>
             <a href="#depoimentos" className="hidden text-muted-foreground hover:text-foreground md:inline">Depoimentos</a>
             <a href="#planos" className="hidden text-muted-foreground hover:text-foreground sm:inline">Planos</a>
@@ -42,20 +42,20 @@ export function LandingPage() {
               <Sun className="size-4 dark:hidden" />
               <Moon className="hidden size-4 dark:block" />
             </button>
-            <Link to="/login" className="rounded-full px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground sm:px-4">
+            <Link to="/login" className="rounded-full px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground sm:px-4 sm:text-sm">
               Entrar
             </Link>
-            <Link to="/cadastro" className="rounded-full bg-helena px-3 py-1.5 font-medium text-helena-foreground sm:px-4">
-              Começar trial
+            <Link to="/cadastro" className="rounded-full bg-helena px-2.5 py-1.5 text-xs font-medium text-helena-foreground sm:px-4 sm:text-sm">
+              Trial
             </Link>
           </nav>
         </div>
       </header>
 
-      <section id="topo" className="relative mx-auto grid max-w-6xl items-center gap-10 px-5 pb-20 pt-28 lg:grid-cols-[1.15fr_0.85fr] lg:pt-32">
+      <section id="topo" className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 pb-16 pt-24 sm:px-5 sm:pb-20 sm:pt-28 lg:grid-cols-[1.15fr_0.85fr] lg:pt-32">
         <div>
           <p className="text-[11px] uppercase tracking-[0.28em] text-helena">A máquina que vende presença digital</p>
-          <h1 className="mt-4 font-serif text-4xl leading-[1.05] sm:text-6xl">
+          <h1 className="mt-4 font-serif text-[2rem] leading-[1.08] sm:text-6xl">
             Seu concorrente já está no Google.
             <span className="italic text-helena"> O cliente do lado, não.</span>
           </h1>
@@ -115,8 +115,8 @@ export function LandingPage() {
         </div>
         <div className="mt-8 flex flex-wrap gap-4 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-2"><MapPin className="size-4 text-helena" /> Maps sem site / sem cardápio</span>
-          <span className="inline-flex items-center gap-2"><Sparkles className="size-4 text-helena" /> Time Comercial no WhatsApp</span>
-          <span className="inline-flex items-center gap-2"><MessageCircle className="size-4 text-helena" /> CRM e agenda juntos</span>
+          <span className="inline-flex items-center gap-2"><Sparkles className="size-4 text-helena" /> Time Dev no plano Máquina</span>
+          <span className="inline-flex items-center gap-2"><MessageCircle className="size-4 text-helena" /> Abordagem com o dono</span>
         </div>
       </section>
 
@@ -214,7 +214,7 @@ export function LandingPage() {
             <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
               <li>30 prospecções/dia no trial</li>
               <li>Pagamento via Cakto</li>
-              <li>WhatsApp, CRM e agenda</li>
+              <li>WhatsApp, CRM e prévia no Máquina</li>
               <li>São Paulo · Brasil</li>
             </ul>
           </div>

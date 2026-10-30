@@ -46,7 +46,7 @@ export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onC
           title="Tocar/Pausar Ace of Base - Happy Nation"
         >
           <Disc3 className={cn("size-3.5", music.playing && "animate-spin text-helena")} />
-          <span className="font-mono text-[10px]">Happy Nation</span>
+          <span className="hidden font-mono text-[10px] sm:inline">Happy Nation</span>
           {music.playing ? <Pause className="size-2.5 fill-current" /> : <Play className="size-2.5 fill-current" />}
         </button>
 
@@ -116,7 +116,7 @@ export function HelenaPanel() {
       <HelenaAvatarWidget />
 
       <Sheet open={ui.open} onOpenChange={(open) => helenaUi.set({ open })}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[480px] [&>button]:hidden shadow-2xl">
+        <SheetContent side="right" className="flex h-[100dvh] w-full max-w-none flex-col gap-0 p-0 sm:max-w-[480px] [&>button]:hidden shadow-2xl">
           <SheetTitle className="sr-only">Helena AI</SheetTitle>
           <SheetDescription className="sr-only">Command center e briefing executivo da Helena</SheetDescription>
           <HelenaHeader

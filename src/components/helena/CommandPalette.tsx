@@ -4,7 +4,7 @@ import { Moon, LogOut, Sparkles } from "lucide-react";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { allNavFor } from "@/components/app/nav";
 import { currentUser } from "@/lib/store";
-import { isPlatformAdmin } from "@/lib/saas";
+import { canUseDevTeam, isPlatformAdmin } from "@/lib/saas";
 import { helenaUi, sendToHelena } from "@/lib/helena/orchestrator";
 import { useDB } from "@/lib/store";
 import { applyTheme, getTheme } from "@/lib/theme";
@@ -63,7 +63,7 @@ export function CommandPalette() {
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Ir para">
-          {allNavFor(isPlatformAdmin(currentUser(db))).map((n) => (
+          {allNavFor(isPlatformAdmin(currentUser(db)), canUseDevTeam(currentUser(db))).map((n) => (
             <CommandItem key={n.to as string} value={`ir ${n.label}`} onSelect={() => go(n.to as string)}>
               <n.icon /> {n.label}
             </CommandItem>

@@ -36,7 +36,7 @@ function Home() {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border bg-card p-6">
-        <h1 className="font-serif text-4xl">{greeting()}, {user.name.split(" ")[0]}.</h1>
+        <h1 className="font-serif text-3xl sm:text-4xl">{greeting()}, {user.name.split(" ")[0]}.</h1>
         <div className="mt-4 flex items-start gap-3">
           <HelenaOrb className="mt-0.5 size-6" />
           <div className="space-y-2">

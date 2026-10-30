@@ -42,7 +42,7 @@ function PublicPreviewPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-center">
-        <p className="text-sm text-muted-foreground">Carregando prévia…</p>
+        <p className="text-sm text-muted-foreground">Carregando prévia… Se for a primeira vez, o servidor pode levar alguns segundos para acordar.</p>
       </div>
     );
   }

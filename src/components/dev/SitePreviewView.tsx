@@ -20,13 +20,13 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
         <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent, ${palette.bg})` }} />
         <div className="relative mx-auto max-w-3xl px-5 pb-16 pt-20">
           <p className="text-[11px] uppercase tracking-[0.2em] opacity-80">{preview.segment} · {preview.city}</p>
-          <h1 className="mt-3 font-serif text-4xl sm:text-5xl">{preview.name}</h1>
+          <h1 className="mt-3 font-serif text-3xl sm:text-5xl">{preview.name}</h1>
           <p className="mt-3 max-w-xl text-base opacity-90">{preview.tagline}</p>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
             <span style={{ color: palette.accent }}>{stars(preview.rating)} {preview.rating}</span>
             <span className="opacity-70">{preview.reviewCount} avaliações no mapa</span>
           </div>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 hidden flex-wrap gap-3 sm:flex">
             <a href={waLink} className="rounded-full px-5 py-2.5 text-sm font-medium" style={{ background: palette.accent, color: palette.bg }}>
               Pedir no WhatsApp
             </a>
@@ -37,7 +37,7 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-14 px-5 pb-24">
+      <main className="mx-auto max-w-3xl space-y-14 px-4 pb-28 sm:px-5 sm:pb-24">
         <section>
           <h2 className="text-sm uppercase tracking-[0.16em] opacity-70">Sobre</h2>
           <p className="mt-3 leading-relaxed opacity-90">{preview.about}</p>
@@ -113,6 +113,14 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           Prévia montada pela Info Tech a partir de dados públicos do mapa. Não é o site oficial até o proprietário aprovar.
         </p>
       </main>
+      <div className="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t px-4 py-3 sm:hidden" style={{ background: palette.bg, paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}>
+        <a href={waLink} className="flex-1 rounded-full px-4 py-3 text-center text-sm font-medium" style={{ background: palette.accent, color: palette.bg }}>
+          Pedir no WhatsApp
+        </a>
+        <a href={preview.mapsUrl} target="_blank" rel="noreferrer" className="rounded-full border px-4 py-3 text-sm" style={{ borderColor: `${palette.fg}33` }}>
+          Mapa
+        </a>
+      </div>
     </div>
   );
 }

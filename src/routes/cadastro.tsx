@@ -45,7 +45,7 @@ function CadastroPage() {
   };
 
   return (
-    <div className="grid min-h-screen bg-[#0b0a09] text-[#f4efe6] lg:grid-cols-2">
+    <div className="grid min-h-[100dvh] bg-[#0b0a09] text-[#f4efe6] lg:grid-cols-2">
       <div className="relative hidden flex-col justify-between p-12 lg:flex">
         <div className="flex items-center gap-2">
           <HelenaAvatar className="size-10" />
@@ -62,7 +62,7 @@ function CadastroPage() {
           {plano ? "Conta primeiro. Em seguida o checkout Cakto, com nome e e-mail já preenchidos." : "Cakto entra na hora de assinar. O trial não pede cartão."}
         </p>
       </div>
-      <div className="flex items-center justify-center bg-[#f7f3ec] p-6 text-foreground">
+      <div className="flex items-center justify-center bg-[#f7f3ec] p-4 py-8 text-foreground sm:p-6">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div>
             <h1 className="text-2xl font-semibold">Criar sua conta</h1>

@@ -89,10 +89,10 @@ describe("SaaS trial e planos", () => {
     expect(ws.campaigns).toEqual([]);
   });
 
-  it("Time Dev só na conta admin", () => {
+  it("Time Dev libera no admin e no plano Máquina", () => {
     expect(planAllowsDevTeam("trial", "customer")).toBe(false);
-    expect(planAllowsDevTeam("maquina", "customer")).toBe(false);
-    expect(planAllowsDevTeam("whitelabel", "platform")).toBe(true);
+    expect(planAllowsDevTeam("impulso", "customer")).toBe(false);
+    expect(planAllowsDevTeam("maquina", "customer")).toBe(true);
     expect(canUseDevTeam(getDB().users.find((u) => u.id === "u1"))).toBe(true);
     expect(canUseDevTeam(getDB().users.find((u) => u.id === "u_demo"))).toBe(false);
     const email = `devgate${Date.now()}@loja.com`;
@@ -104,8 +104,6 @@ describe("SaaS trial e planos", () => {
     expect(ws.agents.filter((a) => a.teamId === "t_dev").every((a) => a.status === "pausado")).toBe(true);
     const db = getDB();
     applyDevTeamGate(db, "maquina", "customer");
-    expect(db.teams.find((t) => t.id === "t_dev")?.status).toBe("pausado");
-    applyDevTeamGate(db, "whitelabel", "platform");
     expect(db.teams.find((t) => t.id === "t_dev")?.status).toBe("ativo");
   });
 
@@ -128,15 +126,29 @@ describe("SaaS trial e planos", () => {
     expect(isPresenceIntent("Helena, procure 50 restaurantes que não tenham site nem cardápio online")).toBe(true);
   });
 
-  it("cliente não dispara o Time Dev", () => {
+  it("trial não dispara o Time Dev; Máquina dispara", () => {
     update((d) => { d.currentUserId = "u_demo"; });
-    const res = runTool(
+    const blocked = runTool(
       "dev.build_presence",
       { segment: "Restaurantes", city: "Campinas, SP", limit: 1 },
       { actor: "Helena", actorType: "helena", requestedBy: "demo" },
     );
-    expect(res.ok).toBe(false);
-    expect(res.message.toLowerCase()).toMatch(/info tech|comercial/);
-    update((d) => { d.currentUserId = "u1"; });
+    expect(blocked.ok).toBe(false);
+    update((d) => {
+      const u = d.users.find((x) => x.id === "u_demo");
+      if (u) u.planId = "maquina";
+    });
+    expect(canUseDevTeam(getDB().users.find((u) => u.id === "u_demo"))).toBe(true);
+    const allowed = runTool(
+      "dev.build_presence",
+      { segment: "Restaurantes", city: "Campinas, SP", limit: 1 },
+      { actor: "Helena", actorType: "helena", requestedBy: "demo" },
+    );
+    expect(allowed.ok).toBe(true);
+    update((d) => {
+      const u = d.users.find((x) => x.id === "u_demo");
+      if (u) u.planId = "trial";
+      d.currentUserId = "u1";
+    });
   });
 });

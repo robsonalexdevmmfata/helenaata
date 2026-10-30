@@ -98,7 +98,7 @@ export function Panel({ title, description, actions, children, className, bodyCl
   return (
     <section className={cn("rounded-xl border bg-card text-card-foreground", className)}>
       {(title || actions) && (
-        <header className="flex items-start justify-between gap-4 border-b px-5 py-3.5">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3.5 sm:gap-4 sm:px-5">
           <div>
             {title && <h2 className="text-sm font-semibold">{title}</h2>}
             {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}

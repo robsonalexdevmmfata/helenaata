@@ -1,37 +1,52 @@
 import type { SitePreview } from "@/lib/types";
 
-function apiBase() {
-  const fromEnv = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-  if (fromEnv) return fromEnv;
-  if (typeof window !== "undefined" && /vercel\.app$/i.test(window.location.hostname)) {
-    return "https://helena-ai.onrender.com";
+export const RENDER_API_ORIGIN = "https://helena-ai.onrender.com";
+
+function previewApiBases() {
+  const env = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+  const bases = [env, RENDER_API_ORIGIN];
+  if (typeof window !== "undefined" && !/vercel\.app$/i.test(window.location.hostname)) {
+    bases.push("");
   }
-  return "";
+  return [...new Set(bases)];
+}
+
+async function fetchJson(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Grava as prévias no Render para o link da Vercel abrir no celular do prospecto. */
 export function publishSitePreviews(previews: SitePreview[]) {
   if (!previews.length) return;
   if (typeof process !== "undefined" && process.env?.VITEST) return;
-  const base = apiBase();
-  const url = `${base}/api/previews`;
-  void fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ previews }),
-  }).catch((err) => console.warn("[Prévia pública]", err));
+  const body = JSON.stringify({ previews });
+  for (const base of previewApiBases()) {
+    void fetchJson(`${base}/api/previews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    }, 45_000).catch((err) => console.warn("[Prévia pública]", base || "local", err));
+  }
 }
 
 export async function fetchPublishedPreview(slug: string): Promise<SitePreview | null> {
-  const base = apiBase();
-  try {
-    const res = await fetch(`${base}/api/previews/${encodeURIComponent(slug)}`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return (data?.preview as SitePreview) ?? null;
-  } catch {
-    return null;
+  const path = `/api/previews/${encodeURIComponent(slug)}`;
+  for (const base of previewApiBases()) {
+    try {
+      const res = await fetchJson(`${base}${path}`, { headers: { Accept: "application/json" } }, 45_000);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data?.preview) return data.preview as SitePreview;
+    } catch {
+      /* tenta o próximo host (Render pode estar acordando) */
+    }
   }
+  return null;
 }

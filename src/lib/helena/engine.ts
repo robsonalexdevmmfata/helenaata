@@ -1127,7 +1127,7 @@ const handlers: Record<string, Handler> = {
   "dev.build_presence": (p) => {
     const user = currentUser(getDB());
     if (!canUseDevTeam(user)) {
-      return fail("O Time Dev (Caio, Diego e Sofia) é da operação Info Tech. No seu plano o Time Comercial prospecta no WhatsApp.");
+      return fail("O Time Dev (Caio, Diego e Sofia) entra no plano Máquina. No trial e no Impulso o Time Comercial prospecta no WhatsApp.");
     }
     const quota = reserveProspects(Math.min(Number(p.limit) || 10, 50));
     if (!quota.ok) return fail(quota.message);

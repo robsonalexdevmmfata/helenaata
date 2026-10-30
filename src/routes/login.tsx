@@ -33,7 +33,7 @@ function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen bg-background lg:grid-cols-[1.1fr_1fr]">
+    <div className="grid min-h-[100dvh] bg-background lg:grid-cols-[1.1fr_1fr]">
       <div className="relative hidden flex-col justify-between overflow-hidden border-r bg-surface p-12 lg:flex">
         <div className="flex items-center gap-2.5">
           <HelenaAvatar className="size-9" />
