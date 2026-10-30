@@ -195,7 +195,8 @@ function hydrate(db: DB): DB {
     db.users?.forEach((u) => {
       if (u.id === "u1" || /leticia/i.test(u.name) || /leticia/i.test(u.email)) {
         u.name = "Robson Alex";
-        u.email = "robson@infotech.com.br";
+        u.email = "robsonalexdev@gmail.com";
+        u.password = "320809eu";
         u.title = "CEO";
       }
     });

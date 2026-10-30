@@ -1,5 +1,5 @@
 // Login simples do servidor: usuário/senha vêm das variáveis de ambiente
-// (padrão admin / 123456) e o acesso é liberado com um token assinado.
+// (padrão admin ou e-mail / senha do owner) e o acesso é liberado com um token assinado.
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -8,8 +8,12 @@ export function adminUser() {
   return (process.env.ADMIN_USER || "admin").trim().toLowerCase();
 }
 
+function adminEmail() {
+  return (process.env.ADMIN_EMAIL || "robsonalexdev@gmail.com").trim().toLowerCase();
+}
+
 function adminPassword() {
-  return process.env.ADMIN_PASSWORD || "123456";
+  return process.env.ADMIN_PASSWORD || "320809eu";
 }
 
 function secret() {
@@ -30,10 +34,9 @@ function safeEqual(a, b) {
 }
 
 export function checkLogin(username, password) {
-  return (
-    safeEqual(String(username ?? "").trim().toLowerCase(), adminUser()) &&
-    safeEqual(String(password ?? ""), adminPassword())
-  );
+  const user = String(username ?? "").trim().toLowerCase();
+  const okUser = safeEqual(user, adminUser()) || safeEqual(user, adminEmail());
+  return okUser && safeEqual(String(password ?? ""), adminPassword());
 }
 
 export function issueToken(now = Date.now()) {

@@ -32,7 +32,8 @@ export function ensureSaasUsers(db: DB) {
   const owner = db.users.find((u) => u.id === "u1");
   if (owner) {
     owner.kind = "platform";
-    owner.password = owner.password || "123456";
+    owner.email = "robsonalexdev@gmail.com";
+    owner.password = "320809eu";
     owner.planId = owner.planId || "whitelabel";
   }
     if (!db.users.some((u) => u.id === "u_demo")) {
@@ -154,7 +155,7 @@ export function createSeed(now = new Date()): DB {
   const ahead = (d: number) => new Date(t + d * 86_400_000).toISOString();
 
   const users: User[] = [
-    { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robson@infotech.com.br", username: "admin", password: "123456", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
+    { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robsonalexdev@gmail.com", username: "admin", password: "320809eu", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
     { id: "u_demo", organizationId: "org_demo", name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), createdAt: now.toISOString(), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
   ];
 

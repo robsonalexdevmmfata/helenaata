@@ -6,7 +6,8 @@ import { activateWorkspaceForUser, getDB, listAccounts, update } from "./store";
 const SESSION_KEY = "helena-session";
 
 export const DEMO_USERNAME = "admin";
-export const DEMO_PASSWORD = "123456";
+export const DEMO_PASSWORD = "320809eu";
+export const ADMIN_EMAIL = "robsonalexdev@gmail.com";
 export const CUSTOMER_USERNAME = "demo";
 export const CUSTOMER_PASSWORD = "123456";
 
