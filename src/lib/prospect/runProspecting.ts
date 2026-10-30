@@ -1,4 +1,4 @@
-import { evolutionSendText, getAgencyConnection } from "@/lib/evolution/evolutionapi";
+import { evolutionSendText, getAgencyConnection, getEvolutionConfigUI } from "@/lib/evolution/evolutionapi";
 import { dispatchProspectMessages, buildProspectMessage } from "@/lib/evolution/prospectDispatcher";
 import { buildCatalogOpening } from "@/lib/catalog";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
@@ -184,6 +184,8 @@ export async function runRealProspecting(opts: {
       agentName: agent?.name ?? "Robson Alex",
     };
   });
+  const cfg = getEvolutionConfigUI();
+  if (!cfg.apiKey) return { found: places.length, sent: 0, failed: 0 };
   const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
   return { found: places.length, sent: disp.sent, failed: disp.failed };
 }
@@ -242,6 +244,8 @@ export async function runWaveProspecting(opts: { limit?: number; organizationId:
       agentName: agent?.name ?? "SDR 01",
     };
   });
+  const cfg = getEvolutionConfigUI();
+  if (!cfg.apiKey) return { found: bag.length, sent: 0, failed: contacts.length, skipped: 0 };
   const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
   return { found: bag.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
 }
@@ -263,6 +267,8 @@ export async function dispatchLeadsToAgents(places: MapPlace[], segment: string)
       agentName: agent?.name ?? "SDR 01",
     };
   });
+  const cfg = getEvolutionConfigUI();
+  if (!cfg.apiKey) return { found: places.length, sent: 0, failed: contacts.length, skipped: 0 };
   const disp = await dispatchProspectMessages(contacts, buildProspectMessage, db.organization.id);
   return { found: places.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
 }

@@ -29,9 +29,7 @@ function helenaBackend(): Plugin {
     configureServer(server) {
       load()
         .then((m) => m.startBackground())
-        .catch((e) => {
-          console.warn("[Helena] WhatsApp no boot:", e?.message || e);
-        });
+        .catch((e) => console.warn("[Helena] Servidor não carregou:", e?.message || e));
       server.middlewares.use((req, res, next) => {
         const url = req.url || "";
         if (url !== "/health" && !url.startsWith("/health?") && !url.startsWith("/api/")) return next();

@@ -1,7 +1,6 @@
-import { RENDER_API_ORIGIN } from "@/lib/api-origin";
 import type { SitePreview } from "@/lib/types";
 
-export { RENDER_API_ORIGIN };
+export const RENDER_API_ORIGIN = "https://helenaata.onrender.com";
 
 function previewApiBases() {
   const env = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -9,7 +8,6 @@ function previewApiBases() {
   if (typeof window !== "undefined" && !/vercel\.app$/i.test(window.location.hostname)) {
     bases.push("");
   }
-  bases.push("https://helenaata.onrender.com");
   return [...new Set(bases)];
 }
 

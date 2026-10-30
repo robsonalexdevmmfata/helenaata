@@ -80,17 +80,9 @@ const server = http.createServer(async (req, res) => {
     if (await handleApi(req, res)) return;
     if (serveStatic(req, res)) return;
     if (site) return site(req, res);
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(
-      JSON.stringify({
-        ok: true,
-        service: "helena-ai",
-        whatsapp: "baileys",
-        health: "/health",
-        qr: "POST /api/whatsapp/connect",
-      }),
-    );
+    res.statusCode = 503;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.end("Site ainda não compilado. Rode npm run build:render.");
   } catch (e) {
     log("error", "request", { path: req.url, err: e?.message || String(e) });
     if (!res.headersSent) {

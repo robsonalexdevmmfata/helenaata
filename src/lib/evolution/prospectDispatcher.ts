@@ -64,6 +64,13 @@ export async function dispatchProspectMessages(
     return result;
   }
 
+  // Verifica se a Evolution API está configurada
+  if (!cfg.apiKey || !cfg.baseUrl) {
+    console.warn("[Dispatcher] Evolution API não configurada — simulando envios.");
+    result.skipped = contacts.length;
+    return result;
+  }
+
   for (let i = 0; i < contacts.length; i++) {
     const contact = contacts[i]!;
 

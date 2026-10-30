@@ -2,6 +2,8 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import QRCode from "qrcode";
+import pino from "pino";
 import { formatForWhatsApp, nextStage } from "./formatter.mjs";
 import { aiProvider, helenaReply } from "./ai.mjs";
 
@@ -18,34 +20,12 @@ const wa = (g.__helenaWhatsApp ??= {
   lastConnectedAt: null,
   lastError: null,
   manualStop: false,
-  autoReply: String(process.env.HELENA_AUTO_REPLY || "true").toLowerCase() !== "false",
+  autoReply: String(process.env.HELENA_AUTO_REPLY || "false").toLowerCase() === "true",
   log: [],
   conversations: new Map(), // jid -> { stage, history: [{role, content}] }
 });
 
-const silent = () => {};
-const logger = {
-  level: process.env.WHATSAPP_LOG_LEVEL || "silent",
-  child() {
-    return this;
-  },
-  trace: silent,
-  debug: silent,
-  info: silent,
-  warn: silent,
-  error: silent,
-  fatal: silent,
-};
-
-async function qrDataUrl(text) {
-  try {
-    const mod = await import("qrcode");
-    const QRCode = mod.default ?? mod;
-    return await QRCode.toDataURL(text, { margin: 1, width: 280 });
-  } catch {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=1&data=${encodeURIComponent(text)}`;
-  }
-}
+const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || "warn" });
 
 function pushLog(entry) {
   wa.log.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: new Date().toISOString(), ...entry });
@@ -113,7 +93,7 @@ export async function connect() {
   sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       wa.status = "awaiting_qr";
-      wa.qrDataUrl = await qrDataUrl(qr);
+      wa.qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 280 });
     }
     if (connection === "open") {
       wa.status = "connected";
@@ -168,7 +148,6 @@ async function handleIncoming(jid, name, text) {
     return;
   }
   if (!wa.autoReply || !aiProvider()) {
-    console.warn("[WhatsApp] Mensagem recebida sem resposta automática. Defina GROQ_API_KEY no Render.");
     convo.history.push({ role: "user", content: text });
     return;
   }

@@ -5,32 +5,29 @@
  * Toda comunicação real com o WhatsApp passa por aqui.
  *
  * Configuração via .env.local:
- *   VITE_EVOLUTION_URL=https://evo.seudominio.com.br  (vazio = WhatsApp do Render)
+ *   VITE_EVOLUTION_URL=http://localhost:8080
  *   VITE_EVOLUTION_KEY=sua_global_api_key
  *   VITE_EVOLUTION_INSTANCE=helena
  *
  * Documentação Evolution API: https://doc.evolution-api.com
  */
 
-import { helenaApiBases, helenaApiOrigin, isLocalEvolutionHost } from "@/lib/api-origin";
-
 // ── Config ────────────────────────────────────────────────────────────────────
 
 export interface EvolutionConfig {
-  baseUrl: string;       // vazio = Render/Baileys; senão URL da Evolution na VPS
+  baseUrl: string;       // ex: http://localhost:8080
   apiKey: string;        // Global API Key (cabeçalho apikey)
   instance: string;      // Nome da instância (ex: "helena")
 }
 
-/** Lê configuração do .env.local (VITE_*). URL vazia = WhatsApp do Render (Baileys). */
+/** Lê configuração do .env.local (VITE_*) */
 export function getEvolutionConfig(): EvolutionConfig {
-  const rawUrl = String(
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_URL) || "",
-  ).trim();
-  const baseUrl = isLocalEvolutionHost(rawUrl) ? "" : rawUrl.replace(/\/$/, "");
-  const apiKey = String(
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_KEY) || "",
-  );
+  const baseUrl =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_URL) ||
+    "http://localhost:8080";
+  const apiKey =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_KEY) ||
+    "429683C4C977415CAAFCCE10F7D57E11";
   const instance =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) ||
     "helena";
@@ -72,8 +69,7 @@ export function getEvolutionConfigUI(): EvolutionConfig {
     if (raw) {
       const saved = JSON.parse(raw) as EvolutionConfig;
       const merged = { ...env, ...saved, instance: canonicalInstance(saved.instance || env.instance) };
-      if (isLocalEvolutionHost(merged.baseUrl)) merged.baseUrl = "";
-      if (saved.instance !== merged.instance || saved.baseUrl !== merged.baseUrl) {
+      if (saved.instance !== merged.instance) {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
       }
       return merged;
@@ -85,7 +81,6 @@ export function getEvolutionConfigUI(): EvolutionConfig {
 export function saveEvolutionConfigUI(cfg: Partial<EvolutionConfig>): EvolutionConfig {
   const current = getEvolutionConfigUI();
   const updated = { ...current, ...cfg, instance: canonicalInstance(cfg.instance ?? current.instance) };
-  if (isLocalEvolutionHost(updated.baseUrl)) updated.baseUrl = "";
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch {}
   return updated;
 }
@@ -99,10 +94,14 @@ function headers(cfg: EvolutionConfig) {
   };
 }
 
-function evoUrl(path: string, _cfg: EvolutionConfig) {
+function evoUrl(path: string, cfg: EvolutionConfig) {
   const clean = path.startsWith("/") ? path : `/${path}`;
-  const origin = helenaApiBases()[0] ?? helenaApiOrigin();
-  return `${origin}/api/evolution${clean}`;
+  if (typeof window !== "undefined") {
+    const onVercel = /vercel\.app$/i.test(window.location.hostname);
+    const origin = onVercel ? "https://helenaata.onrender.com" : "";
+    return `${origin}/api/evolution${clean}`;
+  }
+  return `${cfg.baseUrl.replace(/\/$/, "")}${clean}`;
 }
 
 export function jidToPhone(jid: string) {
@@ -239,7 +238,6 @@ export async function getEvolutionStatus(
     const res = await fetch(url, {
       method: "GET",
       headers: headers(config),
-      signal: AbortSignal.timeout(45_000),
     });
 
     if (!res.ok) {
@@ -288,28 +286,46 @@ export async function evolutionSendText(
     return { ok: false, error: "VITEST: disparo WhatsApp desativado" };
   }
 
+  // Garante que o número não tem + ou espaços
   const cleanNumber = number.replace(/\D/g, "");
-  let last = "Falha ao enviar mensagem";
-  const instance = encodeURIComponent(config.instance || "helena");
 
-  for (const origin of helenaApiBases()) {
-    try {
-      const res = await fetch(`${origin}/api/evolution/message/sendText/${instance}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ number: cleanNumber, text }),
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok) {
-        return { ok: true, messageId: data?.key?.id ?? data?.id ?? "sent", raw: data };
-      }
-      last = data?.error ?? data?.message ?? `HTTP ${res.status}`;
-    } catch (err: any) {
-      last = err?.message ?? last;
+  const url = evoUrl(`/message/sendText/${config.instance}`, config);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: headers(config),
+      body: JSON.stringify({
+        number: cleanNumber,
+        text,
+        // Opcionais Evolution API v2:
+        delay: 1200,          // ms entre mensagens (simula digitação humana)
+        linkPreview: false,   // não gera preview de links (menos spammy)
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data?.message ?? data?.error ?? `HTTP ${res.status}`,
+        raw: data,
+      };
     }
-  }
 
-  return { ok: false, error: last };
+    // Evolution API v2 retorna: { key: { id, ... }, message: { ... } }
+    return {
+      ok: true,
+      messageId: data?.key?.id ?? data?.id ?? "sent",
+      raw: data,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: err?.message ?? "Falha ao enviar mensagem",
+    };
+  }
 }
 
 // ── 3. Enviar mídia (imagem/arquivo) ─────────────────────────────────────────
@@ -440,52 +456,41 @@ export async function evolutionFindMessages(
  * Testa rapidamente se a Evolution API está acessível e a instância conectada.
  * Retorna latência em ms.
  */
-function wipeLocalEvolutionUrl() {
-  if (typeof localStorage === "undefined") return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw || !/localhost|127\.0\.0\.1/.test(raw)) return;
-    const parsed = JSON.parse(raw) as EvolutionConfig;
-    parsed.baseUrl = "";
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-  } catch {
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-  }
-}
-
 export async function testEvolutionConnection(
-  _cfg?: EvolutionConfig
+  cfg?: EvolutionConfig
 ): Promise<{ ok: boolean; connected: boolean; latencyMs: number; message: string; number?: string }> {
-  wipeLocalEvolutionUrl();
   const start = Date.now();
-  const { whatsappApi } = await import("@/lib/backend");
-  try {
-    const st = await whatsappApi.status();
-    const latencyMs = Date.now() - start;
-    if (st.status === "connected") {
-      return {
-        ok: true,
-        connected: true,
-        latencyMs,
-        message: `WhatsApp conectado. Número ${st.phone}. Agentes enviam por este chip.`,
-        number: st.phone ?? undefined,
-      };
-    }
+  const config = cfg ?? getEvolutionConfigUI();
+
+  const status = await getEvolutionStatus(config);
+  const latencyMs = Date.now() - start;
+
+  if (!status.ok) {
+    return {
+      ok: false,
+      connected: false,
+      latencyMs,
+      message: `Evolution API offline: ${status.error}. Verifique se está rodando em ${config.baseUrl}`,
+    };
+  }
+
+  if (!status.connected) {
     return {
       ok: true,
       connected: false,
       latencyMs,
-      message: `Servidor no ar, estado: ${st.status}. Escaneie o QR nesta página.`,
-      number: st.phone ?? undefined,
-    };
-  } catch (err: any) {
-    return {
-      ok: false,
-      connected: false,
-      latencyMs: Date.now() - start,
-      message: `Não falou com o Render (${err?.message ?? "erro"}). Confira se https://helenaata.onrender.com/health está ok.`,
+      message: `API online mas WhatsApp desconectado (state: ${status.status}). Escaneie o QR Code.`,
+      number: status.number,
     };
   }
+
+  return {
+    ok: true,
+    connected: true,
+    latencyMs,
+    message: `Conectado! Número: ${status.number} · Latência: ${latencyMs}ms`,
+    number: status.number,
+  };
 }
 
 // ── 8. Parser de webhook recebido ────────────────────────────────────────────
