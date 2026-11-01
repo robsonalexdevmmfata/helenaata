@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isHelenaArrivalGreeting } from "@/lib/helena/briefing";
 import { extractProspectIntent } from "@/lib/prospect/mapsSearch";
+import { detectWhatsAppAiSignals, isNoWhatsAppAiIntent } from "@/lib/prospect/waAiSignals";
 
 describe("saudação de entrada da Helena", () => {
   it("reconhece cheguei e bom dia", () => {
@@ -36,5 +37,22 @@ describe("extractProspectIntent", () => {
     expect(sp.city.toLowerCase()).toBe("são paulo");
     expect(sp.nationwide).toBe(false);
     expect(sp.segment.toLowerCase()).toMatch(/odontolog|dentista/);
+    expect(sp.noWhatsAppAi).toBe(false);
+
+    const ia = extractProspectIntent("procure clínicas em Campinas sem inteligência artificial no WhatsApp");
+    expect(ia.noWhatsAppAi).toBe(true);
+    expect(ia.city.toLowerCase()).toMatch(/campinas/);
+  });
+});
+
+describe("sinais de IA no WhatsApp", () => {
+  it("reconhece pedido de busca sem chatbot", () => {
+    expect(isNoWhatsAppAiIntent("empresas sem IA no whatsapp para atendentes")).toBe(true);
+    expect(isNoWhatsAppAiIntent("prospectar dentistas sem site")).toBe(false);
+  });
+
+  it("marca fornecedores de chatbot e ignora site comum", () => {
+    expect(detectWhatsAppAiSignals("Atendimento com Blip", "https://clinica.blip.ai").hit).toBe(true);
+    expect(detectWhatsAppAiSignals("Horário de funcionamento", "https://clinica-sorriso.com.br").hit).toBe(false);
   });
 });

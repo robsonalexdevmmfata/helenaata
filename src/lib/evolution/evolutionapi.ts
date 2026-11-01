@@ -5,8 +5,8 @@
  * Toda comunicação real com o WhatsApp passa por aqui.
  *
  * Configuração via .env.local:
- *   VITE_EVOLUTION_URL=http://localhost:8080
- *   VITE_EVOLUTION_KEY=sua_global_api_key
+ *   VITE_EVOLUTION_URL=https://evolutionapi.hostless.app
+ *   VITE_EVOLUTION_KEY= (só local; o proxy do servidor também usa EVOLUTION_KEY)
  *   VITE_EVOLUTION_INSTANCE=helena
  *
  * Documentação Evolution API: https://doc.evolution-api.com
@@ -24,10 +24,10 @@ export interface EvolutionConfig {
 export function getEvolutionConfig(): EvolutionConfig {
   const baseUrl =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_URL) ||
-    "http://localhost:8080";
+    "https://evolutionapi.hostless.app";
   const apiKey =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_KEY) ||
-    "429683C4C977415CAAFCCE10F7D57E11";
+    "";
   const instance =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) ||
     "helena";
@@ -96,11 +96,7 @@ function headers(cfg: EvolutionConfig) {
 
 function evoUrl(path: string, cfg: EvolutionConfig) {
   const clean = path.startsWith("/") ? path : `/${path}`;
-  if (typeof window !== "undefined") {
-    const onVercel = /vercel\.app$/i.test(window.location.hostname);
-    const origin = onVercel ? "https://helenaata.onrender.com" : "";
-    return `${origin}/api/evolution${clean}`;
-  }
+  if (typeof window !== "undefined") return `/api/evolution${clean}`;
   return `${cfg.baseUrl.replace(/\/$/, "")}${clean}`;
 }
 

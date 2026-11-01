@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { startSession } from "@/lib/auth";
 import { pageHead } from "@/lib/head";
+import { listAccounts } from "@/lib/store";
 import { caktoCheckoutUrl, registerCustomer } from "@/lib/saas";
+import { provisionEvolutionInstance } from "@/lib/evolution/provision";
 
 export const Route = createFileRoute("/cadastro")({
   head: () => pageHead("Criar conta", "Trial de 2 dias. 30 abordagens por dia. Sem cartão agora."),
@@ -37,6 +39,8 @@ function CadastroPage() {
       return;
     }
     startSession(res.userId);
+    const created = listAccounts().find((u) => u.id === res.userId);
+    if (created) void provisionEvolutionInstance(created);
     if (plano === "impulso" || plano === "maquina") {
       window.location.assign(caktoCheckoutUrl(plano, { name, email }));
       return;

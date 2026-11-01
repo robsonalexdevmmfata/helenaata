@@ -60,7 +60,7 @@ export const GROQ_TOOLS = [
     function: {
       name: "prospect_scan_maps",
       description:
-        "Varredura nacional (OpenStreetMap + FreeLLMAPI) de negócios SEM site e COM WhatsApp válido. Importa só esses leads no CRM (#sem-site) e dispara o Time Comercial.",
+        "Varredura nacional (OpenStreetMap + FreeLLMAPI) de negócios COM WhatsApp válido. Padrão: SEM site (#sem-site). Se o pedido for empresas sem IA/chatbot no WhatsApp, use noWhatsAppAi=true (#sem-ia-whatsapp). Dispara o Time Comercial.",
       parameters: {
         type: "object",
         properties: {
@@ -83,6 +83,10 @@ export const GROQ_TOOLS = [
           limit: {
             type: "number",
             description: "Quantidade máxima de empresas a importar (padrão 10)",
+          },
+          noWhatsAppAi: {
+            type: "boolean",
+            description: "true = filtrar quem provavelmente NÃO tem IA/chatbot no WhatsApp (sem site ou site sem Blip/Zenvia/Jivo/etc.)",
           },
         },
         required: ["segment"],
@@ -260,7 +264,7 @@ Diretrizes:
 3. Termine com pergunta aberta ou dois horários só depois de confirmar o dono.
 4. Se o cliente fechar horário, chame calendar_agendar_reuniao / calendar_create_event na hora.
 5. Respeite limites de disparo e logs de auditoria.
-6. Prospecção só de lista: chame prospect_scan_maps com o NICHO pedido. nationwide=true se não citar cidade.
+6. Prospecção só de lista: chame prospect_scan_maps com o NICHO pedido. nationwide=true se não citar cidade. Se pedirem empresas sem IA/chatbot/atendente virtual no WhatsApp, passe noWhatsAppAi=true.
 ${allowDev ? "7. Site / cardápio / “procure N restaurantes sem site”: chame dev_build_presence. O Time Desenvolvimento IA (Caio, Diego, Sofia) monta a prévia; o Time Comercial aborda o dono com o link. Qualquer nicho, não só restaurante." : "7. Pedido de site ou cardápio: use prospect_scan_maps. O Time Comercial prospecta. Não chame engenheiros."}
 
 Quando o usuário pedir para prospectar, ative o time e inicie a operação — as abordagens individuais ficam com o Time Comercial.

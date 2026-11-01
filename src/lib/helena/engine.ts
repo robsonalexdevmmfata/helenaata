@@ -917,6 +917,7 @@ const handlers: Record<string, Handler> = {
     const city = String(p.city || "Brasil");
     const state = p.state != null ? String(p.state) : undefined;
     const nationwide = p.nationwide === true || /brasil|nacional/i.test(city) || state === "TODOS";
+    const noWhatsAppAi = p.noWhatsAppAi === true;
     const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
     if (!isTest && p.simulate !== true) {
       const limitLive = Math.min(quota.allowed, 150);
@@ -931,6 +932,7 @@ const handlers: Record<string, Handler> = {
             nationwide,
             limit: limitLive,
             organizationId: getDB().organization.id,
+            noWhatsAppAi,
           });
         job.then((r) => {
           update((d) => {
@@ -941,7 +943,7 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `${wave ? "Onda multi-nicho SP" : "Varredura real"}: ${r.found} sem site + WhatsApp válido (${nationwide ? "Brasil inteiro" : city}). Instância helena: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? "Onda multi-nicho SP" : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Instância helena: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
@@ -951,7 +953,7 @@ const handlers: Record<string, Handler> = {
       });
       return ok(wave
         ? `Onda comercial iniciada: até ${limitLive} WhatsApp válidos em São Paulo, Campinas, Araçatuba, Andradina e cidades próximas, vários nichos. Só número real; intervalo entre disparos. Time de vendas assume.`
-        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Só entram leads sem site e com WhatsApp. Time Comercial dispara pela instância helena.`);
+        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. ${noWhatsAppAi ? "Entram negócios com WhatsApp e sem rastros de IA/chatbot no atendimento (heurística de site + mapa)." : "Só entram leads sem site e com WhatsApp."} Time Comercial dispara pela instância helena.`);
     }
     const limit = Math.min(quota.allowed, 150);
 

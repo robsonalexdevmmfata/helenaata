@@ -53,6 +53,8 @@ export interface User {
   companyName?: string;
   phone?: string;
   createdAt?: string;
+  /** Instância Evolution desta conta (criada no cadastro). */
+  evolutionInstance?: string;
 }
 
 export interface QuoteRequest {
@@ -777,6 +779,9 @@ export interface SitePreview {
   status: "pronta" | "enviada" | "aprovada_cliente";
   createdBy: string;
   createdAt: string;
+  githubUrl?: string;
+  vercelUrl?: string;
+  deployError?: string;
 }
 
 export type ServiceBilling = "unico" | "mensal" | "campanha" | "a_partir";

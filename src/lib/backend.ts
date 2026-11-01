@@ -2,14 +2,10 @@
 // mesmo endereço do site (mesma porta). Defina VITE_API_URL para usar outro endereço.
 import { useEffect, useState } from "react";
 
-const BASE = (() => {
-  const env = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-  if (env) return env;
-  if (typeof window !== "undefined" && /vercel\.app$/i.test(window.location.hostname)) {
-    return "https://helenaata.onrender.com";
-  }
-  return "";
-})();
+const BASE = String(
+  import.meta.env.VITE_API_URL
+    ?? (import.meta.env.PROD ? "https://helenaata.onrender.com" : ""),
+).replace(/\/$/, "");
 const TOKEN_KEY = "helena-backend-token";
 
 export class BackendError extends Error {

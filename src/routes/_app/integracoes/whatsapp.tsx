@@ -15,7 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { useDB, update, uid, nowISO } from "@/lib/store";
+import { currentUser, useDB, update, uid, nowISO } from "@/lib/store";
+import { provisionEvolutionInstance } from "@/lib/evolution/provision";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 import {
@@ -51,8 +52,13 @@ function EvolutionPanel() {
     ok: boolean; connected: boolean; message: string; number?: string; latencyMs?: number;
   } | null>(null);
 
-  // Carrega webhook configurado na Evolution API ao montar
   useEffect(() => {
+    const user = currentUser();
+    if (user) {
+      void provisionEvolutionInstance(user).then(() => {
+        setCfg(getEvolutionConfigUI());
+      });
+    }
     evolutionGetWebhook().then((res) => {
       if (res.ok && res.url) setWebhookUrl(res.url);
     });

@@ -2,6 +2,7 @@ import type { HunterLead } from "@/lib/leads-hunter";
 import { TOP_CITIES_BY_UF } from "@/lib/leads-hunter";
 import { uid } from "@/lib/store";
 import { callFreeLLMOrchestrator } from "@/lib/helena/freellmapi";
+import { detectWhatsAppAiSignals, isNoWhatsAppAiIntent, type WaAiSignal } from "./waAiSignals";
 
 export interface MapPlace {
   name: string;
@@ -13,6 +14,9 @@ export interface MapPlace {
   rating?: number;
   reviewCount?: number;
   hours?: string;
+  /** Heurística: sem rastros públicos de chatbot/IA no atendimento. */
+  likelyNoWaAi?: boolean;
+  waAiReason?: string;
 }
 
 const OVERPASS_ENDPOINTS = [
@@ -121,7 +125,7 @@ export function extractProspectIntent(text: string) {
   const nationwide = /brasil inteiro|todo o brasil|nacional|todos os estados|\bno brasil\b/.test(n);
   const cityMatch = text.match(/\bem\s+([A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+){0,2}(?:,\s*[A-Z]{2})?)/i);
   const cityRaw = (cityMatch?.[1] ?? "")
-    .replace(/\s+(sem|com|so|só|leads?|quentes?|site|whatsapp|e|para|pelo|via)\b[\s\S]*$/i, "")
+    .replace(/\s+(sem|com|so|só|leads?|quentes?|site|whatsapp|inteligencia|inteligência|chatbot|atendente|e|para|pelo|via)\b[\s\S]*$/i, "")
     .trim();
   const city = cityRaw && !/brasil/i.test(cityRaw) ? cityRaw : "Brasil";
 
@@ -155,6 +159,7 @@ export function extractProspectIntent(text: string) {
     segment,
     city,
     nationwide: nationwide || city === "Brasil",
+    noWhatsAppAi: isNoWhatsAppAiIntent(text),
   };
 }
 
@@ -241,7 +246,72 @@ export function parseCityList(raw: string, state?: string): string[] {
   });
 }
 
-async function searchCity(segment: string, city: string, limit: number): Promise<MapPlace[]> {
+function osmWebsite(tags: Record<string, unknown> = {}) {
+  return String(tags.website || tags["contact:website"] || tags.url || "").trim();
+}
+
+function placeFromTags(tags: Record<string, unknown>, city: string, includeWebsites: boolean): MapPlace | null {
+  if (!includeWebsites && osmHasWebsiteOrMenu(tags)) return null;
+  const phone = normalizePhone(String(tags.phone || tags["contact:phone"] || tags.mobile || tags["contact:mobile"] || tags["contact:whatsapp"] || ""));
+  const name = String(tags.name || "").trim();
+  if (!name) return null;
+  const website = osmWebsite(tags) || undefined;
+  return {
+    name,
+    phone,
+    city,
+    address: [tags["addr:street"], tags["addr:housenumber"], city].filter(Boolean).join(", "),
+    website,
+    contactName: name,
+  };
+}
+
+async function probeWebsiteForAi(website: string): Promise<WaAiSignal & { ok: boolean }> {
+  const fromUrl = detectWhatsAppAiSignals("", website);
+  if (fromUrl.hit) return { ...fromUrl, ok: true };
+  if (typeof window === "undefined") return { hit: false, signals: [], ok: false };
+  try {
+    const res = await fetch("/api/prospect/site-signals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ url: website }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return { hit: false, signals: [], ok: false };
+    const data = (await res.json()) as { hit?: boolean; signals?: string[] };
+    return { hit: Boolean(data.hit), signals: data.signals ?? [], ok: true };
+  } catch {
+    return { hit: false, signals: [], ok: false };
+  }
+}
+
+export async function markLikelyNoWhatsAppAi(places: MapPlace[], probeSites: boolean): Promise<MapPlace[]> {
+  const out: MapPlace[] = [];
+  let probes = 0;
+  for (const p of places) {
+    const local = detectWhatsAppAiSignals(`${p.name} ${p.address}`, p.website || "");
+    if (local.hit) continue;
+    if (!p.website) {
+      out.push({ ...p, likelyNoWaAi: true, waAiReason: "Sem site no mapa — improvável ter IA no WhatsApp" });
+      continue;
+    }
+    if (!probeSites || probes >= 24) {
+      out.push({ ...p, likelyNoWaAi: true, waAiReason: "Site sem fornecedor conhecido de chatbot na URL" });
+      continue;
+    }
+    probes += 1;
+    const probed = await probeWebsiteForAi(p.website);
+    if (probed.hit) continue;
+    out.push({
+      ...p,
+      likelyNoWaAi: true,
+      waAiReason: probed.ok ? "Site sem rastros de chatbot/IA no atendimento" : "Não deu para ler o site; URL sem bot conhecido",
+    });
+  }
+  return out;
+}
+
+async function searchCity(segment: string, city: string, limit: number, includeWebsites = false): Promise<MapPlace[]> {
   const geo = await geocode(city);
   if (!geo) return [];
   const inner = overpassClauses(segment)
@@ -293,22 +363,13 @@ out center ${Math.max(limit * 12, 80)};
   const elements = Array.isArray(data?.elements) ? data.elements : [];
   const out: MapPlace[] = [];
   for (const el of elements) {
-    const tags = el.tags ?? {};
-    if (osmHasWebsiteOrMenu(tags)) continue;
-    const phone = normalizePhone(String(tags.phone || tags["contact:phone"] || tags.mobile || tags["contact:mobile"] || tags["contact:whatsapp"] || ""));
-    const name = String(tags.name || "").trim();
-    if (!name) continue;
-    out.push({
-      name,
-      phone,
-      city,
-      address: [tags["addr:street"], tags["addr:housenumber"], city].filter(Boolean).join(", "),
-      contactName: name,
-    });
+    const place = placeFromTags((el as { tags?: Record<string, unknown> }).tags ?? {}, city, includeWebsites);
+    if (!place) continue;
+    out.push(place);
     if (out.length >= limit) break;
   }
   if (out.filter((p) => isValidBrazilWhatsApp(p.phone)).length < limit && geo) {
-    const phones = await searchPhonesAround(geo, city, limit);
+    const phones = await searchPhonesAround(geo, city, limit, includeWebsites);
     for (const p of phones) {
       if (out.some((x) => digits(x.phone) === digits(p.phone) || x.name === p.name)) continue;
       out.push(p);
@@ -316,7 +377,7 @@ out center ${Math.max(limit * 12, 80)};
     }
   }
   if (out.length < limit && geo) {
-    const extra = await photonPlaces(segment, city, geo, limit - out.length);
+    const extra = await photonPlaces(segment, city, geo, limit - out.length, includeWebsites);
     for (const p of extra) {
       if (out.some((x) => x.name === p.name)) continue;
       out.push(p);
@@ -326,7 +387,7 @@ out center ${Math.max(limit * 12, 80)};
   return out;
 }
 
-async function searchPhonesAround(geo: { lat: number; lon: number }, city: string, limit: number): Promise<MapPlace[]> {
+async function searchPhonesAround(geo: { lat: number; lon: number }, city: string, limit: number, includeWebsites = false): Promise<MapPlace[]> {
   const ql = `
 [out:json][timeout:40];
 (
@@ -374,19 +435,9 @@ out 180;
   const elements = Array.isArray(data?.elements) ? data!.elements! : [];
   const out: MapPlace[] = [];
   for (const el of elements) {
-    const tags = el.tags ?? {};
-    if (osmHasWebsiteOrMenu(tags)) continue;
-    const phone = normalizePhone(String(tags.phone || tags["contact:phone"] || tags.mobile || tags["contact:mobile"] || tags["contact:whatsapp"] || ""));
-    if (!isValidBrazilWhatsApp(phone)) continue;
-    const name = String(tags.name || "").trim();
-    if (!name) continue;
-    out.push({
-      name,
-      phone,
-      city,
-      address: [tags["addr:street"], tags["addr:housenumber"], city].filter(Boolean).join(", "),
-      contactName: name,
-    });
+    const place = placeFromTags(el.tags ?? {}, city, includeWebsites);
+    if (!place || !isValidBrazilWhatsApp(place.phone)) continue;
+    out.push(place);
     if (out.length >= limit) break;
   }
   return out;
@@ -397,6 +448,7 @@ async function photonPlaces(
   city: string,
   geo: { lat: number; lon: number },
   limit: number,
+  includeWebsites = false,
 ): Promise<MapPlace[]> {
   const q = `${segment.replace(/sem site/gi, "").trim()} ${city}`;
   const url = typeof window !== "undefined"
@@ -415,12 +467,14 @@ async function photonPlaces(
       if (!name) continue;
       const featCity = String(p.city || p.state || "").toLowerCase();
       if (cityHint && featCity && !featCity.includes(cityHint) && !cityHint.includes(featCity)) continue;
-      if (osmHasWebsiteOrMenu(p)) continue;
+      if (!includeWebsites && osmHasWebsiteOrMenu(p)) continue;
+      const website = osmWebsite(p) || undefined;
       out.push({
         name,
         phone: normalizePhone(String(p.phone || p["osm:phone"] || "")),
         city,
         address: [p.street, p.housenumber, p.city || city].filter(Boolean).join(", "),
+        website,
         contactName: name,
       });
       if (out.length >= limit) break;
@@ -444,6 +498,8 @@ export async function searchBusinessesWithoutWebsite(opts: {
   state?: string;
   nationwide?: boolean;
   limit?: number;
+  /** Inclui quem tem site, se não houver sinal de IA/chatbot no atendimento. */
+  noWhatsAppAi?: boolean;
 }): Promise<MapPlace[]> {
   const limit = Math.min(opts.limit ?? 10, 150);
   let cities = await resolveSearchCities({
@@ -462,9 +518,14 @@ export async function searchBusinessesWithoutWebsite(opts: {
   for (const city of cities) {
     if (out.length >= limit) break;
     try {
-      const found = await searchCity(opts.segment, city, perCity + 4);
-      for (const p of found) {
-        const key = digits(p.phone);
+      const found = await searchCity(opts.segment, city, perCity + 4, Boolean(opts.noWhatsAppAi));
+      const marked = opts.noWhatsAppAi ? await markLikelyNoWhatsAppAi(found, true) : found.map((p) => ({
+        ...p,
+        likelyNoWaAi: !p.website,
+        waAiReason: p.website ? undefined : "Sem site no mapa — improvável ter IA no WhatsApp",
+      }));
+      for (const p of marked) {
+        const key = digits(p.phone) || p.name;
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(p);
@@ -490,6 +551,8 @@ export function placesToHunterLeads(places: MapPlace[], niche: string, state = "
     whatsappVerified: isValidBrazilWhatsApp(p.phone),
     website: p.website,
     hasWebsite: Boolean(p.website),
+    likelyNoWaAi: p.likelyNoWaAi ?? !p.website,
+    waAiReason: p.waAiReason,
     rating: 0,
     reviewCount: 0,
     tag: i === 0 ? "TUBARÃO" : "PREMIUM",

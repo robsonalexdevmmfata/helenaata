@@ -28,7 +28,6 @@ export function isPresenceIntent(text: string) {
   return false;
 }
 
-/** URL pública enviada a cliente real — sempre o site na Vercel, não localhost. */
 export const PUBLIC_SITE_ORIGIN = String(
   import.meta.env.VITE_PUBLIC_SITE_URL ?? "https://helenaata.vercel.app",
 ).replace(/\/$/, "");
@@ -505,11 +504,12 @@ export function applyPresenceFromPlaces(opts: {
     bumpAutomation(d, "lead_criado", opts.places.length);
   });
 
-  import("@/lib/dev/previewPublish").then(({ publishSitePreviews }) => {
-    publishSitePreviews(published);
-  }).catch(() => { /* ignore */ });
+  if (typeof process !== "undefined" && process.env?.VITEST) {
+    return { count: previewIds.length, previewIds, slugs };
+  }
 
-  if (createdContactIds.length && typeof process !== "undefined" && !process.env?.VITEST) {
+  import("@/lib/dev/previewPublish").then(async ({ publishSitePreviews }) => {
+    const deployed = await publishSitePreviews(published);
     const db2 = getDB();
     const contacts = createdContactIds.map((cid) => {
       const c = db2.contacts.find((x) => x.id === cid);
@@ -525,17 +525,19 @@ export function applyPresenceFromPlaces(opts: {
         slug: meta.slug,
       } : null;
     }).filter(Boolean) as Array<{ phone: string; name: string; companyName: string; contactId: string; agentName: string; withMenu: boolean; slug: string }>;
-    import("@/lib/evolution/prospectDispatcher").then(({ dispatchProspectMessages }) => {
-      dispatchProspectMessages(
-        contacts,
-        (ct) => {
-          const row = contacts.find((x) => x.contactId === ct.contactId);
-          return formatForWhatsApp(buildPreviewOpening(ct.name, ct.companyName, previewUrl(row?.slug ?? "preview"), Boolean(row?.withMenu)));
-        },
-        db2.organization.id,
-      ).catch((err) => console.warn("[Presence Dispatcher]", err));
-    }).catch(() => { /* ignore */ });
-  }
+    if (!contacts.length) return;
+    const { dispatchProspectMessages } = await import("@/lib/evolution/prospectDispatcher");
+    await dispatchProspectMessages(
+      contacts,
+      (ct) => {
+        const row = contacts.find((x) => x.contactId === ct.contactId);
+        const live = row ? deployed[row.slug]?.vercelUrl : undefined;
+        const url = live || previewUrl(row?.slug ?? "preview");
+        return formatForWhatsApp(buildPreviewOpening(ct.name, ct.companyName, url, Boolean(row?.withMenu)));
+      },
+      db2.organization.id,
+    );
+  }).catch((err) => console.warn("[Time Dev deploy]", err));
 
   return { count: previewIds.length, previewIds, slugs };
 }

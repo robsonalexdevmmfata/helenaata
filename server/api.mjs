@@ -5,6 +5,30 @@ import { checkLogin, issueToken, verifyToken } from "./auth.mjs";
 import { aiProvider, chatCompletion } from "./ai.mjs";
 import { evolutionApiKey, handleEvolutionLocal, remoteEvolutionUrl } from "./evolution-bridge.mjs";
 import { loadPreview, savePreview } from "./previews.mjs";
+import { publishClientSite } from "./dev-publish.mjs";
+import { probePublicSite } from "./site-signals.mjs";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { latestPaidPlan, listBillingEvents, parseCaktoPayload, recordBillingEvent } from "./billing.mjs";
+
+function loadLocalEnv() {
+  for (const name of [".env.local", ".env"]) {
+    const file = path.resolve(name);
+    if (!existsSync(file)) continue;
+    for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+      if (!line || line.startsWith("#")) continue;
+      const i = line.indexOf("=");
+      if (i < 1) continue;
+      const key = line.slice(0, i).trim();
+      let val = line.slice(i + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key && process.env[key] == null) process.env[key] = val;
+    }
+  }
+}
+loadLocalEnv();
 
 const VERSION = "1.0.0";
 const startedAt = Date.now();
@@ -185,6 +209,55 @@ export async function handleApi(req, res) {
       });
       if (!r.ok) return send(res, 502, { error: `Photon HTTP ${r.status}` }), true;
       send(res, 200, await r.json());
+      return true;
+    }
+
+    if (p === "/api/billing/cakto" && req.method === "POST") {
+      const body = await readJson(req, 500_000);
+      const expected = process.env.CAKTO_WEBHOOK_SECRET || "";
+      if (expected) {
+        const got = String(body?.secret || req.headers["x-webhook-secret"] || url.searchParams.get("secret") || "");
+        if (got !== expected) return send(res, 401, { error: "Webhook Cakto recusado." }), true;
+      }
+      const row = parseCaktoPayload(body);
+      recordBillingEvent(row);
+      send(res, 200, { ok: true, email: row.email, planId: row.planId, paid: row.paid });
+      return true;
+    }
+
+    if (p === "/api/billing/events" && req.method === "GET") {
+      send(res, 200, { events: listBillingEvents().slice(0, 80) });
+      return true;
+    }
+
+    if (p === "/api/billing/status" && req.method === "GET") {
+      const email = url.searchParams.get("email") || "";
+      const row = latestPaidPlan(email);
+      send(res, 200, { planId: row?.planId || "", paid: Boolean(row), at: row?.at || "" });
+      return true;
+    }
+
+    if (p === "/api/prospect/site-signals" && req.method === "POST") {
+      const { url: siteUrl } = await readJson(req);
+      if (!siteUrl) return send(res, 400, { error: "Informe a URL." }), true;
+      try {
+        send(res, 200, await probePublicSite(siteUrl));
+      } catch (e) {
+        send(res, 200, { ok: false, hit: false, signals: [], error: e?.message || "Falha ao ler o site" });
+      }
+      return true;
+    }
+
+    if (p === "/api/dev/publish-client" && req.method === "POST") {
+      const body = await readJson(req, 2_000_000);
+      const preview = body.preview || body;
+      if (!preview?.slug || !preview?.name) return send(res, 400, { error: "Prévia inválida." }), true;
+      try {
+        const result = await publishClientSite(preview);
+        send(res, result.ok ? 200 : 400, result);
+      } catch (e) {
+        send(res, 500, { ok: false, error: e?.message || "Falha no deploy." });
+      }
       return true;
     }
 

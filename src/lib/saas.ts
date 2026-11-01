@@ -211,7 +211,7 @@ export function registerCustomer(input: {
   password: string;
   company: string;
   phone?: string;
-}): { ok: boolean; message: string; userId?: string } {
+}): { ok: boolean; message: string; userId?: string; evolutionInstance?: string } {
   const email = input.email.trim().toLowerCase();
   const username = email.split("@")[0] || "user";
   if (listAccounts().some((u) => u.email.toLowerCase() === email || u.username.toLowerCase() === username.toLowerCase())) {
@@ -221,6 +221,7 @@ export function registerCustomer(input: {
   const id = uid("u_");
   const now = nowISO();
   const orgId = uid("org_");
+  const evolutionInstance = `h${id.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24)}`;
   const user = {
     id,
     organizationId: orgId,
@@ -228,6 +229,7 @@ export function registerCustomer(input: {
     email,
     username,
     password: input.password,
+    evolutionInstance,
     role: "owner" as const,
     title: "Dona da conta",
     color: "chart-3" as const,
@@ -246,7 +248,23 @@ export function registerCustomer(input: {
     phone: input.phone ?? "",
   };
   provisionCustomerAccount(user);
-  return { ok: true, message: "Conta criada. Trial de 2 dias, 30 prospecções por dia.", userId: id };
+  return { ok: true, message: "Conta criada. Trial de 2 dias, 30 prospecções por dia.", userId: id, evolutionInstance };
+}
+
+export async function syncPaidPlanFromCakto(user?: User | null) {
+  if (!user?.email || !user.id) return;
+  if (typeof window === "undefined") return;
+  if (typeof process !== "undefined" && process.env?.VITEST) return;
+  try {
+    const res = await fetch(`/api/billing/status?email=${encodeURIComponent(user.email)}`);
+    if (!res.ok) return;
+    const data = (await res.json()) as { planId?: string };
+    if (data.planId === "impulso" || data.planId === "maquina" || data.planId === "whitelabel") {
+      if (user.planId !== data.planId) assignPlan(user.id, data.planId);
+    }
+  } catch {
+    /* Cakto / servidor fora */
+  }
 }
 
 export function assignPlan(userId: string, planId: SaasPlanId) {

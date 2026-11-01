@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ExternalLink, Globe, Search } from "lucide-react";
 import { useState } from "react";
 import { PageHeader, StatCard } from "@/components/app/kit";
@@ -21,7 +21,6 @@ export const Route = createFileRoute("/_app/ia/previews")({
 
 function PreviewsPage() {
   const db = useDB();
-  const router = useRouter();
   const [q, setQ] = useState("");
   const list = (db.sitePreviews ?? []).filter((p) =>
     `${p.name} ${p.segment} ${p.city}`.toLowerCase().includes(q.toLowerCase()),
@@ -33,7 +32,7 @@ function PreviewsPage() {
       <PageHeader
         eyebrow="IA"
         title="Prévia de sites"
-        description="O Time Desenvolvimento IA monta o site e o cardápio. O Time Comercial envia ao cliente o link público https://helenaata.vercel.app/v/…"
+        description="O Time Dev gera o site/cardápio, sobe um repositório público no GitHub e faz o deploy na Vercel. O comercial manda esse link ao cliente."
       />
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard label="Prévias" value={list.length} icon={<Globe />} tone="helena" />
@@ -60,18 +59,26 @@ function PreviewsPage() {
                 <Badge variant="outline">{p.menu ? "Site + cardápio" : "Site"}</Badge>
               </div>
               <p className="text-sm text-muted-foreground line-clamp-2">{p.tagline}</p>
-              <p className="break-all font-mono text-[11px] text-muted-foreground">{previewUrl(p.slug)}</p>
+              <p className="break-all font-mono text-[11px] text-muted-foreground">
+                {p.vercelUrl || previewUrl(p.slug)}
+              </p>
+              {p.deployError && <p className="text-xs text-destructive">{p.deployError}</p>}
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => router.history.push(p.previewPath)}>
+                <Button size="sm" onClick={() => window.open(p.vercelUrl || previewUrl(p.slug), "_blank")}>
                   Abrir prévia <ExternalLink className="size-3.5" />
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => navigator.clipboard.writeText(previewUrl(p.slug))}
+                  onClick={() => navigator.clipboard.writeText(p.vercelUrl || previewUrl(p.slug))}
                 >
                   Copiar link do cliente
                 </Button>
+                {p.githubUrl && (
+                  <Button size="sm" variant="ghost" onClick={() => window.open(p.githubUrl, "_blank")}>
+                    GitHub
+                  </Button>
+                )}
               </div>
             </div>
           ))}

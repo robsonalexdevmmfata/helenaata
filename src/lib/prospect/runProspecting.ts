@@ -40,7 +40,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
     const existingPhones = new Set(d.contacts.map((c) => digits(c.phone)));
     let slot = d.contacts.length;
     places.forEach((place) => {
-      if (place.website) return;
+      if (place.website && !place.likelyNoWaAi) return;
       if (!isValidBrazilWhatsApp(place.phone)) return;
       const phoneKey = digits(place.phone);
       if (phoneKey.endsWith("18981011186")) return;
@@ -61,7 +61,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
         segment,
         city: place.city,
         size: "1–10",
-        website: "",
+        website: place.website || "",
         ownerId: owner.id,
         createdAt: nowISO(),
       });
@@ -73,7 +73,12 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
         phone: place.phone,
         companyId: compId,
         title: segment,
-        tags: ["#sem-site", "OpenStreetMap", segment.toLowerCase()],
+        tags: [
+          ...(place.website ? [] : ["#sem-site"]),
+          ...(place.likelyNoWaAi ? ["#sem-ia-whatsapp"] : []),
+          "OpenStreetMap",
+          segment.toLowerCase(),
+        ],
         source: "Prospecção",
         ownerId: owner.id,
         status: "lead",
@@ -97,7 +102,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
           ownerId: owner.id,
           ownerType: "agent",
           source: "Prospecção",
-          tags: ["#sem-site"],
+          tags: [...(place.website ? [] : ["#sem-site"]), ...(place.likelyNoWaAi ? ["#sem-ia-whatsapp"] : [])],
           status: "aberto",
           createdAt: nowISO(),
           updatedAt: nowISO(),
@@ -114,7 +119,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
           organizationId: d.organization.id,
           name: listName,
           segment,
-          icp: "Sem site + WhatsApp celular BR (OpenStreetMap)",
+          icp: "WhatsApp celular BR · sem site e/ou sem rastros de IA no atendimento",
           count: 0,
           source: "OpenStreetMap",
           blacklisted: 0,
@@ -161,6 +166,7 @@ export async function runRealProspecting(opts: {
   limit: number;
   organizationId: string;
   operationId?: string;
+  noWhatsAppAi?: boolean;
 }) {
   const places = await searchBusinessesWithoutWebsite({
     segment: opts.segment,
@@ -168,6 +174,7 @@ export async function runRealProspecting(opts: {
     state: opts.state,
     nationwide: opts.nationwide,
     limit: opts.limit,
+    noWhatsAppAi: opts.noWhatsAppAi,
   });
   if (!places.length) return { found: 0, sent: 0, failed: 0 };
   const ids = insertPlacesAsLeads(places, opts.segment);

@@ -13,6 +13,8 @@ export interface HunterLead {
   whatsappVerified: boolean;
   website?: string;
   hasWebsite: boolean;
+  likelyNoWaAi?: boolean;
+  waAiReason?: string;
   rating: number;
   reviewCount: number;
   tag: "TUBARÃO" | "PREMIUM" | "PADRÃO";

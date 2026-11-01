@@ -1,5 +1,5 @@
-# HELENA AI — bootstrap no Render (sem domínio e sem VPS).
-# WhatsApp: Baileys no mesmo serviço. Quando tiver VPS, preencha EVOLUTION_URL.
+# HELENA AI — Render (API + WhatsApp). Front na Vercel reescreve /api para cá.
+# Evolution: Hostless. Tokens GitHub/Vercel do Time Dev: painel Render (não commitar).
 services:
   - type: web
     name: helena-ai
@@ -35,12 +35,24 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: EVOLUTION_URL
-        sync: false
+        value: https://evolutionapi.hostless.app
       - key: EVOLUTION_KEY
+        sync: false
+      - key: VITE_EVOLUTION_URL
+        value: https://evolutionapi.hostless.app
+      - key: VITE_PUBLIC_SITE_URL
+        value: https://helenaata.vercel.app
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: VERCEL_TOKEN
+        sync: false
+      - key: VERCEL_TEAM_ID
         sync: false
       - key: CAKTO_CLIENT_ID
         sync: false
       - key: CAKTO_CLIENT_SECRET
+        sync: false
+      - key: CAKTO_WEBHOOK_SECRET
         sync: false
     disk:
       name: helena-data

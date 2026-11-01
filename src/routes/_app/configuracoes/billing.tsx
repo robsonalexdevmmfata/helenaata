@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CheckCircle2, CreditCard, Download, ExternalLink, Receipt, Sparkles, TrendingUp, Zap,
 } from "lucide-react";
@@ -7,7 +7,9 @@ import { PageHeader, StatCard } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useDB } from "@/lib/store";
+import { currentUser, useDB } from "@/lib/store";
+import { formatTrialLabel, isPlatformAdmin } from "@/lib/saas";
+import type { CaktoBillingEvent } from "@/lib/billing/cakto";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 
@@ -47,7 +49,16 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 function BillingPage() {
   const db = useDB();
+  const user = currentUser(db);
+  const [caktoEvents, setCaktoEvents] = useState<CaktoBillingEvent[]>([]);
+  useEffect(() => {
+    fetch("/api/billing/events")
+      .then((r) => r.json())
+      .then((data) => setCaktoEvents(Array.isArray(data?.events) ? data.events : []))
+      .catch(() => setCaktoEvents([]));
+  }, []);
   const plan = db.organization.plan ?? "Scale";
+  const planLabel = formatTrialLabel(user) || plan;
   const aiLimit = db.helenaSettings?.monthlyBudget ?? 800;
   const aiSpent = db.agents.reduce((s, a) => s + a.spent, 0);
   const aiPct = aiLimit > 0 ? Math.min(100, Math.round((aiSpent / aiLimit) * 100)) : 0;
@@ -59,8 +70,30 @@ function BillingPage() {
       <PageHeader
         eyebrow="Configurações"
         title="Billing"
-        description="Seu plano, consumo de IA e histórico de faturas."
+        description="Plano da conta, consumo de IA e pagamentos Cakto (webhook)."
       />
+
+      {isPlatformAdmin(user) && (
+        <section className="space-y-3 rounded-xl border p-4">
+          <h2 className="text-sm font-semibold">Assinaturas Cakto</h2>
+          <p className="text-xs text-muted-foreground">
+            Na Cakto, webhook: <code className="rounded bg-muted px-1">https://helenaata.onrender.com/api/billing/cakto</code>
+            . Quando o Pix/cartão confirmar, o e-mail e o plano aparecem aqui. O cliente, no próximo login, sai do trial sozinho.
+          </p>
+          {caktoEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nenhum pagamento recebido ainda.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {caktoEvents.map((ev, i) => (
+                <li key={`${ev.at}-${i}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                  <span>{ev.email || "(sem e-mail)"} · {ev.name || "—"}</span>
+                  <span className="text-xs text-muted-foreground">{ev.planId || ev.event || ev.status} · {ev.at.slice(0, 16).replace("T", " ")}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Plano atual */}
       <section className="space-y-4">
@@ -70,7 +103,7 @@ function BillingPage() {
         <div className="rounded-xl border bg-gradient-to-br from-card to-primary/5 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xl font-bold">{plan}</p>
+              <p className="text-xl font-bold">{planLabel}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Sua conta está em dia.</p>
             </div>
             <Badge className="bg-primary/10 text-primary border-primary/20 px-3 py-1">

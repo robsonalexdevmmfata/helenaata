@@ -5,6 +5,8 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": ".output/public",
   "rewrites": [
+    { "source": "/health", "destination": "https://helenaata.onrender.com/health" },
+    { "source": "/api/:path*", "destination": "https://helenaata.onrender.com/api/:path*" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

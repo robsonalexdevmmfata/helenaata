@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
+  BotOff,
   Download,
   ExternalLink,
   Filter,
@@ -60,7 +61,7 @@ function CacarLeadsPage() {
 
   // Estados da Busca
   const [nicho, setNicho] = useState("Dentistas");
-  const [palavrasChave, setPalavrasChave] = useState("consultório odontológico sem site");
+  const [palavrasChave, setPalavrasChave] = useState("consultório odontológico sem site, sem IA no WhatsApp");
   const [cidades, setCidades] = useState("São Paulo, Campinas, Araçatuba, Andradina");
   const [estado, setEstado] = useState("SP");
   const [quantidade, setQuantidade] = useState(150);
@@ -70,7 +71,7 @@ function CacarLeadsPage() {
   const [leads, setLeads] = useState<HunterLead[]>([]);
 
   const [logs, setLogs] = useState<string[]>([
-    "Varredura real: OpenStreetMap · empresas com telefone e SEM site.",
+    "Varredura real: OpenStreetMap · WhatsApp válido · sem site e, se marcado, sem rastros de IA no atendimento.",
     "Disparos saem pela instância Evolution helena (+55 18 98101-1186).",
   ]);
 
@@ -79,6 +80,7 @@ function CacarLeadsPage() {
   const [activeFilter, setActiveFilter] = useState<"todos" | "TUBARÃO" | "PREMIUM" | "quente" | "frio">("todos");
   const [onlyCell, setOnlyCell] = useState(false);
   const [onlyVerifiedWa, setOnlyVerifiedWa] = useState(false);
+  const [noWhatsAppAi, setNoWhatsAppAi] = useState(true);
   const [dispatching, setDispatching] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
@@ -90,7 +92,7 @@ function CacarLeadsPage() {
   // Disparar Varredura Real
   const handleStartSearch = async () => {
     setIsSearching(true);
-    addLog(`[INFO] Buscando no mapa aberto (OpenStreetMap) empresas SEM site...`);
+    addLog(`[INFO] Buscando no mapa aberto (OpenStreetMap)${noWhatsAppAi ? " · filtro sem IA no WhatsApp (heurística de site)" : " · só SEM site"}...`);
     const nationwide = estado === "TODOS" && !cidades.trim();
     addLog(`[INFO] Nicho "${nicho}" · ${nationwide ? "Brasil inteiro" : `${cidades || "cidades da UF"}/${estado}`} · meta=${quantidade}`);
 
@@ -101,15 +103,18 @@ function CacarLeadsPage() {
         state: estado,
         nationwide,
         limit: quantidade,
+        noWhatsAppAi,
       });
-      const newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter((l) => !l.hasWebsite);
+      const newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter((l) =>
+        noWhatsAppAi ? Boolean(l.likelyNoWaAi) : !l.hasWebsite,
+      );
       setLeads(newLeads);
       const withWa = newLeads.filter((l) => l.isCellPhone).length;
-      addLog(`[OK] ${newLeads.length} empresas sem site · ${withWa} com WhatsApp celular válido.`);
+      addLog(`[OK] ${newLeads.length} empresas · ${withWa} com WhatsApp celular · ${newLeads.filter((l) => l.likelyNoWaAi).length} sem sinal de IA.`);
       toast.success(
         newLeads.length
-          ? `${newLeads.length} leads sem site (${withWa} prontos para o WhatsApp)`
-          : "Nenhuma empresa sem site encontrada nessa região",
+          ? `${newLeads.length} leads (${withWa} com WhatsApp)${noWhatsAppAi ? " · filtro sem IA" : " · sem site"}`
+          : "Nenhuma empresa encontrada com esse critério",
       );
     } catch (err) {
       addLog(`[ERRO] Falha na varredura: ${err instanceof Error ? err.message : "rede"}`);
@@ -123,12 +128,19 @@ function CacarLeadsPage() {
     phone: lead.phone,
     city: `${lead.city}, ${lead.state}`,
     address: lead.address,
+    website: lead.website,
     contactName: lead.ownerContact || lead.name,
+    likelyNoWaAi: lead.likelyNoWaAi,
+    waAiReason: lead.waAiReason,
   });
 
   const handleSendToHelena = async (lead: HunterLead) => {
-    if (lead.hasWebsite || !isValidBrazilWhatsApp(lead.phone)) {
-      toast.error("Só disparamos para leads sem site e com WhatsApp celular válido.");
+    if (!isValidBrazilWhatsApp(lead.phone)) {
+      toast.error("Só disparamos para leads com WhatsApp celular válido.");
+      return;
+    }
+    if (lead.hasWebsite && !lead.likelyNoWaAi) {
+      toast.error("Este lead tem site com sinal de IA/chatbot — fora do filtro.");
       return;
     }
     setDispatching(true);
@@ -147,7 +159,7 @@ function CacarLeadsPage() {
   const handleBatchSendToHelena = async () => {
     const selectedList = leads.filter((l) => selectedIds[l.id]);
     const ready = (selectedList.length > 0 ? selectedList : leads)
-      .filter((l) => !l.hasWebsite && isValidBrazilWhatsApp(l.phone))
+      .filter((l) => isValidBrazilWhatsApp(l.phone) && (!l.hasWebsite || l.likelyNoWaAi))
       .slice(0, 150);
     if (!ready.length) {
       toast.error("Selecione leads com WhatsApp celular válido (até 150).");
@@ -227,8 +239,8 @@ function CacarLeadsPage() {
             <Radar className="size-7 text-helena" /> Caçar Leads
           </h1>
           <p className="mt-1 text-sm text-muted-foreground max-w-3xl">
-            Busque por nicho, cidade e estado em todo o Brasil. Capturamos nome, telefone, WhatsApp, Instagram e site —
-            exporte a lista ou dispare diretamente para o CRM e agentes da Helena.
+            Busque por nicho, cidade e estado. Dá para priorizar quem ainda atende no WhatsApp sem chatbot/IA
+            (heurística: sem site, ou site sem Blip, Zenvia, Jivo, ManyChat etc.). Não abre o WhatsApp da empresa.
           </p>
         </div>
         <div className="flex items-center gap-2 self-start md:self-auto">
@@ -314,8 +326,14 @@ function CacarLeadsPage() {
                 className="w-24 bg-background text-sm font-semibold"
               />
             </div>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              Filtro ativo: varredura otimizada para identificar empresas sem site institucional
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+              <Checkbox checked={noWhatsAppAi} onCheckedChange={(v) => setNoWhatsAppAi(v === true)} />
+              Sem IA no WhatsApp
+            </label>
+            <span className="text-xs text-muted-foreground hidden lg:inline">
+              {noWhatsAppAi
+                ? "Inclui quem tem site se não houver rastros de chatbot; descarta Blip/Zenvia/Jivo/etc."
+                : "Só empresas sem site institucional"}
             </span>
           </div>
 
@@ -560,6 +578,11 @@ function CacarLeadsPage() {
                         ) : (
                           <Badge variant="destructive" className="bg-red-500/10 text-red-400 border-red-500/20 text-[10px]">
                             #sem-site (Oportunidade)
+                          </Badge>
+                        )}
+                        {lead.likelyNoWaAi && (
+                          <Badge variant="outline" className="mt-1 gap-1 text-[10px] text-helena border-helena/30">
+                            <BotOff className="size-3" /> #sem-ia-whatsapp
                           </Badge>
                         )}
                       </div>

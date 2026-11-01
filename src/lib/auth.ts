@@ -63,6 +63,8 @@ export async function loginWithServer(username: string, password: string) {
   const user = findLocalUser(username, password);
   if (user) {
     startSession(user.id);
+    void import("@/lib/saas").then(({ syncPaidPlanFromCakto }) => syncPaidPlanFromCakto(user));
+    void import("@/lib/evolution/provision").then(({ provisionEvolutionInstance }) => provisionEvolutionInstance(user));
     if (user.id === "u1" || user.username === DEMO_USERNAME) {
       const result = await backendLogin(username, password);
       if (result === "invalid") {

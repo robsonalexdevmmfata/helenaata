@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getDB, listAccounts, update } from "@/lib/store";
 import { canUseDevTeam, caktoCheckoutUrl, CAKTO_CHECKOUT, dailyLimitFor, isPlatformAdmin, mustSubscribe, registerCustomer, reserveProspects, SAAS_PLANS, trialEndsAtFrom, workspaceDisplayName } from "@/lib/saas";
+import { instanceNameForUser } from "@/lib/evolution/provision";
+import { isCaktoPaidEvent, mapCaktoPlan, parseCaktoPayload } from "@/lib/billing/cakto";
 import { applyDevTeamGate, planAllowsDevTeam } from "@/lib/seed";
 import { findLocalUser } from "@/lib/auth";
 import { isPresenceIntent } from "@/lib/dev/presence";
@@ -72,6 +74,21 @@ describe("SaaS trial e planos", () => {
     expect(mustSubscribe(u)).toBe(false);
     expect(workspaceDisplayName(u, "Info Tech Ltda")).toBe("Loja Bia");
     expect(u?.organizationId).not.toBe("org_novarota");
+    expect(u?.evolutionInstance).toBe(instanceNameForUser(u!.id));
+    expect(res.evolutionInstance).toBe(u?.evolutionInstance);
+  });
+
+  it("mapeia webhook Cakto para plano pago", () => {
+    expect(mapCaktoPlan({ product: { id: "kmb4vg8_1261686" } })).toBe("impulso");
+    expect(mapCaktoPlan({ offer: { id: "36nkrsw_1261705" } })).toBe("maquina");
+    expect(isCaktoPaidEvent("purchase_approved", "paid")).toBe(true);
+    expect(isCaktoPaidEvent("purchase_refused", "refused")).toBe(false);
+    const ev = parseCaktoPayload({
+      event: "purchase_approved",
+      data: { customer: { email: "bia@loja.com", name: "Bia" }, product: { id: "kmb4vg8_1261686" } },
+    });
+    expect(ev.email).toBe("bia@loja.com");
+    expect(ev.planId).toBe("impulso");
   });
 
   it("cliente novo não herda CRM mock da Info Tech", () => {

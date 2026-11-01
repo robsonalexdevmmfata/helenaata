@@ -16,7 +16,8 @@ import { ApprovalBlock } from "@/components/helena/HelenaCards";
 import { HelenaOrb } from "@/components/helena/HelenaOrb";
 import { isAuthenticated, logout, syncSessionUser } from "@/lib/auth";
 import { currentUser, getDB, resetDB, useDB } from "@/lib/store";
-import { canUseDevTeam, formatTrialLabel, isPlatformAdmin, mustSubscribe, workspaceDisplayName } from "@/lib/saas";
+import { canUseDevTeam, formatTrialLabel, isPlatformAdmin, mustSubscribe, syncPaidPlanFromCakto, workspaceDisplayName } from "@/lib/saas";
+import { provisionEvolutionInstance } from "@/lib/evolution/provision";
 import { helenaUi } from "@/lib/helena/orchestrator";
 import { tickOperations, tickSalesFlow } from "@/lib/helena/engine";
 import { startEvolutionInboxPoller } from "@/lib/evolution/inboxPoller";
@@ -179,6 +180,9 @@ function TrialStrip() {
 function AppLayout() {
   const router = useRouter();
   useEffect(() => {
+    const me = currentUser(getDB());
+    void syncPaidPlanFromCakto(me);
+    if (me) void provisionEvolutionInstance(me);
     const paywall = window.setInterval(() => {
       const user = currentUser(getDB());
       if (user && mustSubscribe(user) && !window.location.pathname.startsWith("/planos")) {

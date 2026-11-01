@@ -346,7 +346,7 @@ export function interpret(text: string): Reply[] {
   }
 
   // Prospecção autônoma: qualquer nicho que o gestor pedir (não só dentista)
-  if (/sem.?site|google maps|maps|varr\w*|prospect|cacar lead|caçar lead|buscar cliente|buscar lead|ativar o time/.test(n)) {
+  if (/sem.?site|google maps|maps|varr\w*|prospect|cacar lead|caçar lead|buscar cliente|buscar lead|ativar o time|sem ia|sem inteligencia|chatbot|atendente virtual|ia no whatsapp/.test(n)) {
     const intent = extractProspectIntent(text);
     const segment = intent.segment;
     const nationwide = intent.nationwide;
@@ -357,18 +357,18 @@ export function interpret(text: string): Reply[] {
     return [
       perform(
         "prospect.scan_maps",
-        { segment, city: wave ? "São Paulo, Campinas, Araçatuba, Andradina" : city, nationwide: wave ? false : nationwide, state: wave ? "SP" : nationwide ? "TODOS" : undefined, limit: wave ? Math.max(limit, 150) : limit, wave },
+        { segment, city: wave ? "São Paulo, Campinas, Araçatuba, Andradina" : city, nationwide: wave ? false : nationwide, state: wave ? "SP" : nationwide ? "TODOS" : undefined, limit: wave ? Math.max(limit, 150) : limit, wave, noWhatsAppAi: intent.noWhatsAppAi },
         `Varredura Maps: ${segment} · ${wave ? "SP + interior" : nationwide ? "Brasil inteiro" : city}`,
         [
           { label: "Nicho", value: wave ? "Vários (saúde e serviços locais)" : segment },
           { label: "Escopo", value: wave ? "São Paulo, Campinas, Araçatuba, Andradina e próximas" : nationwide ? "Brasil inteiro" : city },
-          { label: "Critério", value: "Sem site + WhatsApp celular válido · sem inventar número" },
+          { label: "Critério", value: intent.noWhatsAppAi ? "WhatsApp válido · sem rastros públicos de IA/chatbot no atendimento (heurística)" : "Sem site + WhatsApp celular válido · sem inventar número" },
           { label: "Roteamento", value: "Marina / Camila → Rafael → André" },
           { label: "WhatsApp", value: "Evolution helena · +55 18 98101-1186 · intervalo 8s" },
         ],
         wave
           ? `Onda de vendas: até 150 WhatsApp reais em São Paulo, Campinas, Araçatuba, Andradina e redor. Marina cuida de saúde; Camila de comércio e serviço. Só fala preço se perguntarem.`
-          : `Orquestrei a varredura de ${segment} (${nationwide ? "Brasil inteiro" : city}). Só entram leads sem site e com WhatsApp. O Time Comercial dispara na instância helena.`
+          : `Orquestrei a varredura de ${segment} (${nationwide ? "Brasil inteiro" : city}). ${intent.noWhatsAppAi ? "Filtro: WhatsApp e sem sinais de IA/atendente virtual (não dá para abrir o WhatsApp deles; usamos site + mapa)." : "Só entram leads sem site e com WhatsApp."} O Time Comercial dispara na instância helena.`
       ),
     ];
   }
