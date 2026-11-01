@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact,
+  Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact, FileText,
   CreditCard, Gauge, Inbox, KeyRound, KanbanSquare, ListChecks, Lock, MessageSquareQuote, Network, Receipt,
   Radar, Repeat, Rocket, Scale, Settings2, ShieldCheck, Sparkles, Users, UsersRound, Webhook, Workflow,
   Wrench, Zap, Cpu, MessageCircle, List, Globe,
@@ -20,6 +20,7 @@ export interface NavGroup {
 export const NAV_TOP: NavItem[] = [
   { label: "Visão geral", to: "/visao-geral", icon: Gauge },
   { label: "Operações", to: "/operacoes", icon: Rocket },
+  { label: "Central RPA", to: "/rpa", icon: Workflow },
 ];
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -32,6 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { label: "Pipeline", to: "/crm/pipeline", icon: KanbanSquare },
     { label: "Contatos", to: "/crm/contatos", icon: Contact },
     { label: "Empresas", to: "/crm/empresas", icon: Building2 },
+    { label: "Dossiê", to: "/crm/dossie", icon: FileText },
     { label: "Tarefas", to: "/crm/tarefas", icon: ListChecks },
   ] },
   { label: "Prospecção", icon: Zap, items: [
@@ -80,6 +82,7 @@ export const NAV_SETTINGS: NavGroup = {
     { label: "Segurança", to: "/configuracoes/seguranca", icon: Lock },
     { label: "LGPD", to: "/configuracoes/lgpd", icon: Scale },
     { label: "Billing", to: "/configuracoes/billing", icon: CreditCard },
+    { label: "Consumo", to: "/configuracoes/consumo", icon: Gauge },
   ],
 };
 
@@ -97,10 +100,18 @@ export function navGroupsFor(isAdmin: boolean, allowDev = isAdmin): NavGroup[] {
   });
 }
 
+export function integrationNavFor(isAdmin: boolean): NavGroup[] {
+  return NAV_GROUPS_2.map((g) => ({
+    ...g,
+    items: isAdmin ? g.items : g.items.filter((i) => i.to === "/integracoes/whatsapp"),
+  }));
+}
+
 export function allNavFor(isAdmin: boolean, allowDev = isAdmin): NavItem[] {
   return ALL_NAV.filter((n) => {
     if (!isAdmin && n.to === "/configuracoes/usuarios") return false;
     if (!allowDev && n.to === "/ia/previews") return false;
+    if (!isAdmin && (n.to === "/integracoes/webhooks" || n.to === "/integracoes/api" || n.to === "/integracoes/provedores")) return false;
     return true;
   });
 }

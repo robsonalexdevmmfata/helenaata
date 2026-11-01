@@ -16,7 +16,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { useDB, update, uid, nowISO } from "@/lib/store";
+import { getDB, useDB, update, uid, nowISO } from "@/lib/store";
+import { userAction } from "@/lib/helena/engine";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
@@ -68,11 +69,17 @@ function LgpdPage() {
   };
 
   const handleComplete = (id: string) => {
+    const req = (getDB().lgpdRequests ?? []).find((x) => x.id === id);
+    const contact = req?.contactEmail
+      ? getDB().contacts.find((c) => c.email.toLowerCase() === req.contactEmail!.toLowerCase() || c.name === req.contactName)
+      : undefined;
+    if (contact && req?.type === "exportacao") userAction("lgpd.export_contact", { contactId: contact.id });
+    if (contact && (req?.type === "exclusao" || req?.type === "anonimizacao")) userAction("lgpd.erase_contact", { contactId: contact.id });
     update((d) => {
       const r = (d.lgpdRequests ?? []).find((x) => x.id === id);
       if (r) { r.status = "concluida"; r.completedAt = nowISO(); }
     });
-    toast.success("Solicitação marcada como concluída.");
+    toast.success("Solicitação executada e marcada como concluída.");
   };
 
   return (
@@ -82,9 +89,17 @@ function LgpdPage() {
         title="LGPD — Privacidade"
         description="Gerencie consentimento, solicitações de titulares e políticas de retenção de dados."
         actions={
-          <Button className="gap-2" onClick={() => setOpen(true)}>
-            <Plus className="size-4" /> Nova Solicitação
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => {
+              const r = userAction("workspace.export", {});
+              r.ok ? toast.success(r.message) : toast.error(r.message);
+            }}>
+              <Download className="size-4" /> Backup JSON
+            </Button>
+            <Button className="gap-2" onClick={() => setOpen(true)}>
+              <Plus className="size-4" /> Nova Solicitação
+            </Button>
+          </div>
         }
       />
 

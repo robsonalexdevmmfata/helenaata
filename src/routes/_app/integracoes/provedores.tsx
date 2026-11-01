@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { isPlatformAdmin } from "@/lib/saas";
 import {
   AlertTriangle, CheckCircle2, Cpu, ExternalLink, RefreshCw, XCircle,
 } from "lucide-react";
@@ -8,12 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { useDB, update } from "@/lib/store";
+import { currentUser, getDB, useDB, update } from "@/lib/store";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/integracoes/provedores")({
+  beforeLoad: () => {
+    if (!isPlatformAdmin(currentUser(getDB()))) throw redirect({ to: "/integracoes/whatsapp" });
+  },
   head: () => pageHead("Provedores IA", "Gerencie as chaves de API dos provedores de modelos de linguagem."),
   component: ProvedoresPage,
 });

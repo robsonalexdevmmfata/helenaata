@@ -1,6 +1,24 @@
 # Próximas melhorias — Helena
 
-Documento de **evolução planejada**. Nada disto está pronto para vender como se já rodasse 24h sozinho.
+## Mapa (nov/2026) — um cérebro, sem teatro
+
+| Frente | Estado | Onde |
+| --- | --- | --- |
+| Dossiê + NBA + evidência | Implementado | `intelligence.ts`, CRM Dossiê |
+| Adequação ao catálogo + simulador | Implementado | `decision.ts` — só `serviceOffers` ativos |
+| Confiança / contradição / qualidade | Implementado | dossiê |
+| Memória de decisão | Implementado | `commercialDecisions` + SQL `004` |
+| Recuperação / saúde / consumo | Implementado | Command Center, `/configuracoes/consumo` |
+| Sala de negociação (assinante) | Implementado | `/crm/sala/:id` — aceite no CRM, não e-sign |
+| Copilot de cadastro | Implementado | paleta + `intelligence.ask` |
+| Deal Room público, portal do cliente, e-sign, pagamentos, Learning Loop entre contas | Não | falta backend/consentimento; não fingir |
+| Mission Control 20 clientes, Flow Builder, Sales Simulator | Não | reutiliza missão/RPA existentes; sem segundo motor |
+
+SQL: `database/004_intelligence_3.sql` no Supabase da Info Tech. O app continua no store + dual-write do ciclo já existente. Impulso R$ 70 / Máquina R$ 140 / cota 30→150 inalterados.
+
+---
+
+Documento de evolução. A Central RPA, o radar, o follow-up, a proposta com aprovação, o relatório e a primeira missão já entram no painel — o expediente **ainda começa** quando alguém agenda ou dispara. Não vender como operação 24h sem intervenção.
 
 Na live: mostrar o que já executa (encontrar → diagnosticar → prévia → WhatsApp). O resto entra como roadmap.
 

@@ -11,6 +11,7 @@ import { currentUser, useDB } from "@/lib/store";
 import {
   assignPlan, caktoCheckoutUrl, CAKTO_NOTE, formatTrialLabel, isPlatformAdmin, mustSubscribe, SAAS_PLANS, submitWhiteLabelQuote,
 } from "@/lib/saas";
+import { ActivateMaquinaButton } from "@/components/saas/ActivateMaquinaButton";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/planos")({
@@ -46,13 +47,23 @@ function PlanosPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="SaaS"
-        title={blocked ? "Seu trial acabou. Escolha como continuar." : "Planos"}
+        title={blocked ? "Trial encerrado. Assine o plano 1 ou o plano 2." : "Planos"}
         description={blocked
-          ? "A máquina parou de prospectar até haver um plano. Impulso tem 2 dias de freemium na Cakto; Máquina cobra na hora. White-label é orçamento."
+          ? "A Helena travou a operação. Só segue quem assinar Impulso (plano 1) ou Máquina (plano 2, Time Dev). White-label é orçamento depois."
           : `${formatTrialLabel(user)}. ${CAKTO_NOTE}`}
       />
-      <div className="grid gap-4 lg:grid-cols-3">
-        {SAAS_PLANS.map((p) => (
+      {blocked && (
+        <div className="flex flex-wrap gap-3 rounded-xl border border-primary/30 bg-primary/8 p-4">
+          <ActivateMaquinaButton user={user} />
+          <Button asChild variant="outline">
+            <a href={caktoCheckoutUrl("impulso", { name: user.name, email: user.email, phone: user.phone })}>
+              Assinar Impulso (plano 1)
+            </a>
+          </Button>
+        </div>
+      )}
+      <div className={`grid gap-4 ${blocked ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
+        {SAAS_PLANS.filter((p) => !blocked || !p.quote).map((p) => (
           <div key={p.id} className={`flex flex-col rounded-xl border p-5 ${p.highlight ? "border-primary bg-primary/5" : "bg-card"}`}>
             <div className="text-xs uppercase tracking-wider text-muted-foreground">{p.name}</div>
             <div className="mt-1 font-serif text-3xl">{p.priceLabel}</div>
@@ -68,7 +79,7 @@ function PlanosPage() {
               <div className="mt-5 space-y-2">
                 <Button className="w-full" asChild>
                   <a href={caktoCheckoutUrl(p.id as "impulso" | "maquina", { name: user.name, email: user.email, phone: user.phone })}>
-                    {p.id === "impulso" ? "Assinar Impulso (2 dias grátis)" : "Assinar no Cakto"}
+                    {p.id === "impulso" ? "Assinar Impulso (plano 1)" : "Ativar plano Máquina (plano 2)"}
                   </a>
                 </Button>
                 {isPlatformAdmin(user) && (

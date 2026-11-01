@@ -162,6 +162,12 @@ export async function sendToHelena(text: string) {
           groqRes.text || "Reunião gravada na Agenda compartilhada e vinculada ao lead.",
           { type: "result", ok: res.ok, title: "Agenda compartilhada", detail: res.message }
         );
+      } else if (tc.name === "leads_diagnose") {
+        const res = runTool("leads.diagnose", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        pushHelenaMessage(
+          groqRes.text || res.message,
+          { type: "result", ok: res.ok, title: "Diagnóstico do lead", detail: res.message }
+        );
       } else if (tc.name === "sales_handle_objection") {
         const res = runTool("sales.handle_objection", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
         pushHelenaMessage(

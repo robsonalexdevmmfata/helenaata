@@ -4,7 +4,9 @@ import { planAllowsDevTeam } from "@/lib/seed";
 
 export const TRIAL_DAYS = 2;
 export const TRIAL_DAILY_PROSPECTS = 30;
-export const CAKTO_NOTE = "Pix e cartão na Cakto. Impulso já inclui 2 dias de freemium; depois a assinatura entra sozinha.";
+/** Teto do usuário comum (Impulso e Máquina). Freemium fica em 30. */
+export const PAID_DAILY_PROSPECTS = 150;
+export const CAKTO_NOTE = "Pix e cartão na Cakto. Impulso (plano 1) ou Máquina (plano 2, Time Dev). Sem plano depois do trial a conta trava.";
 
 export const CAKTO_CHECKOUT = {
   impulso: "https://pay.cakto.com.br/kmb4vg8_1261686",
@@ -31,12 +33,12 @@ export const SAAS_PLANS: SaasPlan[] = [
     price: 70,
     priceLabel: "R$ 70,00/mês",
     tagline: "Para quem vai validar a máquina nesta semana.",
-    dailyProspects: 30,
+    dailyProspects: 150,
     quote: false,
     checkoutUrl: CAKTO_CHECKOUT.impulso,
     features: [
-      "Trial de 2 dias incluso no cadastro",
-      "30 abordagens de prospecção por dia",
+      "Trial de 2 dias incluso no cadastro (30 leads/dia no freemium)",
+      "Até 150 abordagens de prospecção por dia após assinar",
       "Helena + Time Comercial no WhatsApp",
       "CRM, inbox e agenda",
       "Trilha de entrada e despedida da Helena",
@@ -53,8 +55,8 @@ export const SAAS_PLANS: SaasPlan[] = [
     checkoutUrl: CAKTO_CHECKOUT.maquina,
     highlight: true,
     features: [
-      "150 abordagens de prospecção por dia",
-      "Time Dev IA + Comercial + Closer",
+      "Até 150 abordagens por dia (mesmo teto do Impulso)",
+      "Time Dev IA + Comercial + Closer — a cota não sobe só de clicar em Ativar",
       "Prévia de site e cardápio com link no WhatsApp",
       "Objeções, Pix e reunião na Agenda",
       "Automações e analytics",
@@ -119,17 +121,26 @@ export function planOf(user?: User | null): SaasPlan | undefined {
   return SAAS_PLANS.find((p) => p.id === user.planId);
 }
 
+export function isFreemium(user?: User | null) {
+  if (!user || isPlatformAdmin(user)) return false;
+  if (user.lifetimeAccess) return false;
+  if (user.planId === "impulso" || user.planId === "maquina" || user.planId === "whitelabel") return false;
+  return true;
+}
+
 export function dailyLimitFor(user?: User | null) {
   if (!user || isPlatformAdmin(user)) return 10_000;
-  if (user.planId === "maquina") return 150;
+  if (user.dailyProspectLimit != null && user.dailyProspectLimit > 0) return user.dailyProspectLimit;
   if (user.planId === "whitelabel") return 9999;
+  if (user.planId === "impulso" || user.planId === "maquina" || user.lifetimeAccess) return PAID_DAILY_PROSPECTS;
   return TRIAL_DAILY_PROSPECTS;
 }
 
 export function trialDeadlineMs(user?: User | null) {
   if (!user) return 0;
-  if (user.createdAt) return new Date(user.createdAt).getTime() + TRIAL_DAYS * 86_400_000;
+  if (user.lifetimeAccess) return Date.now() + 100 * 365 * 86_400_000;
   if (user.trialEndsAt) return new Date(user.trialEndsAt).getTime();
+  if (user.createdAt) return new Date(user.createdAt).getTime() + TRIAL_DAYS * 86_400_000;
   return 0;
 }
 
@@ -148,8 +159,15 @@ export function isTrialActive(user?: User | null) {
 export function mustSubscribe(user?: User | null) {
   if (!user || isPlatformAdmin(user)) return false;
   if (user.status !== "ativo") return true;
-  if (user.planId === "impulso" || user.planId === "maquina" || user.planId === "whitelabel") return false;
+  if (user.lifetimeAccess) return false;
+  if (user.planId === "impulso" || user.planId === "maquina") return false;
+  if (user.planId === "whitelabel") return false;
   return trialMsLeft(user) <= 0;
+}
+
+export function wantsDevTeamUpgrade(user?: User | null) {
+  if (!user || isPlatformAdmin(user)) return false;
+  return !canUseDevTeam(user);
 }
 
 export function todayKey(now = new Date()) {
@@ -276,10 +294,38 @@ export function assignPlan(userId: string, planId: SaasPlanId) {
 }
 
 export function extendTrial(userId: string, days = TRIAL_DAYS) {
+  grantAccessDays(userId, days);
+}
+
+/** 2 ou 7 dias a partir de agora (ou do fim atual, o que for maior). Não duplica se o patch rodar duas vezes. */
+export function grantAccessDays(userId: string, days: number) {
+  let end = "";
   patchUserEverywhere(userId, (u) => {
-    u.planId = "trial";
-    u.trialEndsAt = trialEndsAtFrom();
+    if (u.id === "u1") return;
     u.status = "ativo";
+    u.lifetimeAccess = false;
+    if (!u.planId || u.planId === "trial") u.planId = "trial";
+    if (!end) {
+      const start = Math.max(Date.now(), u.trialEndsAt ? new Date(u.trialEndsAt).getTime() : 0);
+      end = new Date(start + days * 86_400_000).toISOString();
+    }
+    u.trialEndsAt = end;
+  });
+}
+
+export function grantLifetimeAccess(userId: string) {
+  patchUserEverywhere(userId, (u) => {
+    if (u.id === "u1") return;
+    u.status = "ativo";
+    u.lifetimeAccess = true;
+  });
+}
+
+export function setDailyLeadQuota(userId: string, limit: number) {
+  const n = Math.max(1, Math.min(9_999, Math.floor(limit)));
+  patchUserEverywhere(userId, (u) => {
+    if (u.id === "u1") return;
+    u.dailyProspectLimit = n;
   });
 }
 
@@ -311,6 +357,7 @@ export function submitWhiteLabelQuote(input: { name: string; email: string; comp
 
 export function formatTrialLabel(user?: User | null) {
   if (!user || isPlatformAdmin(user)) return "";
+  if (user.lifetimeAccess) return "Acesso vitalício";
   if (user.planId && user.planId !== "trial") {
     const p = planOf(user);
     return p ? `Plano ${p.name}` : "Plano ativo";

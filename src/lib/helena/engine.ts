@@ -27,7 +27,19 @@ import {
   computeDynamicCadence,
 } from "./sales-brain";
 import { runPresencePipeline } from "@/lib/dev/presence";
-import { canUseDevTeam, reserveProspects } from "@/lib/saas";
+import { canUseDevTeam, grantAccessDays, grantLifetimeAccess, isPlatformAdmin, mustSubscribe, reserveProspects, setDailyLeadQuota } from "@/lib/saas";
+import { evaluateOutbound, isOptedOut } from "@/lib/whatsapp/antiban";
+import { findOrDraftConversation, pickRpaLeads, rpaOpening } from "@/lib/rpa/shift";
+import { enqueueRemoteSend } from "@/lib/rpa/enqueue";
+import {
+  claimNextJob, draftProposal, enqueueRpa, markJob, maybeEnqueueDailyReport, maybeEnqueueRadar,
+  maybeEnqueueSilenceFollowups, retryRpaJob, scheduleFollowup, upsertRadarSchedule, writeDailyReport,
+} from "@/lib/rpa/center";
+import { downloadWorkspaceBackup, exportContactBundle } from "@/lib/workspace/backup";
+import { diagnoseLead, setCycleTag, type CycleState } from "@/lib/helena/diagnose";
+import { buildDossier, detectBuyIntent } from "@/lib/helena/intelligence";
+import { copilotAnswer, recordDecision } from "@/lib/helena/decision";
+import { scheduleCyclePush } from "@/lib/persist/cycle";
 
 export interface ToolContext {
   actor: string;
@@ -65,6 +77,48 @@ function logExecution(e: Omit<Execution, "id" | "organizationId" | "at">) {
     db.executions.unshift({ id: uid("ex_"), organizationId: db.organization.id, at: nowISO(), ...e });
     if (db.executions.length > 400) db.executions.length = 400;
   });
+  scheduleCyclePush();
+}
+
+function stampCycle(contactId: string, state: CycleState) {
+  update((d) => {
+    const c = d.contacts.find((x) => x.id === contactId);
+    if (c) c.tags = setCycleTag(c.tags, state);
+  });
+}
+
+function applyDiagnosisToContact(contactId: string) {
+  const db = getDB();
+  const contact = db.contacts.find((c) => c.id === contactId);
+  if (!contact) return fail("contato não encontrado");
+  const company = db.companies.find((c) => c.id === contact.companyId);
+  const dx = diagnoseLead({
+    name: company?.name || contact.name,
+    segment: company?.segment,
+    city: company?.city,
+    website: company?.website,
+    tags: contact.tags,
+    hasWhatsApp: Boolean(contact.phone),
+    hasMenu: (contact.tags || []).includes("#com-cardapio"),
+  });
+  update((d) => {
+    const c = d.contacts.find((x) => x.id === contactId);
+    if (!c) return;
+    c.score = dx.score;
+    const codes = dx.findings.map((f) => `#dx-${f.code}`);
+    c.tags = setCycleTag([...new Set([...(c.tags || []).filter((t) => !t.startsWith("#dx-")), ...codes])], "diagnosticado");
+    d.activities.unshift({
+      id: uid("ac_dx_"),
+      organizationId: d.organization.id,
+      contactId,
+      type: "ia",
+      text: `Diagnóstico Helena ${dx.score}/100 (${dx.opportunity}): ${dx.recommend_pitch}`,
+      actor: "Helena",
+      createdAt: nowISO(),
+    });
+  });
+  const dossier = buildDossier(contactId);
+  return ok(`Diagnóstico ${dx.score}/100 · ${dx.opportunity}`, { contactId, dossierId: dossier?.id, ...dx });
 }
 
 export function pushHelenaMessage(text: string, card?: HelenaCard, role: HelenaMessage["role"] = "helena") {
@@ -84,6 +138,7 @@ export function updateHelenaCard(messageId: string, card: HelenaCard) {
 }
 
 function connectionCheck(db: DB, connectionId?: string): string | null {
+  if (mustSubscribe(currentUser(db))) return "WhatsApp pausado: assine Impulso ou Máquina";
   const conn = db.connections.find((x) => x.id === connectionId) ?? getAgencyConnection(db);
   if (!connectionId && !conn) return null;
   const c = conn;
@@ -345,8 +400,12 @@ const handlers: Record<string, Handler> = {
     if (!conv) return fail("conversa não encontrada");
     const problem = conv.channel === "whatsapp" ? connectionCheck(db, conv.connectionId) : null;
     if (problem) return fail(problem);
-    if (ctx.actorType !== "user" && shouldHoldOutbound(conv)) {
-      return fail("este número já recebeu abordagem; esperando o cliente responder para não insistir");
+    const contact = db.contacts.find((c) => c.id === conv.contactId);
+    const gate = evaluateOutbound({ db, conv, contact });
+    if (!gate.ok) return fail(gate.message);
+    if (conv.flow?.origin === "prospeccao" || p.countAsProspect) {
+      const quota = reserveProspects(1);
+      if (!quota.ok) return fail(quota.message);
     }
 
     // Limpa emojis e markdown do texto que vai para o WhatsApp
@@ -382,7 +441,11 @@ const handlers: Record<string, Handler> = {
 
       // Atualiza métricas do contato
       const ct = d.contacts.find((x) => x.id === c.contactId);
-      if (ct) ct.lastContactAt = nowISO();
+      if (ct) {
+        ct.lastContactAt = nowISO();
+        if (/vercel\.app|\/v\//.test(outText)) ct.tags = setCycleTag(ct.tags, "link_enviado");
+        else if (!(ct.tags || []).some((t) => t.startsWith("#ciclo-"))) ct.tags = setCycleTag(ct.tags, "encontrado");
+      }
       const wa = d.connections.find((x) => x.id === c.connectionId);
       if (wa && c.channel === "whatsapp") wa.sentToday += 1;
 
@@ -439,6 +502,10 @@ const handlers: Record<string, Handler> = {
         ? conv.remoteJid.replace(/@.*/, "")
         : contactPhone;
       if (sendTo) {
+        const delay = Number(p.delayMs);
+        if (delay > 0 && typeof window !== "undefined") {
+          void enqueueRemoteSend({ number: sendTo, text: outText, delayMs: delay, instance: getEvolutionConfigUI().instance });
+        }
         evolutionSendText(sendTo, outText)
           .then((res) => {
             if (!res.ok) {
@@ -598,6 +665,9 @@ const handlers: Record<string, Handler> = {
     const db = getDB();
     const camp = db.campaigns.find((c) => c.id === p.campaignId);
     if (!camp) return fail("campanha não encontrada");
+    if (mustSubscribe(currentUser(db))) return fail("Plano vencido. WhatsApp em massa só com Impulso ou Máquina.");
+    const quota = reserveProspects(Math.min(camp.total || 1, 20));
+    if (!quota.ok) return fail(quota.message);
     const problem = connectionCheck(db, camp.connectionId);
     if (problem) {
       update((d) => {
@@ -1014,7 +1084,7 @@ const handlers: Record<string, Handler> = {
           phone,
           companyId: compId,
           title: tmpl.role,
-          tags: ["#sem-site", "Google Maps", segment.toLowerCase()],
+          tags: ["#sem-site", "Google Maps", segment.toLowerCase(), "#ciclo-encontrado"],
           source: "Prospecção",
           ownerId: ownerSdr.id,
           status: "lead",
@@ -1121,10 +1191,17 @@ const handlers: Record<string, Handler> = {
       }
     }
 
+    for (const cid of createdContactIds) applyDiagnosisToContact(cid);
+
     return ok(
       `Helena orquestrou a varredura: ${limit} empresas em ${city} SEM SITE. Leads no CRM (#sem-site) e abordagens individuais delegadas ao Time Comercial (script Robson Alex).`,
       { count: limit, companyIds: createdCompanyIds, contactIds: createdContactIds, dealIds: createdDealIds }
     );
+  },
+  "leads.diagnose": (p) => {
+    const id = String(p.contactId || "");
+    if (!id) return fail("informe contactId");
+    return applyDiagnosisToContact(id);
   },
   "dev.build_presence": (p) => {
     const user = currentUser(getDB());
@@ -1221,11 +1298,15 @@ const handlers: Record<string, Handler> = {
         organizationId: d.organization.id,
         contactId: contact.id,
         type: "ia",
-        text: `⚡ HELENA contornou objeção "${objDef.title}". Ação: ${objDef.actionDescription}`,
+        text: `⚡ HELENA contornou objeção "${objDef.title}". Ação: ${objDef.actionDescription}${objDef.id === "obj_caro" ? " · memória preco_alto" : ""}`,
         actor: ctx.actor,
         createdAt: nowISO(),
       });
+      const ct = d.contacts.find((x) => x.id === contact.id);
+      if (ct) ct.tags = setCycleTag(ct.tags, "respondeu");
     });
+    const kind = objDef.id === "obj_caro" ? "preco_alto" : objDef.actionType === "reschedule_task" ? "pedido_retorno" : "objecao";
+    scheduleFollowup(getDB().contacts.find((c) => c.id === contact.id)!, kind, objDef.title);
 
     return ok(`Objeção contornada com sucesso para ${contact.name}. Resposta e ação estratégica aplicadas.`, {
       objectionId: objDef.id,
@@ -1393,7 +1474,384 @@ const handlers: Record<string, Handler> = {
       reason,
     });
   },
+  "rpa.run_shift": (p, ctx) => {
+    const db = getDB();
+    const user = currentUser(db);
+    if (mustSubscribe(user)) return fail("Assine Impulso ou Máquina para o expediente RPA voltar.");
+    const segment = String(p.segment || p.nicho || "").trim();
+    const city = String(p.city || p.cidade || user.companyName || "Brasil");
+    if (segment) {
+      runTool("prospect.scan_maps", { segment, city, limit: Math.min(Number(p.limit) || 8, 20), simulate: p.simulate === true }, ctx);
+    }
+    const after = getDB();
+    const leads = pickRpaLeads(after, Number(p.maxLeads) || 3);
+    if (!leads.length) return fail("Nenhum lead com WhatsApp para o expediente. Rode a varredura Maps primeiro.");
+    const steps: string[] = [];
+    for (const lead of leads) {
+      let conv = findOrDraftConversation(getDB(), lead);
+      if (!conv) {
+        const id = uid("cv_rpa_");
+        update((d) => {
+          d.conversations.unshift({
+            id,
+            organizationId: d.organization.id,
+            contactId: lead.id,
+            channel: "whatsapp",
+            connectionId: d.connections[0]?.id,
+            status: "aberta",
+            handlerType: "agent",
+            handlerId: d.agents.find((a) => a.role === "SDR")?.id || d.currentUserId,
+            unread: 0,
+            sentiment: "neutro",
+            lastMessageAt: nowISO(),
+            messages: [],
+            flow: {
+              origin: "prospeccao",
+              state: "abordado",
+              lastOutboundAt: nowISO(),
+              closerAttempts: 0,
+            },
+          });
+        });
+        conv = getDB().conversations.find((c) => c.id === id);
+      }
+      if (!conv) continue;
+      const company = getDB().companies.find((c) => c.id === lead.companyId);
+      const dx = applyDiagnosisToContact(lead.id);
+      const pitch = dx.ok && dx.data?.recommend_pitch ? String(dx.data.recommend_pitch) : rpaOpening(lead, company?.name);
+      const sent = runTool("messages.send", {
+        conversationId: conv.id,
+        text: String(p.text || pitch),
+        countAsProspect: true,
+        delayMs: steps.length * 40_000,
+      }, ctx);
+      steps.push(`${lead.name}: ${sent.ok ? "WhatsApp na fila" : sent.message}`);
+    }
+    const first = leads[0];
+    if (first && p.agendar !== false) {
+      const when = String(p.dataHora || new Date(Date.now() + 26 * 3600_000).toISOString());
+      const booked = runTool("calendar.agendar_reuniao", { leadId: first.id, dataHora: when, resumo: "Reunião 10 min · expediente RPA" }, ctx);
+      if (booked.ok) stampCycle(first.id, "reuniao");
+      steps.push(`Agenda: ${booked.message}`);
+    }
+    if (first && p.checkout === true) {
+      const pix = runTool("sales.generate_checkout_pix", { contactId: first.id }, ctx);
+      steps.push(`Pix: ${pix.message}`);
+    }
+    if (p.site === true) {
+      if (!canUseDevTeam(user)) steps.push("Site: só no plano Máquina");
+      else {
+        const site = runTool("dev.build_presence", { segment: segment || "negócio local", city }, ctx);
+        steps.push(`Time Dev: ${site.message}`);
+      }
+    }
+    return ok(`Expediente RPA: ${steps.length} ações.`, { steps, leadIds: leads.map((l) => l.id) });
+  },
+  "lgpd.log_access": (p, ctx) => {
+    const contact = getDB().contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+    update((d) => {
+      d.activities.unshift({
+        id: uid("ac_lgpd_"),
+        organizationId: d.organization.id,
+        contactId: contact.id,
+        type: "ia",
+        text: `LGPD · ${ctx.actor} abriu o cadastro de ${contact.name}`,
+        actor: ctx.actor,
+        createdAt: nowISO(),
+      });
+    });
+    return ok("Acesso registrado");
+  },
+  "lgpd.export_contact": (p) => {
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+    const bundle = exportContactBundle(db, contact);
+    if (typeof window !== "undefined") {
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lgpd-${contact.id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    return ok(`Exportação de ${contact.name} gerada.`, { contactId: contact.id });
+  },
+  "lgpd.erase_contact": (p, ctx) => {
+    const db = getDB();
+    const contact = db.contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+    update((d) => {
+      const c = d.contacts.find((x) => x.id === contact.id);
+      if (!c) return;
+      c.name = "Titular removido";
+      c.email = "";
+      c.phone = "";
+      c.tags = ["lgpd-exclusao"];
+      c.consent = false;
+      c.status = "inativo";
+      d.conversations.forEach((cv) => {
+        if (cv.contactId !== contact.id) return;
+        cv.messages = [];
+        cv.status = "resolvida";
+      });
+      d.activities.unshift({
+        id: uid("ac_erase_"),
+        organizationId: d.organization.id,
+        contactId: contact.id,
+        type: "ia",
+        text: `LGPD · exclusão executada por ${ctx.actor}`,
+        actor: ctx.actor,
+        createdAt: nowISO(),
+      });
+    });
+    return ok(`Dados de ${contact.name} anonimizados.`);
+  },
+  "workspace.export": () => {
+    if (typeof window !== "undefined") downloadWorkspaceBackup();
+    return ok("Backup JSON baixado. Guarde até o Postgres existir.");
+  },
+  "rpa.retry_job": (p) => {
+    const r = retryRpaJob(String(p.jobId || p.id || ""));
+    return r.ok ? ok(r.message) : fail(r.message);
+  },
+  "rpa.radar_schedule": (p) => {
+    const segment = String(p.segment || p.nicho || "").trim();
+    const city = String(p.city || p.cidade || "").trim();
+    if (!segment || !city) return fail("informe nicho e cidade");
+    const sch = upsertRadarSchedule({
+      segment,
+      city,
+      hour: p.hour != null ? Number(p.hour) : 9,
+      limit: Math.min(Number(p.limit) || 8, 20),
+    });
+    enqueueRpa({
+      kind: "scan_maps",
+      idempotencyKey: `radar:${getDB().organization.id}:${new Date().toISOString().slice(0, 10)}`,
+      payload: { segment: sch.segment, city: sch.city, limit: sch.limit, simulate: p.simulate === true },
+    });
+    return ok(`Radar ${sch.segment} em ${sch.city} às ${sch.hour}h. Primeira varredura na fila.`, { id: sch.id });
+  },
+  "rpa.followup_schedule": (p) => {
+    const contact = getDB().contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+    if (isOptedOut(contact)) return fail("opt-out / sem consentimento — não reenfileira");
+    const kind = p.kind === "preco_alto" || p.kind === "pedido_retorno" || p.kind === "objecao" ? p.kind : "sem_resposta";
+    const job = scheduleFollowup(contact, kind, String(p.fact || "follow-up"));
+    return job ? ok(`Follow-up ${kind} em ${new Date(job.runAt).toLocaleString("pt-BR")}.`, { jobId: job.id }) : fail("não agendou");
+  },
+  "sales.draft_proposal": (p) => {
+    const contact = getDB().contacts.find((c) => c.id === p.contactId);
+    if (!contact) return fail("contato não encontrado");
+    buildDossier(contact.id);
+    const row = draftProposal(contact);
+    update((d) => {
+      const dos = d.commercialDossiers?.find((x) => x.contactId === contact.id);
+      if (dos) dos.proposalId = row.id;
+    });
+    return ok(`Proposta v${row.version} em rascunho: ${row.title} (${row.offer}). Envio só com aprovação.`, { proposalId: row.id });
+  },
+  "sales.send_proposal": (p, ctx) => {
+    const db = getDB();
+    const proposal = db.commercialProposals?.find((x) => x.id === p.proposalId);
+    if (!proposal) return fail("proposta não encontrada");
+    if (proposal.status === "enviada") return fail("proposta já enviada (idempotente)");
+    if (!ctx.approvedBy) {
+      requestApproval({
+        title: `Enviar proposta · ${proposal.title}`,
+        description: "Envio no WhatsApp do lead. Sem disparo em massa.",
+        details: [
+          { label: "Oferta", value: proposal.offer },
+          { label: "Valor", value: String(proposal.amount) },
+        ],
+        tool: "sales.send_proposal",
+        params: { proposalId: proposal.id },
+        risk: "alto",
+        requestedBy: ctx.requestedBy ?? ctx.actor,
+      });
+      update((d) => {
+        const x = d.commercialProposals.find((pr) => pr.id === proposal.id);
+        if (x) x.status = "aguardando";
+      });
+      return ok("Proposta na fila de aprovação. Nada foi enviado.");
+    }
+    const contact = db.contacts.find((c) => c.id === proposal.contactId);
+    if (!contact) return fail("contato não encontrado");
+    if (isOptedOut(contact)) return fail("opt-out — não envia proposta");
+    let conv = findOrDraftConversation(db, contact);
+    if (!conv) return fail("sem conversa para enviar");
+    const sent = runTool("messages.send", {
+      conversationId: conv.id,
+      text: `${proposal.benefits}\n\nEscopo: ${proposal.scope}. Valor de referência: ${proposal.amount}.`,
+    }, ctx);
+    if (sent.ok) {
+      update((d) => {
+        const x = d.commercialProposals.find((pr) => pr.id === proposal.id);
+        if (x) {
+          x.status = "enviada";
+          x.sentAt = nowISO();
+        }
+      });
+    }
+    return sent.ok ? ok(`Proposta enviada para ${contact.name}.`) : fail(sent.message);
+  },
+  "rpa.daily_report": () => {
+    const row = writeDailyReport();
+    return ok(row.body, { reportId: row.id, stats: row.stats });
+  },
+  "rpa.first_mission": (p, ctx) => {
+    const segment = String(p.segment || p.nicho || "").trim();
+    const city = String(p.city || p.cidade || "").trim();
+    if (!segment || !city) return fail("informe nicho e cidade");
+    update((d) => {
+      const u = d.users.find((x) => x.id === d.currentUserId);
+      if (u) {
+        u.prospectSegment = segment;
+        u.prospectCity = city;
+      }
+    });
+    runTool("rpa.radar_schedule", { segment, city, limit: Math.min(Number(p.limit) || 5, 10), simulate: p.simulate === true }, ctx);
+    const shift = runTool("rpa.run_shift", { nicho: segment, cidade: city, maxLeads: 2, agendar: false, checkout: false, site: false, simulate: p.simulate === true }, ctx);
+    return ok(`Primeira missão: ${segment} em ${city}. ${shift.message}`);
+  },
+  "intelligence.build_dossier": (p) => {
+    const id = String(p.contactId || "");
+    if (!id) return fail("informe contactId");
+    const row = buildDossier(id, {
+      informedTicket: p.ticket != null ? Number(p.ticket) : undefined,
+      informedMonthly: p.monthly != null ? Number(p.monthly) : undefined,
+    });
+    if (!row) return fail("contato não encontrado");
+    return ok(`Dossiê ${row.nichePlay} · oferta ${row.offer}. ROI em 3 cenários (estimativa).`, { dossierId: row.id, intent: row.intent });
+  },
+  "leads.detect_intent": (p) => {
+    const id = String(p.contactId || "");
+    if (!id) return fail("informe contactId");
+    const intent = detectBuyIntent(getDB(), id);
+    const row = buildDossier(id);
+    return ok(`Intenção ${intent} (só o que o contato escreveu).`, { intent, dossierId: row?.id });
+  },
+  "admin.grant_access": (p) => {
+    if (!isPlatformAdmin(currentUser(getDB()))) return fail("só o admin da plataforma libera acesso");
+    const userId = String(p.userId || "");
+    if (!userId) return fail("informe userId");
+    if (p.lifetime === true || p.days === "vitalicio" || p.days === "lifetime") {
+      grantLifetimeAccess(userId);
+      return ok("Acesso vitalício liberado para a conta.");
+    }
+    const days = Number(p.days) === 7 ? 7 : 2;
+    grantAccessDays(userId, days);
+    return ok(`+${days} dias de acesso na conta.`);
+  },
+  "admin.set_daily_leads": (p) => {
+    if (!isPlatformAdmin(currentUser(getDB()))) return fail("só o admin da plataforma altera a cota");
+    const userId = String(p.userId || "");
+    const limit = Number(p.limit ?? p.leads);
+    if (!userId || !Number.isFinite(limit)) return fail("informe userId e limit");
+    setDailyLeadQuota(userId, limit);
+    return ok(`Cota diária de ${Math.max(1, Math.min(9999, Math.floor(limit)))} leads na conta.`);
+  },
+  "intelligence.ask": (p) => {
+    const q = String(p.question || p.q || "").trim();
+    if (!q) return fail("pergunte algo sobre o cadastro desta conta");
+    const answer = copilotAnswer(getDB(), q);
+    return ok(answer, { answer });
+  },
+  "intelligence.record_decision": (p) => {
+    const contactId = String(p.contactId || "");
+    if (!contactId) return fail("informe contactId");
+    const status = p.status === "aprovada" || p.status === "rejeitada" || p.status === "executada" ? p.status : "recomendada";
+    const row = recordDecision({
+      contactId,
+      actionId: String(p.actionId || "next"),
+      label: String(p.label || "ação"),
+      reason: String(p.reason || ""),
+      status,
+      outcome: p.outcome === "ganho" || p.outcome === "perdido" || p.outcome === "ignorado" ? p.outcome : "aberto",
+    });
+    return ok(`Decisão ${row.status} gravada neste lead.`, { id: row.id });
+  },
+  "sales.accept_proposal": (p) => {
+    const id = String(p.proposalId || "");
+    const db = getDB();
+    const proposal = db.commercialProposals?.find((x) => x.id === id);
+    if (!proposal) return fail("proposta não encontrada");
+    update((d) => {
+      if (!Array.isArray(d.commercialProposals)) d.commercialProposals = [];
+      const row = d.commercialProposals.find((x) => x.id === id);
+      if (row) row.status = "aceita";
+      const deal = d.deals.find((x) => x.contactId === proposal.contactId && x.status === "aberto");
+      if (deal) {
+        deal.status = "ganho";
+        deal.probability = 100;
+      }
+    });
+    recordDecision({
+      contactId: proposal.contactId,
+      actionId: "accept_proposal",
+      label: "Proposta aceita no cadastro",
+      reason: "O assinante registrou o aceite. Não é assinatura eletrônica de terceiro.",
+      status: "executada",
+      outcome: "ganho",
+    });
+    return ok("Proposta marcada como aceita neste CRM. Pagamento e e-sign continuam fora da Helena.");
+  },
 };
+
+export function tickRpaJobs() {
+  maybeEnqueueRadar();
+  maybeEnqueueSilenceFollowups();
+  const user = currentUser(getDB());
+  if (user) maybeEnqueueDailyReport(user);
+  const job = claimNextJob();
+  if (!job) return;
+  const started = Date.now();
+  const ctx = { actor: "Helena", actorType: "helena" as const, requestedBy: "Helena" };
+  const isVitest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
+  try {
+    if (job.kind === "scan_maps") {
+      const r = runTool("prospect.scan_maps", { ...job.payload, simulate: isVitest || job.payload.simulate === true }, ctx);
+      const ids = (r.data?.contactIds as string[]) || [];
+      for (const id of ids.slice(0, 8)) runTool("leads.diagnose", { contactId: id }, ctx);
+      markJob(job.id, r.ok ? "sent" : "failed", r.ok ? undefined : r.message, Date.now() - started);
+      return;
+    }
+    if (job.kind === "diagnose" && job.contactId) {
+      const r = runTool("leads.diagnose", { contactId: job.contactId }, ctx);
+      markJob(job.id, r.ok ? "sent" : "failed", r.ok ? undefined : r.message, Date.now() - started);
+      return;
+    }
+    if (job.kind === "followup" && job.contactId) {
+      const contact = getDB().contacts.find((c) => c.id === job.contactId);
+      if (!contact || isOptedOut(contact)) {
+        markJob(job.id, "skipped", "opt-out ou contato ausente", Date.now() - started);
+        return;
+      }
+      const conv = findOrDraftConversation(getDB(), contact);
+      if (!conv) {
+        markJob(job.id, "failed", "sem conversa", Date.now() - started);
+        return;
+      }
+      const r = runTool("messages.send", { conversationId: conv.id, text: String(job.payload.text || "Retorno Helena.") }, ctx);
+      markJob(job.id, r.ok ? "sent" : "failed", r.ok ? undefined : r.message, Date.now() - started);
+      return;
+    }
+    if (job.kind === "daily_report") {
+      const r = runTool("rpa.daily_report", {}, ctx);
+      markJob(job.id, r.ok ? "sent" : "failed", r.ok ? undefined : r.message, Date.now() - started);
+      return;
+    }
+    if (job.kind === "send_wa") {
+      markJob(job.id, "sent", undefined, Date.now() - started);
+      return;
+    }
+    markJob(job.id, "skipped", `kind ${job.kind} no worker local`, Date.now() - started);
+  } catch (e) {
+    markJob(job.id, "failed", e instanceof Error ? e.message : "erro", Date.now() - started);
+  }
+}
 
 function newOperation(d: DB, o: { title: string; objective: string; total: number; agentIds: string[]; connectionId?: string; requestedBy: string }): Operation {
   const lastCode = Math.max(...d.operations.map((x) => Number(x.code.split("-")[1]) || 0), 2940);

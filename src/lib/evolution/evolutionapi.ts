@@ -262,6 +262,36 @@ export async function getEvolutionStatus(
   }
 }
 
+/** QR para parear o WhatsApp. GET /instance/connect/{instance} */
+export async function evolutionConnectQr(cfg?: EvolutionConfig): Promise<{
+  ok: boolean;
+  qr?: string;
+  connected?: boolean;
+  error?: string;
+}> {
+  const config = cfg ?? getEvolutionConfigUI();
+  const url = evoUrl(`/instance/connect/${config.instance}`, config);
+  try {
+    const res = await fetch(url, { method: "GET", headers: headers(config) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: String(data?.message || data?.error || `HTTP ${res.status}`) };
+    const qr =
+      data?.qrcode?.base64 ||
+      data?.base64 ||
+      data?.qrcode?.code ||
+      data?.qr ||
+      "";
+    const state = String(data?.instance?.state || data?.state || "");
+    return {
+      ok: true,
+      qr: qr && String(qr).startsWith("data:") ? String(qr) : qr ? `data:image/png;base64,${String(qr).replace(/^data:image\/png;base64,/, "")}` : "",
+      connected: state === "open",
+    };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : "Falha ao gerar QR" };
+  }
+}
+
 // ── 2. Enviar mensagem de texto ───────────────────────────────────────────────
 
 /**

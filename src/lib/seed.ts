@@ -473,6 +473,12 @@ export function createSeed(now = new Date()): DB {
       { id: "in3", number: "HEL-2026-08", date: days(81), amount: 990, status: "paga" },
       { id: "in4", number: "HEL-2026-11", date: ahead(10), amount: 1490, status: "aberta" },
     ],
+    rpaJobs: [],
+    radarSchedules: [],
+    commercialProposals: [],
+    commercialDossiers: [],
+    commercialDecisions: [],
+    dailyReports: [],
     retentionDays: 730,
     autonomyLevel: 3 as const,
     killSwitchActive: false,
@@ -567,6 +573,12 @@ export function createCustomerSeed(owner: User): DB {
   db.helenaMessages = [];
   db.lgpdRequests = [];
   db.missions = [];
+  db.rpaJobs = [];
+  db.radarSchedules = [];
+  db.commercialProposals = [];
+  db.commercialDossiers = [];
+  db.commercialDecisions = [];
+  db.dailyReports = [];
   db.missionTasks = [];
   db.missionEvents = [];
   db.abExperiments = [];
@@ -582,7 +594,7 @@ export function createCustomerSeed(owner: User): DB {
     status: "offline",
     queue: 0,
     sentToday: 0,
-    dailyLimit: 1000,
+    dailyLimit: 30,
     lastSyncAt: now,
   }];
   db.agents.forEach((a) => {

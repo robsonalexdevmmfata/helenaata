@@ -275,7 +275,10 @@ function ContactsPage() {
                 return (
                   <tr
                     key={contact.id}
-                    onClick={() => setSelectedContact(contact)}
+                    onClick={() => {
+                      setSelectedContact(contact);
+                      runTool("lgpd.log_access", { contactId: contact.id }, { actor: user.name, actorType: "user", requestedBy: user.name });
+                    }}
                     className="cursor-pointer transition-colors hover:bg-muted/30"
                   >
                     <td className="px-4 py-3">

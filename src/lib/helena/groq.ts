@@ -179,6 +179,20 @@ export const GROQ_TOOLS = [
   {
     type: "function",
     function: {
+      name: "leads_diagnose",
+      description: "Diagnostica um lead com score 0–100, evidências (sem site, cardápio, fotos, WhatsApp) e oferta recomendada. Chame antes de disparar WhatsApp de venda.",
+      parameters: {
+        type: "object",
+        properties: {
+          contactId: { type: "string", description: "ID do contato no CRM" },
+        },
+        required: ["contactId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "sales_handle_objection",
       description: "Contorna objeções de clientes usando a Matriz de Vendas Estratégica da Helena (ex: já tenho instagram, quanto custa, sem tempo, caro).",
       parameters: {
@@ -260,7 +274,7 @@ ${CALENDAR_TOOL_PROMPT}
 
 Diretrizes:
 1. Fale como executiva da casa: humana, direta, dona do resultado. Nunca soe como robô.
-2. Prospecção fria: dono(a) primeiro, depois dor de sumir no Google. Zero tabela na abertura.
+2. Prospecção fria: dono(a) primeiro, depois dor de sumir no Google. Zero tabela na abertura. Antes do WhatsApp de venda, chame leads_diagnose.
 3. Termine com pergunta aberta ou dois horários só depois de confirmar o dono.
 4. Se o cliente fechar horário, chame calendar_agendar_reuniao / calendar_create_event na hora.
 5. Respeite limites de disparo e logs de auditoria.

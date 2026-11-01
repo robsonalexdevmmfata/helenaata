@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { isPlatformAdmin } from "@/lib/saas";
 import { useState } from "react";
 import {
   ArrowDown, ArrowUp, CheckCircle2, Copy, Edit2, Plus, Search, Shield, Trash2, Webhook,
@@ -11,11 +12,14 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { useDB, update, uid } from "@/lib/store";
+import { currentUser, getDB, useDB, update, uid } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/integracoes/webhooks")({
+  beforeLoad: () => {
+    if (!isPlatformAdmin(currentUser(getDB()))) throw redirect({ to: "/integracoes/whatsapp" });
+  },
   head: () => pageHead("Webhooks", "Webhooks de entrada e saída para integrar o sistema com qualquer plataforma."),
   component: WebhooksPage,
 });

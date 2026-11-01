@@ -7,6 +7,8 @@ import { currentUser } from "@/lib/store";
 import { canUseDevTeam, isPlatformAdmin } from "@/lib/saas";
 import { helenaUi, sendToHelena } from "@/lib/helena/orchestrator";
 import { useDB } from "@/lib/store";
+import { copilotAnswer, universalSearch } from "@/lib/helena/decision";
+import { userAction } from "@/lib/helena/engine";
 import { applyTheme, getTheme } from "@/lib/theme";
 import { logout } from "@/lib/auth";
 
@@ -52,6 +54,27 @@ export function CommandPalette() {
               <Sparkles className="text-helena" />
               Perguntar à Helena: <span className="font-medium">“{q}”</span>
             </CommandItem>
+            <CommandItem
+              value={`__cadastro ${q}`}
+              onSelect={() => {
+                const r = userAction("intelligence.ask", { question: q });
+                close();
+                helenaUi.set({ open: true });
+                if (r.ok) void sendToHelena(`Cadastro: ${r.message}`);
+              }}
+            >
+              <Sparkles className="text-helena" />
+              Consultar cadastro: {copilotAnswer(db, q).slice(0, 80)}
+            </CommandItem>
+          </CommandGroup>
+        )}
+        {q.trim().length >= 2 && universalSearch(db, q).length > 0 && (
+          <CommandGroup heading="Cadastro">
+            {universalSearch(db, q).map((h) => (
+              <CommandItem key={`${h.kind}-${h.id}`} value={`${h.kind} ${h.label}`} onSelect={() => go(h.to)}>
+                {h.kind}: {h.label}
+              </CommandItem>
+            ))}
           </CommandGroup>
         )}
         <CommandGroup heading="Sugestões para a Helena">

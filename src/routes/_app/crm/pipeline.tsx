@@ -1,16 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Building2,
   Calendar,
-  CheckCircle2,
-  ChevronRight,
-  CircleDollarSign,
   Filter,
   Plus,
   Search,
   User,
-  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,8 +27,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EntityAvatar, PageHeader, StatusBadge } from "@/components/app/kit";
+import { CycleStrip, FunnelBars } from "@/components/app/CommercialCharts";
 import { currentUser, getDB, ownerName, useDB } from "@/lib/store";
 import { liveBoard } from "@/lib/analytics";
+import { intelligenceForLead } from "@/lib/helena/intelligence";
 import { runTool } from "@/lib/helena/engine";
 import { brl, fmtDate } from "@/lib/format";
 import { pageHead } from "@/lib/head";
@@ -78,6 +76,12 @@ function PipelinePage() {
   const totalOpenValue = openDeals.reduce((sum, d) => sum + d.value, 0);
   const wonDeals = deals.filter((d) => d.status === "ganho");
   const totalWonValue = wonDeals.reduce((sum, d) => sum + d.value, 0);
+  const weighted = openDeals.reduce((s, d) => s + d.value * ((d.probability || 0) / 100), 0);
+  const funnelRows = stages.map((stage) => {
+    const stageDeals = deals.filter((d) => d.stageId === stage.id);
+    return { name: stage.name, count: stageDeals.length, value: stageDeals.reduce((sum, d) => sum + d.value, 0) };
+  });
+  const stageAccent = ["#e07a3d", "#c9a227", "#2dd4bf", "#3b82f6", "#8b5cf6", "#22c55e", "#64748b"];
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +137,7 @@ function PipelinePage() {
     <div className="space-y-6">
       <PageHeader
         title="Pipeline de Oportunidades"
-        description="Acompanhamento visual em Kanban do funil de vendas, etapas de qualificação e fechamento."
+        description="Funil ao vivo: valor aberto, ponderado por probabilidade e ciclo Helena — sem teatro."
         actions={
           <Button onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="size-4" /> Nova Oportunidade
@@ -146,7 +150,7 @@ function PipelinePage() {
         <div className="rounded-xl border bg-card p-4">
           <div className="text-xs text-muted-foreground">Pipeline Aberto</div>
           <div className="mt-1 font-mono text-2xl font-bold">{brl(totalOpenValue)}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{openDeals.length} oportunidades ativas</div>
+          <div className="mt-1 text-xs text-muted-foreground">{openDeals.length} ativas · ponderado {brl(weighted)}</div>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <div className="text-xs text-muted-foreground">Vendas Ganhas</div>
@@ -168,11 +172,11 @@ function PipelinePage() {
           <div className="mt-1 text-xs text-muted-foreground">por oportunidade fechada</div>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-4 text-xs">
-        <div className="rounded-lg border bg-card px-3 py-2">Abordagens Inbox <span className="font-mono font-semibold">{board.abordados}</span></div>
-        <div className="rounded-lg border bg-card px-3 py-2">Responderam <span className="font-mono font-semibold">{board.responderam}</span></div>
-        <div className="rounded-lg border bg-card px-3 py-2">Reuniões Agenda <span className="font-mono font-semibold">{board.meetings.length}</span></div>
-        <div className="rounded-lg border bg-card px-3 py-2">Disparos Evolution <span className="font-mono font-semibold">{board.campaignSent}</span></div>
+      <CycleStrip cycle={board.cycle} />
+      <div className="rounded-2xl border bg-card p-5">
+        <div className="mb-1 text-sm font-semibold">Funil por etapa</div>
+        <p className="mb-3 text-[11px] text-muted-foreground">Barras = quantidade. Tooltip mostra valor em R$.</p>
+        <FunnelBars rows={funnelRows} />
       </div>
 
       {/* Filters Bar */}
@@ -211,16 +215,18 @@ function PipelinePage() {
 
       {/* Kanban Board */}
       <div className="flex gap-4 overflow-x-auto pb-4 -mx-3 px-3 sm:mx-0 sm:px-0">
-        {stages.map((stage: Stage) => {
+        {stages.map((stage: Stage, idx: number) => {
           const stageDeals = deals.filter((d) => d.stageId === stage.id);
           const stageValue = stageDeals.reduce((sum, d) => sum + d.value, 0);
+          const accent = stageAccent[idx % stageAccent.length];
+          const colMax = Math.max(...stages.map((s) => deals.filter((d) => d.stageId === s.id).reduce((sum, d) => sum + d.value, 0)), 1);
 
           return (
             <div
               key={stage.id}
-              className="flex w-80 shrink-0 flex-col rounded-xl border bg-card/50"
+              className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-muted/20"
             >
-              {/* Column Header */}
+              <div className="h-1" style={{ background: accent }} />
               <div className="border-b bg-card p-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -235,6 +241,9 @@ function PipelinePage() {
                 </div>
                 <div className="mt-1 font-mono text-xs text-muted-foreground">
                   {brl(stageValue)}
+                </div>
+                <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full" style={{ width: `${Math.round((stageValue / colMax) * 100)}%`, background: accent }} />
                 </div>
               </div>
 
@@ -251,9 +260,14 @@ function PipelinePage() {
                     <div
                       key={deal.id}
                       onClick={() => setSelectedDeal(deal)}
-                      className="cursor-pointer rounded-lg border bg-card p-3.5 shadow-sm transition-all hover:border-helena/50 hover:shadow-md"
+                      className="cursor-pointer rounded-xl border bg-card p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-helena/50 hover:shadow-md"
                     >
-                      <div className="text-sm font-medium line-clamp-1">{deal.title}</div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm font-medium line-clamp-1">{deal.title}</div>
+                        {contact?.score ? (
+                          <span className="shrink-0 rounded-md bg-helena/10 px-1.5 py-0.5 font-mono text-[10px] text-helena">{contact.score}</span>
+                        ) : null}
+                      </div>
                       <div className="mt-1.5 flex items-center justify-between font-mono text-sm font-semibold text-foreground">
                         <span>{brl(deal.value)}</span>
                         {deal.status === "ganho" ? (
@@ -445,6 +459,19 @@ function PipelinePage() {
                   <div className="font-mono text-xl font-bold">{selectedDeal.probability}%</div>
                 </div>
               </div>
+              {(() => {
+                const c = db.contacts.find((x) => x.id === selectedDeal.contactId);
+                if (!c) return null;
+                const intel = intelligenceForLead(db, c);
+                return (
+                  <div className="rounded-xl border bg-muted/30 p-3 text-xs">
+                    <div className="font-medium">Radar (estimativa)</div>
+                    <p className="mt-1 text-muted-foreground">{intel.leaks[0]?.estimateHint || intel.rival.line}</p>
+                    <p className="mt-2">{intel.roi.line}</p>
+                    <Link to="/crm/dossie/$contactId" params={{ contactId: c.id }} className="mt-2 inline-block underline">Abrir dossiê</Link>
+                  </div>
+                );
+              })()}
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between border-b pb-2">

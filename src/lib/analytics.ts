@@ -71,6 +71,8 @@ export function computeAnalytics(db: DB) {
     .sort((a, b) => b.conversions - a.conversions || b.meetings - a.meetings || b.outbound - a.outbound)
     .slice(0, 5);
 
+  const week = last7Days(db);
+
   return {
     wonDeals,
     lostDeals,
@@ -87,7 +89,37 @@ export function computeAnalytics(db: DB) {
     campaignConv,
     dealsByStage,
     topAgents,
+    week,
+    weightedPipeline: pipelineDeals.reduce((s, d) => s + d.value * ((d.probability || 0) / 100), 0),
   };
+}
+
+function dayKey(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+export function last7Days(db: DB) {
+  const out: { day: string; label: string; msgs: number; diagnoses: number; meetings: number; value: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const start = d.getTime();
+    const end = start + 86_400_000;
+    const inDay = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return t >= start && t < end;
+    };
+    out.push({
+      day: dayKey(d),
+      label: d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""),
+      msgs: db.executions.filter((e) => e.result === "sucesso" && /messages\.send|evolution\.sendText/.test(e.action) && inDay(e.at)).length,
+      diagnoses: db.executions.filter((e) => e.action === "leads.diagnose" && e.result === "sucesso" && inDay(e.at)).length,
+      meetings: (db.calendarEvents ?? []).filter((e) => e.status !== "cancelada" && inDay(e.dataHora)).length,
+      value: db.deals.filter((x) => x.status === "ganho" && inDay(x.updatedAt)).reduce((s, x) => s + x.value, 0),
+    });
+  }
+  return out;
 }
 
 /** Um único painel ao vivo — Visão geral, Helena, Pipeline e Analytics leem isto. */
@@ -110,8 +142,22 @@ export function liveBoard(db: DB) {
     return ag?.role === "SDR";
   });
   const best = sdrs[0] ?? a.topAgents[0];
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const dayMs = dayStart.getTime();
+  const msgsToday = db.executions.filter(
+    (e) => e.result === "sucesso" && /messages\.send|evolution\.sendText/.test(e.action) && new Date(e.at).getTime() >= dayMs,
+  ).length;
+  const qrOnline = db.connections.filter((c) => c.status === "online").length;
+  const rpaToday = db.executions.filter(
+    (e) => e.action === "rpa.run_shift" && e.result === "sucesso" && new Date(e.at).getTime() >= dayMs,
+  ).length;
+  const cycleOf = (state: string) => db.contacts.filter((c) => (c.tags || []).includes(`#ciclo-${state}`)).length;
   return {
     ...a,
+    msgsToday,
+    qrOnline,
+    rpaToday,
     openDealsCount: a.openDeals.length,
     wonCount: a.wonDeals.length,
     lostCount: a.lostDeals.length,
@@ -129,6 +175,14 @@ export function liveBoard(db: DB) {
     runningOps: db.operations.filter((o) => o.status === "running").length,
     bestAgent: best ? { name: best.name, rate: best.conversations ? Math.round((best.meetings / Math.max(best.outbound || best.conversations, 1)) * 100) : 0 } : null,
     inboxOpen: convos.filter((c) => c.status === "aberta").length,
+    cycle: {
+      encontrados: cycleOf("encontrado"),
+      diagnosticados: cycleOf("diagnosticado"),
+      preview: cycleOf("preview"),
+      links: cycleOf("link_enviado"),
+      respostas: cycleOf("respondeu"),
+      reunioes: cycleOf("reuniao"),
+    },
   };
 }
 

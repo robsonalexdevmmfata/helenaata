@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Activity, Bot, ChevronRight, Network, Plus, Search, Sparkles, Users, Zap,
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { currentUser, useDB } from "@/lib/store";
 import { canUseDevTeam } from "@/lib/saas";
+import { ActivateMaquinaButton } from "@/components/saas/ActivateMaquinaButton";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { TeamForm } from "./components/-TeamForm";
@@ -136,9 +137,7 @@ function TimesPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             Caio (front), Diego (back) e Sofia (design) montam a prévia de site e cardápio. Liberado no plano Máquina.
           </p>
-          <Button asChild className="mt-3" size="sm">
-            <Link to="/planos">Assinar Máquina</Link>
-          </Button>
+          <ActivateMaquinaButton user={currentUser(db)} className="mt-3" size="sm" />
         </div>
       )}
 

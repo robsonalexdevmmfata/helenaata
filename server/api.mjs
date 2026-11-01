@@ -10,6 +10,8 @@ import { probePublicSite } from "./site-signals.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { latestPaidPlan, listBillingEvents, parseCaktoPayload, recordBillingEvent } from "./billing.mjs";
+import { enqueueRpaJob, listRpaJobs, tickRpaQueue } from "./rpa-queue.mjs";
+import { dbReady, loadCycle, listRpaJobsDb, retryRpaJobDb, rpaMonitorDb, saveCycle } from "./helena-db.mjs";
 
 function loadLocalEnv() {
   for (const name of [".env.local", ".env"]) {
@@ -96,6 +98,9 @@ export async function startBackground() {
   } catch (e) {
     console.warn("[Helena] WhatsApp indisponível no boot (o site sobe mesmo assim):", e?.message || e);
   }
+  setInterval(() => {
+    tickRpaQueue().catch(() => {});
+  }, 15_000);
 }
 
 /**
@@ -132,7 +137,76 @@ export async function handleApi(req, res) {
         evolution: process.env.EVOLUTION_URL && !/localhost|127\.0\.0\.1/.test(process.env.EVOLUTION_URL)
           ? "remote"
           : "baileys-bridge",
+        rpaQueue: listRpaJobs().filter((j) => j.status === "queued").length,
+        helenaDb: (await dbReady()) ? "postgres" : "mock",
       });
+      return true;
+    }
+
+    if (p === "/api/helena/cycle" && req.method === "POST") {
+      const body = await readJson(req, 2_000_000);
+      const out = await saveCycle(body);
+      send(res, out.ok || out.skipped ? 200 : 503, out);
+      return true;
+    }
+
+    if (p === "/api/helena/cycle" && req.method === "GET") {
+      const out = await loadCycle({
+        appUserId: url.searchParams.get("appUserId") || "",
+        email: url.searchParams.get("email") || "",
+      });
+      send(res, 200, out);
+      return true;
+    }
+
+    if (p === "/api/helena/rpa" && req.method === "GET") {
+      const out = await listRpaJobsDb({
+        appUserId: url.searchParams.get("appUserId") || "",
+        email: url.searchParams.get("email") || "",
+      });
+      send(res, 200, out);
+      return true;
+    }
+
+    if (p === "/api/helena/rpa/retry" && req.method === "POST") {
+      const body = await readJson(req);
+      send(res, 200, await retryRpaJobDb(body.id));
+      return true;
+    }
+
+    if (p === "/api/helena/rpa/monitor" && req.method === "GET") {
+      send(res, 200, { ...(await rpaMonitorDb()), helenaDb: (await dbReady()) ? "postgres" : "mock" });
+      return true;
+    }
+
+    if (p === "/api/rpa/enqueue" && req.method === "POST") {
+      const body = await readJson(req);
+      if (!body?.number || !body?.text) return send(res, 400, { error: "number e text" }), true;
+      const out = enqueueRpaJob({
+        instance: body.instance,
+        number: body.number,
+        text: body.text,
+        delayMs: body.delayMs,
+      });
+      if (body.orgSlug || body.appUserId) {
+        const runAt = new Date(Date.now() + Math.max(5000, Number(body.delayMs) || 35_000)).toISOString();
+        await saveCycle({
+          tenant: {
+            orgSlug: body.orgSlug,
+            organizationId: body.orgSlug,
+            appUserId: body.appUserId,
+            email: body.email,
+            name: body.name || "Helena",
+          },
+          rpaJobs: [{ kind: "send_wa", payload: { instance: body.instance, number: body.number, text: body.text }, runAt }],
+        }).catch(() => {});
+      }
+      send(res, out.ok ? 200 : 429, out);
+      return true;
+    }
+
+    if (p === "/api/rpa/jobs" && req.method === "GET") {
+      send(res, 200, { jobs: listRpaJobs() });
       return true;
     }
 

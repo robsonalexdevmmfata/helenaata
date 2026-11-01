@@ -12,24 +12,29 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as CadastroRouteImport } from './routes/cadastro'
+import { Route as ComecarRouteImport } from './routes/comecar'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
 import { Route as AppAutomacoesRouteImport } from './routes/_app/automacoes'
 import { Route as AppEquipeRouteImport } from './routes/_app/equipe'
 import { Route as AppOperacoesRouteImport } from './routes/_app/operacoes'
 import { Route as AppPlanosRouteImport } from './routes/_app/planos'
+import { Route as AppRpaRouteImport } from './routes/_app/rpa'
 import { Route as AppVisaoGeralRouteImport } from './routes/_app/visao-geral'
 import { Route as VSlugRouteImport } from './routes/v.$slug'
 import { Route as AppAtendimentoInboxRouteImport } from './routes/_app/atendimento/inbox'
 import { Route as AppAtendimentoRadarRouteImport } from './routes/_app/atendimento/radar'
 import { Route as AppAtendimentoRespostasRouteImport } from './routes/_app/atendimento/respostas'
 import { Route as AppConfiguracoesBillingRouteImport } from './routes/_app/configuracoes/billing'
+import { Route as AppConfiguracoesConsumoRouteImport } from './routes/_app/configuracoes/consumo'
 import { Route as AppConfiguracoesLgpdRouteImport } from './routes/_app/configuracoes/lgpd'
 import { Route as AppConfiguracoesOrganizacaoRouteImport } from './routes/_app/configuracoes/organizacao'
 import { Route as AppConfiguracoesPermissoesRouteImport } from './routes/_app/configuracoes/permissoes'
 import { Route as AppConfiguracoesSegurancaRouteImport } from './routes/_app/configuracoes/seguranca'
 import { Route as AppConfiguracoesUsuariosRouteImport } from './routes/_app/configuracoes/usuarios'
 import { Route as AppCrmContatosRouteImport } from './routes/_app/crm/contatos'
+import { Route as AppCrmDossieRouteImport } from './routes/_app/crm/dossie'
 import { Route as AppCrmEmpresasRouteImport } from './routes/_app/crm/empresas'
 import { Route as AppCrmPipelineRouteImport } from './routes/_app/crm/pipeline'
 import { Route as AppCrmTarefasRouteImport } from './routes/_app/crm/tarefas'
@@ -54,6 +59,9 @@ import { Route as AppProspeccaoCadenciasRouteImport } from './routes/_app/prospe
 import { Route as AppProspeccaoCampanhasRouteImport } from './routes/_app/prospeccao/campanhas'
 import { Route as AppProspeccaoListasRouteImport } from './routes/_app/prospeccao/listas'
 import { Route as AppProspeccaoOrcamentosRouteImport } from './routes/_app/prospeccao/orcamentos'
+import { Route as AppCrmDossieIndexRouteImport } from './routes/_app/crm/dossie.index'
+import { Route as AppCrmDossieContactIdRouteImport } from './routes/_app/crm/dossie.$contactId'
+import { Route as AppCrmSalaContactIdRouteImport } from './routes/_app/crm/sala.$contactId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -69,9 +77,19 @@ const CadastroRoute = CadastroRouteImport.update({
   path: '/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ComecarRoute = ComecarRouteImport.update({
+  id: '/comecar',
+  path: '/comecar',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
@@ -97,6 +115,11 @@ const AppOperacoesRoute = AppOperacoesRouteImport.update({
 const AppPlanosRoute = AppPlanosRouteImport.update({
   id: '/planos',
   path: '/planos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRpaRoute = AppRpaRouteImport.update({
+  id: '/rpa',
+  path: '/rpa',
   getParentRoute: () => AppRoute,
 } as any)
 const AppVisaoGeralRoute = AppVisaoGeralRouteImport.update({
@@ -127,6 +150,11 @@ const AppAtendimentoRespostasRoute = AppAtendimentoRespostasRouteImport.update({
 const AppConfiguracoesBillingRoute = AppConfiguracoesBillingRouteImport.update({
   id: '/configuracoes/billing',
   path: '/configuracoes/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConfiguracoesConsumoRoute = AppConfiguracoesConsumoRouteImport.update({
+  id: '/configuracoes/consumo',
+  path: '/configuracoes/consumo',
   getParentRoute: () => AppRoute,
 } as any)
 const AppConfiguracoesLgpdRoute = AppConfiguracoesLgpdRouteImport.update({
@@ -161,6 +189,11 @@ const AppConfiguracoesUsuariosRoute =
 const AppCrmContatosRoute = AppCrmContatosRouteImport.update({
   id: '/crm/contatos',
   path: '/crm/contatos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCrmDossieRoute = AppCrmDossieRouteImport.update({
+  id: '/crm/dossie',
+  path: '/crm/dossie',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCrmEmpresasRoute = AppCrmEmpresasRouteImport.update({
@@ -284,28 +317,48 @@ const AppProspeccaoOrcamentosRoute = AppProspeccaoOrcamentosRouteImport.update({
   path: '/prospeccao/orcamentos',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCrmDossieIndexRoute = AppCrmDossieIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppCrmDossieRoute,
+} as any)
+const AppCrmDossieContactIdRoute = AppCrmDossieContactIdRouteImport.update({
+  id: '/$contactId',
+  path: '/$contactId',
+  getParentRoute: () => AppCrmDossieRoute,
+} as any)
+const AppCrmSalaContactIdRoute = AppCrmSalaContactIdRouteImport.update({
+  id: '/crm/sala/$contactId',
+  path: '/crm/sala/$contactId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
+  '/comecar': typeof ComecarRoute
   '/login': typeof LoginRoute
+  '/status': typeof StatusRoute
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
   '/equipe': typeof AppEquipeRoute
   '/operacoes': typeof AppOperacoesRouteWithChildren
   '/planos': typeof AppPlanosRoute
+  '/rpa': typeof AppRpaRoute
   '/visao-geral': typeof AppVisaoGeralRoute
   '/v/$slug': typeof VSlugRoute
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/billing': typeof AppConfiguracoesBillingRoute
+  '/configuracoes/consumo': typeof AppConfiguracoesConsumoRoute
   '/configuracoes/lgpd': typeof AppConfiguracoesLgpdRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/configuracoes/seguranca': typeof AppConfiguracoesSegurancaRoute
   '/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
   '/crm/contatos': typeof AppCrmContatosRoute
+  '/crm/dossie': typeof AppCrmDossieRouteWithChildren
   '/crm/empresas': typeof AppCrmEmpresasRoute
   '/crm/pipeline': typeof AppCrmPipelineRoute
   '/crm/tarefas': typeof AppCrmTarefasRoute
@@ -330,21 +383,28 @@ export interface FileRoutesByFullPath {
   '/prospeccao/listas': typeof AppProspeccaoListasRoute
   '/prospeccao/orcamentos': typeof AppProspeccaoOrcamentosRoute
   '/operacoes/': typeof AppOperacoesIndexRoute
+  '/crm/dossie/$contactId': typeof AppCrmDossieContactIdRoute
+  '/crm/sala/$contactId': typeof AppCrmSalaContactIdRoute
+  '/crm/dossie/': typeof AppCrmDossieIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
+  '/comecar': typeof ComecarRoute
   '/login': typeof LoginRoute
+  '/status': typeof StatusRoute
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
   '/equipe': typeof AppEquipeRoute
   '/planos': typeof AppPlanosRoute
+  '/rpa': typeof AppRpaRoute
   '/visao-geral': typeof AppVisaoGeralRoute
   '/v/$slug': typeof VSlugRoute
   '/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/configuracoes/billing': typeof AppConfiguracoesBillingRoute
+  '/configuracoes/consumo': typeof AppConfiguracoesConsumoRoute
   '/configuracoes/lgpd': typeof AppConfiguracoesLgpdRoute
   '/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
@@ -375,30 +435,38 @@ export interface FileRoutesByTo {
   '/prospeccao/listas': typeof AppProspeccaoListasRoute
   '/prospeccao/orcamentos': typeof AppProspeccaoOrcamentosRoute
   '/operacoes': typeof AppOperacoesIndexRoute
+  '/crm/dossie/$contactId': typeof AppCrmDossieContactIdRoute
+  '/crm/sala/$contactId': typeof AppCrmSalaContactIdRoute
+  '/crm/dossie': typeof AppCrmDossieIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/cadastro': typeof CadastroRoute
+  '/comecar': typeof ComecarRoute
   '/login': typeof LoginRoute
+  '/status': typeof StatusRoute
   '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/automacoes': typeof AppAutomacoesRoute
   '/_app/equipe': typeof AppEquipeRoute
   '/_app/operacoes': typeof AppOperacoesRouteWithChildren
   '/_app/planos': typeof AppPlanosRoute
+  '/_app/rpa': typeof AppRpaRoute
   '/_app/visao-geral': typeof AppVisaoGeralRoute
   '/v/$slug': typeof VSlugRoute
   '/_app/atendimento/inbox': typeof AppAtendimentoInboxRoute
   '/_app/atendimento/radar': typeof AppAtendimentoRadarRoute
   '/_app/atendimento/respostas': typeof AppAtendimentoRespostasRoute
   '/_app/configuracoes/billing': typeof AppConfiguracoesBillingRoute
+  '/_app/configuracoes/consumo': typeof AppConfiguracoesConsumoRoute
   '/_app/configuracoes/lgpd': typeof AppConfiguracoesLgpdRoute
   '/_app/configuracoes/organizacao': typeof AppConfiguracoesOrganizacaoRoute
   '/_app/configuracoes/permissoes': typeof AppConfiguracoesPermissoesRoute
   '/_app/configuracoes/seguranca': typeof AppConfiguracoesSegurancaRoute
   '/_app/configuracoes/usuarios': typeof AppConfiguracoesUsuariosRoute
   '/_app/crm/contatos': typeof AppCrmContatosRoute
+  '/_app/crm/dossie': typeof AppCrmDossieRouteWithChildren
   '/_app/crm/empresas': typeof AppCrmEmpresasRoute
   '/_app/crm/pipeline': typeof AppCrmPipelineRoute
   '/_app/crm/tarefas': typeof AppCrmTarefasRoute
@@ -423,30 +491,38 @@ export interface FileRoutesById {
   '/_app/prospeccao/listas': typeof AppProspeccaoListasRoute
   '/_app/prospeccao/orcamentos': typeof AppProspeccaoOrcamentosRoute
   '/_app/operacoes/': typeof AppOperacoesIndexRoute
+  '/_app/crm/dossie/$contactId': typeof AppCrmDossieContactIdRoute
+  '/_app/crm/sala/$contactId': typeof AppCrmSalaContactIdRoute
+  '/_app/crm/dossie/': typeof AppCrmDossieIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/cadastro'
+    | '/comecar'
     | '/login'
+    | '/status'
     | '/analytics'
     | '/automacoes'
     | '/equipe'
     | '/operacoes'
     | '/planos'
+    | '/rpa'
     | '/visao-geral'
     | '/v/$slug'
     | '/atendimento/inbox'
     | '/atendimento/radar'
     | '/atendimento/respostas'
     | '/configuracoes/billing'
+    | '/configuracoes/consumo'
     | '/configuracoes/lgpd'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
     | '/configuracoes/seguranca'
     | '/configuracoes/usuarios'
     | '/crm/contatos'
+    | '/crm/dossie'
     | '/crm/empresas'
     | '/crm/pipeline'
     | '/crm/tarefas'
@@ -471,21 +547,28 @@ export interface FileRouteTypes {
     | '/prospeccao/listas'
     | '/prospeccao/orcamentos'
     | '/operacoes/'
+    | '/crm/dossie/$contactId'
+    | '/crm/sala/$contactId'
+    | '/crm/dossie/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/cadastro'
+    | '/comecar'
     | '/login'
+    | '/status'
     | '/analytics'
     | '/automacoes'
     | '/equipe'
     | '/planos'
+    | '/rpa'
     | '/visao-geral'
     | '/v/$slug'
     | '/atendimento/inbox'
     | '/atendimento/radar'
     | '/atendimento/respostas'
     | '/configuracoes/billing'
+    | '/configuracoes/consumo'
     | '/configuracoes/lgpd'
     | '/configuracoes/organizacao'
     | '/configuracoes/permissoes'
@@ -516,29 +599,37 @@ export interface FileRouteTypes {
     | '/prospeccao/listas'
     | '/prospeccao/orcamentos'
     | '/operacoes'
+    | '/crm/dossie/$contactId'
+    | '/crm/sala/$contactId'
+    | '/crm/dossie'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/cadastro'
+    | '/comecar'
     | '/login'
+    | '/status'
     | '/_app/analytics'
     | '/_app/automacoes'
     | '/_app/equipe'
     | '/_app/operacoes'
     | '/_app/planos'
+    | '/_app/rpa'
     | '/_app/visao-geral'
     | '/v/$slug'
     | '/_app/atendimento/inbox'
     | '/_app/atendimento/radar'
     | '/_app/atendimento/respostas'
     | '/_app/configuracoes/billing'
+    | '/_app/configuracoes/consumo'
     | '/_app/configuracoes/lgpd'
     | '/_app/configuracoes/organizacao'
     | '/_app/configuracoes/permissoes'
     | '/_app/configuracoes/seguranca'
     | '/_app/configuracoes/usuarios'
     | '/_app/crm/contatos'
+    | '/_app/crm/dossie'
     | '/_app/crm/empresas'
     | '/_app/crm/pipeline'
     | '/_app/crm/tarefas'
@@ -563,13 +654,18 @@ export interface FileRouteTypes {
     | '/_app/prospeccao/listas'
     | '/_app/prospeccao/orcamentos'
     | '/_app/operacoes/'
+    | '/_app/crm/dossie/$contactId'
+    | '/_app/crm/sala/$contactId'
+    | '/_app/crm/dossie/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   CadastroRoute: typeof CadastroRoute
+  ComecarRoute: typeof ComecarRoute
   LoginRoute: typeof LoginRoute
+  StatusRoute: typeof StatusRoute
   VSlugRoute: typeof VSlugRoute
 }
 
@@ -596,11 +692,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/comecar': {
+      id: '/comecar'
+      path: '/comecar'
+      fullPath: '/comecar'
+      preLoaderRoute: typeof ComecarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/analytics': {
@@ -636,6 +746,13 @@ declare module '@tanstack/react-router' {
       path: '/planos'
       fullPath: '/planos'
       preLoaderRoute: typeof AppPlanosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/rpa': {
+      id: '/_app/rpa'
+      path: '/rpa'
+      fullPath: '/rpa'
+      preLoaderRoute: typeof AppRpaRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/visao-geral': {
@@ -680,6 +797,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppConfiguracoesBillingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/configuracoes/consumo': {
+      id: '/_app/configuracoes/consumo'
+      path: '/configuracoes/consumo'
+      fullPath: '/configuracoes/consumo'
+      preLoaderRoute: typeof AppConfiguracoesConsumoRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/configuracoes/lgpd': {
       id: '/_app/configuracoes/lgpd'
       path: '/configuracoes/lgpd'
@@ -720,6 +844,13 @@ declare module '@tanstack/react-router' {
       path: '/crm/contatos'
       fullPath: '/crm/contatos'
       preLoaderRoute: typeof AppCrmContatosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crm/dossie': {
+      id: '/_app/crm/dossie'
+      path: '/crm/dossie'
+      fullPath: '/crm/dossie'
+      preLoaderRoute: typeof AppCrmDossieRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/crm/empresas': {
@@ -890,6 +1021,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProspeccaoOrcamentosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/crm/dossie/': {
+      id: '/_app/crm/dossie/'
+      path: '/'
+      fullPath: '/crm/dossie/'
+      preLoaderRoute: typeof AppCrmDossieIndexRouteImport
+      parentRoute: typeof AppCrmDossieRoute
+    }
+    '/_app/crm/dossie/$contactId': {
+      id: '/_app/crm/dossie/$contactId'
+      path: '/$contactId'
+      fullPath: '/crm/dossie/$contactId'
+      preLoaderRoute: typeof AppCrmDossieContactIdRouteImport
+      parentRoute: typeof AppCrmDossieRoute
+    }
+    '/_app/crm/sala/$contactId': {
+      id: '/_app/crm/sala/$contactId'
+      path: '/crm/sala/$contactId'
+      fullPath: '/crm/sala/$contactId'
+      preLoaderRoute: typeof AppCrmSalaContactIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -907,23 +1059,40 @@ const AppOperacoesRouteWithChildren = AppOperacoesRoute._addFileChildren(
   AppOperacoesRouteChildren,
 )
 
+interface AppCrmDossieRouteChildren {
+  AppCrmDossieContactIdRoute: typeof AppCrmDossieContactIdRoute
+  AppCrmDossieIndexRoute: typeof AppCrmDossieIndexRoute
+}
+
+const AppCrmDossieRouteChildren: AppCrmDossieRouteChildren = {
+  AppCrmDossieContactIdRoute: AppCrmDossieContactIdRoute,
+  AppCrmDossieIndexRoute: AppCrmDossieIndexRoute,
+}
+
+const AppCrmDossieRouteWithChildren = AppCrmDossieRoute._addFileChildren(
+  AppCrmDossieRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomacoesRoute: typeof AppAutomacoesRoute
   AppEquipeRoute: typeof AppEquipeRoute
   AppOperacoesRoute: typeof AppOperacoesRouteWithChildren
   AppPlanosRoute: typeof AppPlanosRoute
+  AppRpaRoute: typeof AppRpaRoute
   AppVisaoGeralRoute: typeof AppVisaoGeralRoute
   AppAtendimentoInboxRoute: typeof AppAtendimentoInboxRoute
   AppAtendimentoRadarRoute: typeof AppAtendimentoRadarRoute
   AppAtendimentoRespostasRoute: typeof AppAtendimentoRespostasRoute
   AppConfiguracoesBillingRoute: typeof AppConfiguracoesBillingRoute
+  AppConfiguracoesConsumoRoute: typeof AppConfiguracoesConsumoRoute
   AppConfiguracoesLgpdRoute: typeof AppConfiguracoesLgpdRoute
   AppConfiguracoesOrganizacaoRoute: typeof AppConfiguracoesOrganizacaoRoute
   AppConfiguracoesPermissoesRoute: typeof AppConfiguracoesPermissoesRoute
   AppConfiguracoesSegurancaRoute: typeof AppConfiguracoesSegurancaRoute
   AppConfiguracoesUsuariosRoute: typeof AppConfiguracoesUsuariosRoute
   AppCrmContatosRoute: typeof AppCrmContatosRoute
+  AppCrmDossieRoute: typeof AppCrmDossieRouteWithChildren
   AppCrmEmpresasRoute: typeof AppCrmEmpresasRoute
   AppCrmPipelineRoute: typeof AppCrmPipelineRoute
   AppCrmTarefasRoute: typeof AppCrmTarefasRoute
@@ -946,6 +1115,7 @@ interface AppRouteChildren {
   AppProspeccaoCampanhasRoute: typeof AppProspeccaoCampanhasRoute
   AppProspeccaoListasRoute: typeof AppProspeccaoListasRoute
   AppProspeccaoOrcamentosRoute: typeof AppProspeccaoOrcamentosRoute
+  AppCrmSalaContactIdRoute: typeof AppCrmSalaContactIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -954,17 +1124,20 @@ const AppRouteChildren: AppRouteChildren = {
   AppEquipeRoute: AppEquipeRoute,
   AppOperacoesRoute: AppOperacoesRouteWithChildren,
   AppPlanosRoute: AppPlanosRoute,
+  AppRpaRoute: AppRpaRoute,
   AppVisaoGeralRoute: AppVisaoGeralRoute,
   AppAtendimentoInboxRoute: AppAtendimentoInboxRoute,
   AppAtendimentoRadarRoute: AppAtendimentoRadarRoute,
   AppAtendimentoRespostasRoute: AppAtendimentoRespostasRoute,
   AppConfiguracoesBillingRoute: AppConfiguracoesBillingRoute,
+  AppConfiguracoesConsumoRoute: AppConfiguracoesConsumoRoute,
   AppConfiguracoesLgpdRoute: AppConfiguracoesLgpdRoute,
   AppConfiguracoesOrganizacaoRoute: AppConfiguracoesOrganizacaoRoute,
   AppConfiguracoesPermissoesRoute: AppConfiguracoesPermissoesRoute,
   AppConfiguracoesSegurancaRoute: AppConfiguracoesSegurancaRoute,
   AppConfiguracoesUsuariosRoute: AppConfiguracoesUsuariosRoute,
   AppCrmContatosRoute: AppCrmContatosRoute,
+  AppCrmDossieRoute: AppCrmDossieRouteWithChildren,
   AppCrmEmpresasRoute: AppCrmEmpresasRoute,
   AppCrmPipelineRoute: AppCrmPipelineRoute,
   AppCrmTarefasRoute: AppCrmTarefasRoute,
@@ -987,6 +1160,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProspeccaoCampanhasRoute: AppProspeccaoCampanhasRoute,
   AppProspeccaoListasRoute: AppProspeccaoListasRoute,
   AppProspeccaoOrcamentosRoute: AppProspeccaoOrcamentosRoute,
+  AppCrmSalaContactIdRoute: AppCrmSalaContactIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -995,7 +1169,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   CadastroRoute: CadastroRoute,
+  ComecarRoute: ComecarRoute,
   LoginRoute: LoginRoute,
+  StatusRoute: StatusRoute,
   VSlugRoute: VSlugRoute,
 }
 export const routeTree = rootRouteImport

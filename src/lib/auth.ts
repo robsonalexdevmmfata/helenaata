@@ -32,6 +32,7 @@ export function startSession(userId: string) {
     const u = d.users.find((x) => x.id === userId);
     if (u) u.lastSeen = new Date().toISOString();
   });
+  void import("@/lib/persist/cycle").then(({ pullCycleIntoStore }) => pullCycleIntoStore());
 }
 
 export function findLocalUser(username: string, password: string) {
@@ -64,7 +65,7 @@ export async function loginWithServer(username: string, password: string) {
   if (user) {
     startSession(user.id);
     void import("@/lib/saas").then(({ syncPaidPlanFromCakto }) => syncPaidPlanFromCakto(user));
-    void import("@/lib/evolution/provision").then(({ provisionEvolutionInstance }) => provisionEvolutionInstance(user));
+    void import("@/lib/evolution/provision").then(({ provisionEvolutionInstance }) => provisionEvolutionInstance(user, { remote: false }));
     if (user.id === "u1" || user.username === DEMO_USERNAME) {
       const result = await backendLogin(username, password);
       if (result === "invalid") {

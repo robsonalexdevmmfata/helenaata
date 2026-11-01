@@ -2,6 +2,7 @@ import type { Agent, DB, SitePreview, Team } from "@/lib/types";
 import { bumpAutomation, getDB, nowISO, uid, update } from "@/lib/store";
 import { getAgencyConnection } from "@/lib/evolution/evolutionapi";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
+import { diagnoseLead, setCycleTag } from "@/lib/helena/diagnose";
 import type { MapPlace } from "@/lib/prospect/mapsSearch";
 import { normalize } from "@/lib/format";
 
@@ -161,8 +162,13 @@ const REVIEW_BITS = [
 ];
 const AUTHORS = ["Carla M.", "Roberto S.", "Ana P.", "Diego L.", "Fernanda G.", "Paulo H."];
 
-export function buildPreviewOpening(contactName: string, companyName: string, url: string, withMenu: boolean) {
+export function buildPreviewOpening(contactName: string, companyName: string, url: string, withMenu: boolean, pitch?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
+  if (pitch) {
+    return `${who} ${pitch} Prévia: ${url}
+
+Você é o proprietário ou a proprietária?`;
+  }
   const offer = withMenu ? "site nem cardápio online" : "site";
   return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. Montei uma prévia com as informações públicas (endereço, fotos de referência e avaliações) para vocês verem como ficaria: ${url}
 
@@ -233,10 +239,12 @@ export function buildSitePreview(opts: {
     reviewCount,
     reviews,
     hours: opts.place.hours || "Seg–Sáb, 11:00–22:00",
-    tagline: food ? "O sabor da casa, agora também online." : "A sua empresa no Google, com um endereço próprio.",
+    tagline: food
+      ? `${opts.place.name}: nota ${Math.round(rating * 10) / 10} em ${opts.place.city} — cardápio e pedido no WhatsApp.`
+      : `${opts.place.name} em ${opts.place.city}: horário, WhatsApp e endereço próprio no Google.`,
     about: food
-      ? `${opts.place.name} já aparece no mapa, mas ainda não tinha site nem cardápio online. Esta prévia reúne endereço, avaliações e um cardápio inicial para o cliente pedir pelo WhatsApp.`
-      : `${opts.place.name} estava só no mapa. Esta prévia organiza horário, contato, fotos de referência do segmento e um botão de WhatsApp para o dono conversar com quem busca o serviço na cidade.`,
+      ? `${opts.place.name} (${opts.place.address || opts.place.city}) aparece no mapa com ${reviewCount} avaliações (nota ${Math.round(rating * 10) / 10}), mas ainda não tinha site nem cardápio online. Esta prévia fecha o furo: endereço, fotos e pedido pelo WhatsApp ${opts.place.phone || ""}.`
+      : `${opts.place.name} em ${opts.place.city} estava só no mapa (${reviewCount} avaliações). Esta prévia organiza horário, contato ${opts.place.phone || ""} e um botão de WhatsApp para quem busca o serviço na região.`,
     palette: paletteFor(opts.segment),
     photos: photosFor(opts.segment),
     menu: food ? foodMenu(seed) : undefined,
@@ -383,6 +391,17 @@ export function applyPresenceFromPlaces(opts: {
       });
       const tags = ["#sem-site", "Google Maps", opts.segment.toLowerCase(), "#previa-pronta"];
       if (food) tags.push("#sem-cardapio");
+      const dx = diagnoseLead({
+        name: place.name,
+        segment: opts.segment,
+        city: place.city || opts.city,
+        website: "",
+        tags,
+        rating: place.rating,
+        photos: 2,
+        hasMenu: false,
+        hasWhatsApp: Boolean(place.phone),
+      });
       d.contacts.unshift({
         id: contactId,
         organizationId: d.organization.id,
@@ -391,11 +410,11 @@ export function applyPresenceFromPlaces(opts: {
         phone: place.phone,
         companyId: compId,
         title: "Proprietário",
-        tags,
+        tags: setCycleTag([...tags, ...dx.findings.map((f) => `#dx-${f.code}`)], "preview"),
         source: "Prospecção",
         ownerId: owner.id,
         status: "lead",
-        score: 88,
+        score: dx.score,
         consent: true,
         createdAt: nowISO(),
         lastContactAt: nowISO(),
@@ -454,7 +473,7 @@ export function applyPresenceFromPlaces(opts: {
           id: uid("m_"),
           from: "agent",
           authorName: owner.name,
-          text: formatForWhatsApp(buildPreviewOpening(place.contactName || place.name, place.name, url, food)),
+          text: formatForWhatsApp(buildPreviewOpening(place.contactName || place.name, place.name, url, food, dx.recommend_pitch)),
           at: nowISO(),
           kind: "text",
         }],
@@ -533,7 +552,17 @@ export function applyPresenceFromPlaces(opts: {
         const row = contacts.find((x) => x.contactId === ct.contactId);
         const live = row ? deployed[row.slug]?.vercelUrl : undefined;
         const url = live || previewUrl(row?.slug ?? "preview");
-        return formatForWhatsApp(buildPreviewOpening(ct.name, ct.companyName, url, Boolean(row?.withMenu)));
+        const lead = db2.contacts.find((x) => x.id === ct.contactId);
+        const pitch = (lead?.tags || []).includes("#dx-cardapio") || (lead?.tags || []).includes("#dx-sem_site")
+          ? diagnoseLead({
+            name: ct.companyName,
+            segment: db2.companies.find((c) => c.id === lead?.companyId)?.segment,
+            city: db2.companies.find((c) => c.id === lead?.companyId)?.city,
+            tags: lead?.tags,
+            hasWhatsApp: true,
+          }).recommend_pitch
+          : undefined;
+        return formatForWhatsApp(buildPreviewOpening(ct.name, ct.companyName, url, Boolean(row?.withMenu), pitch));
       },
       db2.organization.id,
     );

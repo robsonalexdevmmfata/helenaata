@@ -9,9 +9,11 @@ import { pageHead } from "@/lib/head";
 import { listAccounts } from "@/lib/store";
 import { caktoCheckoutUrl, registerCustomer } from "@/lib/saas";
 import { provisionEvolutionInstance } from "@/lib/evolution/provision";
+import { ActivateImpulsoButton, ActivateMaquinaButton } from "@/components/saas/ActivateMaquinaButton";
+import type { User } from "@/lib/types";
 
 export const Route = createFileRoute("/cadastro")({
-  head: () => pageHead("Criar conta", "Trial de 2 dias. 30 abordagens por dia. Sem cartão agora."),
+  head: () => pageHead("Criar conta", "Trial de 2 dias. 30 leads/dia no freemium. 150 após assinar. Sem cartão agora."),
   validateSearch: (s: Record<string, unknown>) => ({
     plano: s.plano === "maquina" || s.plano === "impulso" ? s.plano : undefined,
   }),
@@ -27,6 +29,7 @@ function CadastroPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [created, setCreated] = useState<User | null>(null);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -39,14 +42,41 @@ function CadastroPage() {
       return;
     }
     startSession(res.userId);
-    const created = listAccounts().find((u) => u.id === res.userId);
-    if (created) void provisionEvolutionInstance(created);
+    const account = listAccounts().find((u) => u.id === res.userId);
+    if (account) void provisionEvolutionInstance(account, { remote: false });
     if (plano === "impulso" || plano === "maquina") {
       window.location.assign(caktoCheckoutUrl(plano, { name, email }));
       return;
     }
-    navigate({ to: "/visao-geral" });
+    setCreated(account ?? null);
+    setLoading(false);
   };
+
+  if (created) {
+    return (
+      <div className="grid min-h-[100dvh] place-items-center bg-[#0b0a09] px-4 text-[#f4efe6]">
+        <div className="w-full max-w-md space-y-5 rounded-2xl border border-white/10 bg-[#141210] p-8">
+          <HelenaAvatar className="size-12" />
+          <div>
+            <p className="text-[11px] tracking-[0.22em] text-[#f4efe6]/50">CONTA CRIADA</p>
+            <h1 className="mt-2 font-serif text-3xl">Trial de 2 dias ligado, {created.name.split(" ")[0]}.</h1>
+            <p className="mt-3 text-sm text-[#f4efe6]/65">
+              O Time Comercial já funciona. O Time Dev (site + cardápio com link público) só entra no <strong>plano Máquina</strong>.
+              Quando o trial acabar, a conta trava até assinar Impulso ou Máquina.
+            </p>
+          </div>
+          <ActivateMaquinaButton user={created} className="w-full bg-[#e07a3d] text-[#1c1410] hover:bg-[#c96a32]" />
+          <ActivateImpulsoButton user={created} className="w-full border-white/20 bg-transparent text-[#f4efe6] hover:bg-white/10" />
+          <Button variant="ghost" className="w-full text-[#f4efe6]/70" onClick={() => navigate({ to: "/comecar" })}>
+            Ligar WhatsApp agora (5 min)
+          </Button>
+          <Button variant="ghost" className="w-full text-[#f4efe6]/50" onClick={() => navigate({ to: "/visao-geral" })}>
+            Continuar no trial (sem chip)
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-[100dvh] bg-[#0b0a09] text-[#f4efe6] lg:grid-cols-2">
@@ -58,7 +88,7 @@ function CadastroPage() {
         <div>
           <p className="font-serif text-5xl leading-tight">Dois dias para ver a máquina trabalhar.</p>
           <p className="mt-4 max-w-md text-sm text-[#f4efe6]/65">
-            30 prospecções por dia. Time Comercial no WhatsApp.
+            Freemium: 30 leads/dia. Depois de assinar Impulso ou Máquina: até 150/dia. Time Dev não aumenta cota até o Cakto confirmar.
             O timer começa na hora do cadastro. Depois de 2 dias, a conta só segue com um plano.
           </p>
         </div>

@@ -307,6 +307,12 @@ function hydrate(db: DB): DB {
     db.version = 11;
   }
   if (!Array.isArray(db.quoteRequests)) db.quoteRequests = [];
+  if (!Array.isArray(db.rpaJobs)) db.rpaJobs = [];
+  if (!Array.isArray(db.radarSchedules)) db.radarSchedules = [];
+  if (!Array.isArray(db.commercialProposals)) db.commercialProposals = [];
+  if (!Array.isArray(db.commercialDossiers)) db.commercialDossiers = [];
+  if (!Array.isArray(db.commercialDecisions)) db.commercialDecisions = [];
+  if (!Array.isArray(db.dailyReports)) db.dailyReports = [];
   if ((db.version ?? 0) < 12) {
     ensureSaasUsers(db);
     db.version = 12;

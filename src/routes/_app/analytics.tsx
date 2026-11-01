@@ -3,6 +3,7 @@ import {
   BarChart3, Bot, CircleDollarSign, MessageCircle, Target, TrendingUp, Zap,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/app/kit";
+import { FunnelBars, GlowPie, WeekActivityChart } from "@/components/app/CommercialCharts";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useDB } from "@/lib/store";
@@ -19,7 +20,7 @@ function AnalyticsPage() {
   const db = useDB();
   const {
     openDeals, wonDeals, lostDeals, totalRevenue, pipelineValue, convRate, totalLeads,
-    totalConversations, csat, campaignSent, meetings, campaignConv, dealsByStage, topAgents,
+    totalConversations, csat, campaignSent, meetings, campaignConv, dealsByStage, topAgents, week, weightedPipeline,
   } = computeAnalytics(db);
 
   const maxStageCount = Math.max(...dealsByStage.map((s) => s.count), 1);
@@ -34,7 +35,7 @@ function AnalyticsPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Receita Fechada" value={brl(totalRevenue)} hint={`${wonDeals.length} deals ganhos`} icon={<CircleDollarSign />} tone="success" />
-        <StatCard label="Pipeline Ativo" value={brl(pipelineValue)} hint={`${openDeals.length} deals em aberto`} icon={<TrendingUp />} tone="info" />
+        <StatCard label="Pipeline Ativo" value={brl(pipelineValue)} hint={`${openDeals.length} abertos · ponderado ${brl(weightedPipeline)}`} icon={<TrendingUp />} tone="info" />
         <StatCard label="Taxa de Conversão" value={`${convRate}%`} hint={`${wonDeals.length} ganhos / ${totalLeads} leads`} icon={<Target />} tone="helena" />
         <StatCard label="CSAT" value={`${csat}%`} hint="Conversas resolvidas" icon={<MessageCircle />} tone="warning" />
       </div>
@@ -42,6 +43,7 @@ function AnalyticsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border bg-card p-5 space-y-4">
           <h3 className="font-semibold text-sm flex items-center gap-2"><BarChart3 className="size-4" /> Funil de Vendas</h3>
+          <FunnelBars rows={dealsByStage.map((s) => ({ name: s.stage.name, count: s.count, value: s.value }))} />
           {dealsByStage.map(({ stage, count, value }) => (
             <div key={stage.id}>
               <div className="flex justify-between text-xs mb-1.5">
@@ -51,6 +53,20 @@ function AnalyticsPage() {
               <Progress value={maxStageCount > 0 ? (count / maxStageCount) * 100 : 0} className="h-2" />
             </div>
           ))}
+        </div>
+        <div className="rounded-xl border bg-card p-5">
+          <h3 className="mb-3 font-semibold text-sm">Atividade 7 dias</h3>
+          <WeekActivityChart data={week} />
+        </div>
+        <div className="rounded-xl border bg-card p-5 md:col-span-2">
+          <h3 className="mb-3 font-semibold text-sm">Deals por status</h3>
+          <GlowPie
+            data={[
+              { name: "Aberto", value: openDeals.length },
+              { name: "Ganho", value: wonDeals.length },
+              { name: "Perdido", value: lostDeals.length },
+            ]}
+          />
         </div>
 
         <div className="rounded-xl border bg-card p-5 space-y-4">

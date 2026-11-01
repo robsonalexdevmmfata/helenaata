@@ -60,6 +60,7 @@ export interface BackendHealth {
   uptime: number;
   whatsapp: string;
   ai: "groq" | "freellmapi" | null;
+  evolution?: string;
 }
 
 export function getHealth() {

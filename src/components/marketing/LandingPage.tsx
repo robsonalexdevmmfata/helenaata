@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check, MapPin, MessageCircle, Moon, Sparkles, Sun } from "lucide-react";
 import { HelenaAvatar } from "@/components/helena/HelenaAvatar";
@@ -6,6 +6,7 @@ import { TestimonialsSlider } from "@/components/marketing/TestimonialsSlider";
 import { SAAS_PLANS } from "@/lib/saas";
 import { applyTheme, getTheme } from "@/lib/theme";
 import { useLandingMotion } from "@/hooks/use-landing-motion";
+import { getHealth } from "@/lib/backend";
 
 const STEPS = [
   { n: "01", title: "Ela varre o mapa", text: "Você fala o nicho. A Helena acha quem aparece no Google — e ainda não tem site nem cardápio online." },
@@ -15,6 +16,19 @@ const STEPS = [
 
 function toggleTheme() {
   applyTheme(getTheme() === "dark" ? "light" : "dark");
+}
+
+function ChipPulse() {
+  const [label, setLabel] = useState("Checando o chip…");
+  useEffect(() => {
+    getHealth()
+      .then((h) => {
+        const on = h.whatsapp === "connected" || h.whatsapp === "open" || h.evolution === "remote";
+        setLabel(on ? "Chip / Evolution no ar (Render grátis)" : `Servidor ok · WhatsApp ${h.whatsapp}`);
+      })
+      .catch(() => setLabel("Servidor local ou Render ainda acordando"));
+  }, []);
+  return <p className="mt-4 text-xs text-helena">{label} · <Link to="/status" className="underline">status</Link></p>;
 }
 
 export function LandingPage() {
@@ -47,6 +61,9 @@ export function LandingPage() {
             <Link to="/login" className="lp-btn rounded-full px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground sm:px-4 sm:text-sm">
               Entrar
             </Link>
+            <Link to="/status" className="hidden rounded-full px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground sm:inline">
+              Status
+            </Link>
             <Link to="/cadastro" className="lp-btn lp-btn--helena rounded-full bg-helena px-2.5 py-1.5 text-xs font-medium text-helena-foreground sm:px-4 sm:text-sm">
               Trial
             </Link>
@@ -68,12 +85,16 @@ export function LandingPage() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/cadastro" className="lp-btn lp-btn--helena inline-flex items-center gap-2 rounded-full bg-helena px-6 py-3 text-sm font-semibold text-helena-foreground">
-              2 dias grátis · 30 abordagens/dia <ArrowRight className="size-4" />
+              2 dias grátis · 30 leads/dia no freemium · 150 no plano pago <ArrowRight className="size-4" />
             </Link>
+            <a href="#demo" className="lp-btn inline-flex items-center rounded-full border border-border px-6 py-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+              Ver em 20s
+            </a>
             <a href="#planos" className="lp-btn inline-flex items-center rounded-full border border-border px-6 py-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
               Ver planos
             </a>
           </div>
+          <ChipPulse />
           <p className="mt-4 text-xs text-muted-foreground/80">Sem cartão no trial. Depois, Cakto. White-label sob orçamento.</p>
         </div>
         <div className="lp-reveal lp-hero-orb relative mx-auto w-full max-w-md" style={{ "--i": 3 } as CSSProperties}>
@@ -122,6 +143,24 @@ export function LandingPage() {
         </div>
       </section>
 
+      <section id="demo" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-8">
+        <h2 className="lp-reveal font-serif text-3xl sm:text-4xl">Vinte segundos. Sem vídeo pago.</h2>
+        <p className="mt-3 max-w-xl text-sm text-muted-foreground">Cadastro → nome da Linha Helena → QR → primeira mensagem. O expediente RPA (Maps, WhatsApp, agenda, Pix, site) só dispara com o chip no ar.</p>
+        <ol className="mt-8 grid gap-4 md:grid-cols-4">
+          {[
+            "Cria a conta em 1 minuto",
+            "Nomeia agente e instância",
+            "Lê o QR no celular",
+            "Manda o teste no próprio chip",
+          ].map((t, i) => (
+            <li key={t} className="rounded-2xl border border-border bg-card p-5">
+              <div className="text-xs tracking-[0.2em] text-helena">0{i + 1}</div>
+              <p className="mt-2 font-medium">{t}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
       <TestimonialsSlider />
 
       <section id="planos" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20">
@@ -162,9 +201,9 @@ export function LandingPage() {
       <section className="border-t border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-5 py-14 sm:flex-row sm:items-center">
           <div className="lp-reveal">
-            <p className="font-serif text-3xl leading-tight">Dois dias. Trinta abordagens. Sem cartão.</p>
+            <p className="font-serif text-3xl leading-tight">Dois dias. Trinta leads. Sem cartão.</p>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Se a máquina não te mostrar o jogo, você sai. Se mostrar, o Cakto cuida do plano.
+              Freemium: 30 prospecções/dia. Impulso e Máquina: até 150/dia. Time Dev não aumenta cota até o pagamento.
             </p>
           </div>
           <Link to="/cadastro" className="lp-btn lp-btn--helena inline-flex items-center gap-2 rounded-full bg-helena px-6 py-3 text-sm font-semibold text-helena-foreground">
@@ -202,6 +241,7 @@ export function LandingPage() {
               <li><a href="#planos" className="hover:text-foreground">Planos</a></li>
               <li><Link to="/cadastro" className="hover:text-foreground">Trial de 2 dias</Link></li>
               <li><Link to="/login" className="hover:text-foreground">Entrar</Link></li>
+              <li><Link to="/status" className="hover:text-foreground">O chip está no ar?</Link></li>
             </ul>
           </div>
           <div>
@@ -215,7 +255,7 @@ export function LandingPage() {
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-helena">Operação</p>
             <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-              <li>30 prospecções/dia no trial</li>
+              <li>30 leads/dia no freemium · 150 no pago</li>
               <li>Pagamento via Cakto</li>
               <li>WhatsApp, CRM e prévia no Máquina</li>
               <li>São Paulo · Brasil</li>

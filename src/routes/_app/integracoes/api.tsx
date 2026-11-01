@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { isPlatformAdmin } from "@/lib/saas";
 import { useState } from "react";
 import {
   Copy, Eye, EyeOff, KeyRound, Plus, Shield, Trash2, Clock,
@@ -10,11 +11,14 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { useDB, update, uid, nowISO } from "@/lib/store";
+import { currentUser, getDB, useDB, update, uid, nowISO } from "@/lib/store";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/integracoes/api")({
+  beforeLoad: () => {
+    if (!isPlatformAdmin(currentUser(getDB()))) throw redirect({ to: "/integracoes/whatsapp" });
+  },
   head: () => pageHead("API Keys", "Tokens de acesso à API REST do sistema para integrações externas."),
   component: ApiPage,
 });

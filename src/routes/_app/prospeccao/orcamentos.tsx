@@ -82,6 +82,7 @@ function OrcamentosPage() {
     setForm({
       category: o.category, name: o.name, description: o.description, price: o.price,
       priceNote: o.priceNote, setupFee: o.setupFee, billing: o.billing, active: o.active, pitch: o.pitch,
+      costAmount: o.costAmount, hoursEstimate: o.hoursEstimate, desiredMarginPct: o.desiredMarginPct, monthlyCapacity: o.monthlyCapacity,
     });
     setOpen(true);
   };
@@ -249,6 +250,25 @@ function OrcamentosPage() {
               <Label>Pitch curto (WhatsApp)</Label>
               <Input value={form.pitch} onChange={(e) => setForm({ ...form, pitch: e.target.value })} />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Custo informado (R$)</Label>
+                <Input type="number" min={0} step={1} value={form.costAmount ?? ""} onChange={(e) => setForm({ ...form, costAmount: e.target.value === "" ? undefined : Number(e.target.value) })} placeholder="vazio = sem mínimo" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Margem desejada (%)</Label>
+                <Input type="number" min={0} max={90} step={1} value={form.desiredMarginPct ?? ""} onChange={(e) => setForm({ ...form, desiredMarginPct: e.target.value === "" ? undefined : Number(e.target.value) })} placeholder="ex. 30" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Horas estimadas</Label>
+                <Input type="number" min={0} step={1} value={form.hoursEstimate ?? ""} onChange={(e) => setForm({ ...form, hoursEstimate: e.target.value === "" ? undefined : Number(e.target.value) })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Capacidade / mês</Label>
+                <Input type="number" min={0} step={1} value={form.monthlyCapacity ?? ""} onChange={(e) => setForm({ ...form, monthlyCapacity: e.target.value === "" ? undefined : Number(e.target.value) })} placeholder="projetos" />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Sem custo cadastrado a Helena não inventa margem nem desconto máximo.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>

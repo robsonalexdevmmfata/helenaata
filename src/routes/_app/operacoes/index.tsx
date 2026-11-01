@@ -44,9 +44,21 @@ function OperationsPage() {
         title="Operações"
         description="Cada missão que a Helena coordena vira uma operação: agentes, contatos, etapas e resultados em tempo real."
         actions={
-          <Button onClick={() => openHelena("Helena, precisamos faturar R$ 15.000 esta semana.")} className="gap-2">
-            <Sparkles className="size-4" /> Nova operação com a Helena
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                const r = userAction("rpa.run_shift", { nicho: "barbearia", cidade: "São Paulo", maxLeads: 3, site: false, checkout: false });
+                r.ok ? toast.success(r.message) : toast.error(r.message);
+              }}
+            >
+              <Rocket className="size-4" /> Rodar expediente RPA
+            </Button>
+            <Button onClick={() => openHelena("Helena, precisamos faturar R$ 15.000 esta semana.")} className="gap-2">
+              <Sparkles className="size-4" /> Nova operação com a Helena
+            </Button>
+          </div>
         }
       />
 

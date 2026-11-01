@@ -206,10 +206,27 @@ async function publishVercel(preview, html) {
 
 export async function publishClientSite(preview) {
   loadLocalEnv();
-  if (!process.env.GITHUB_TOKEN) return { ok: false, error: "GITHUB_TOKEN ausente no Render/.env.local" };
-  if (!process.env.VERCEL_TOKEN) return { ok: false, error: "VERCEL_TOKEN ausente no Render/.env.local" };
+  if (!process.env.VERCEL_TOKEN) {
+    return {
+      ok: false,
+      error: "VERCEL_TOKEN ausente no Render (Environment). Não vai no GitHub — o servidor é quem publica.",
+    };
+  }
   const html = previewToHtml(preview);
-  const githubUrl = await publishGithub(preview, html);
+  let githubUrl = "";
+  let githubError = "";
+  if (process.env.GITHUB_TOKEN) {
+    try {
+      githubUrl = await publishGithub(preview, html);
+    } catch (err) {
+      githubError = err instanceof Error ? err.message : String(err);
+    }
+  }
   const vercelUrl = await publishVercel(preview, html);
-  return { ok: true, githubUrl, vercelUrl };
+  return {
+    ok: true,
+    githubUrl,
+    vercelUrl,
+    githubError: githubError || undefined,
+  };
 }

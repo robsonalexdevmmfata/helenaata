@@ -50,11 +50,192 @@ export interface User {
   trialEndsAt?: string;
   dailyProspectUsed?: number;
   dailyProspectDate?: string;
+  /** Override admin da cota diária de prospecção (leads/dia). */
+  dailyProspectLimit?: number;
+  /** Admin libera acesso sem data de término. */
+  lifetimeAccess?: boolean;
   companyName?: string;
   phone?: string;
   createdAt?: string;
   /** Instância Evolution desta conta (criada no cadastro). */
   evolutionInstance?: string;
+  /** Wizard cadastro → Linha Helena → QR → mensagem teste. */
+  onboardingDone?: boolean;
+  prospectSegment?: string;
+  prospectCity?: string;
+}
+
+export type RpaJobKind =
+  | "scan_maps"
+  | "diagnose"
+  | "send_wa"
+  | "book_meeting"
+  | "build_preview"
+  | "send_proposal"
+  | "charge"
+  | "followup"
+  | "daily_report";
+
+export type RpaJobStatus = "queued" | "running" | "sent" | "failed" | "skipped" | "awaiting_approval";
+
+export interface RpaJob {
+  id: ID;
+  organizationId: ID;
+  kind: RpaJobKind;
+  status: RpaJobStatus;
+  contactId?: ID;
+  payload: Record<string, unknown>;
+  runAt: string;
+  attempts: number;
+  maxAttempts: number;
+  error?: string;
+  durationMs?: number;
+  idempotencyKey: string;
+  createdAt: string;
+  finishedAt?: string;
+}
+
+export interface RadarSchedule {
+  id: ID;
+  organizationId: ID;
+  segment: string;
+  city: string;
+  hour: number;
+  limit: number;
+  active: boolean;
+  lastRunAt?: string;
+}
+
+export interface CommercialProposal {
+  id: ID;
+  organizationId: ID;
+  contactId: ID;
+  title: string;
+  scope: string;
+  offer: string;
+  benefits: string;
+  amount: number;
+  status: "rascunho" | "aguardando" | "enviada" | "aceita" | "recusada";
+  version: number;
+  createdAt: string;
+  sentAt?: string;
+}
+
+export type EvidenceKind = "observed" | "not_found" | "stated_by_client" | "hypothesis";
+export type NichePlay = "pizzaria" | "clinica" | "barbearia" | "outro";
+export type BuyIntent = "frio" | "interessado" | "quente";
+export type LeadTemperature = "frio" | "morno" | "quente" | "negociacao";
+export type OpportunityRisk = "ok" | "esfriando" | "parada";
+
+export interface NextBestAction {
+  id: string;
+  label: string;
+  reason: string;
+  tool?: string;
+  params?: Record<string, unknown>;
+  needsApproval: boolean;
+}
+
+export interface MatchedOffer {
+  offerId: string;
+  name: string;
+  why: string;
+  price: number;
+  fitScore: number;
+}
+
+export interface CommercialContradiction {
+  code: string;
+  detail: string;
+}
+
+export interface RecommendationConfidence {
+  score: number;
+  level: "baixa" | "media" | "alta";
+  favors: string[];
+  limits: string[];
+  note: string;
+}
+
+export interface CommercialDecision {
+  id: ID;
+  organizationId: ID;
+  contactId: ID;
+  actionId: string;
+  label: string;
+  reason: string;
+  status: "recomendada" | "aprovada" | "rejeitada" | "executada";
+  outcome?: "aberto" | "ganho" | "perdido" | "ignorado";
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface OpportunitySimRow {
+  id: string;
+  label: string;
+  offerIds: string[];
+  price: number;
+  fitScore: number;
+  marginNote: string;
+  capacityNote: string;
+  premise: string;
+}
+
+export interface IntelligenceEvidence {
+  code: string;
+  label: string;
+  observation: string;
+  kind: EvidenceKind;
+  source: string;
+  collectedAt: string;
+  supersededAt?: string;
+}
+
+export interface RoiScenario {
+  name: "conservador" | "intermediario" | "otimista";
+  ticket: number;
+  extraOrders: number;
+  premise: string;
+}
+
+export interface CommercialDossier {
+  id: ID;
+  organizationId: ID;
+  contactId: ID;
+  companyId?: ID;
+  nichePlay: NichePlay;
+  collectedAt: string;
+  evidence: IntelligenceEvidence[];
+  reputation: { pattern: string; kind: EvidenceKind; rating?: number };
+  competitors: { name: string; city: string; hasSite: boolean; note: string }[];
+  offer: string;
+  approach: string;
+  roi: {
+    offerPrice: number;
+    informedTicket?: number;
+    informedMonthly?: number;
+    ticketSource: EvidenceKind;
+    scenarios: RoiScenario[];
+  };
+  intent: BuyIntent;
+  temperature: { label: LeadTemperature; reason: string };
+  risk: { level: OpportunityRisk; reason: string };
+  nextAction: NextBestAction;
+  matchedOffers: MatchedOffer[];
+  evidenceHistory: IntelligenceEvidence[];
+  contradictions: CommercialContradiction[];
+  confidence: RecommendationConfidence;
+  previewId?: string;
+  proposalId?: string;
+}
+
+export interface DailyReport {
+  id: ID;
+  organizationId: ID;
+  day: string;
+  body: string;
+  stats: Record<string, number>;
+  createdAt: string;
 }
 
 export interface QuoteRequest {
@@ -799,6 +980,11 @@ export interface ServiceOffer {
   active: boolean;
   pitch: string;
   updatedAt: string;
+  /** Custo informado pelo assinante. Sem valor, a Helena não inventa margem. */
+  costAmount?: number;
+  hoursEstimate?: number;
+  desiredMarginPct?: number;
+  monthlyCapacity?: number;
 }
 
 export interface DB {
@@ -852,6 +1038,12 @@ export interface DB {
   lgpdRequests: LgpdRequest[];
   sessions: SessionInfo[];
   invoices: Invoice[];
+  rpaJobs: RpaJob[];
+  radarSchedules: RadarSchedule[];
+  commercialProposals: CommercialProposal[];
+  commercialDossiers: CommercialDossier[];
+  commercialDecisions: CommercialDecision[];
+  dailyReports: DailyReport[];
   retentionDays: number;
   organizationSettings?: { retentionDays: number; mfaEnabled: boolean; ipWhitelist: string[] };
 }

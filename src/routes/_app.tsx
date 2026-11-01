@@ -9,17 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EntityAvatar } from "@/components/app/kit";
-import { NAV_BOTTOM, NAV_GROUPS_2, NAV_MIDDLE, NAV_TOP, allNavFor, navGroupsFor, settingsNavFor, type NavItem } from "@/components/app/nav";
+import { NAV_BOTTOM, NAV_MIDDLE, NAV_TOP, allNavFor, integrationNavFor, navGroupsFor, settingsNavFor, type NavItem } from "@/components/app/nav";
 import { HelenaPanel } from "@/components/helena/HelenaPanel";
 import { CommandPalette } from "@/components/helena/CommandPalette";
 import { ApprovalBlock } from "@/components/helena/HelenaCards";
 import { HelenaOrb } from "@/components/helena/HelenaOrb";
 import { isAuthenticated, logout, syncSessionUser } from "@/lib/auth";
-import { currentUser, getDB, resetDB, useDB } from "@/lib/store";
-import { canUseDevTeam, formatTrialLabel, isPlatformAdmin, mustSubscribe, syncPaidPlanFromCakto, workspaceDisplayName } from "@/lib/saas";
+import { currentUser, getDB, resetDB, update, useDB } from "@/lib/store";
+import { caktoCheckoutUrl, canUseDevTeam, dailyLimitFor, formatTrialLabel, isPlatformAdmin, mustSubscribe, prospectsUsedToday, syncPaidPlanFromCakto, workspaceDisplayName } from "@/lib/saas";
 import { provisionEvolutionInstance } from "@/lib/evolution/provision";
 import { helenaUi } from "@/lib/helena/orchestrator";
-import { tickOperations, tickSalesFlow } from "@/lib/helena/engine";
+import { tickOperations, tickRpaJobs, tickSalesFlow } from "@/lib/helena/engine";
 import { startEvolutionInboxPoller } from "@/lib/evolution/inboxPoller";
 import { applyTheme, getTheme } from "@/lib/theme";
 import { ROLE_LABEL } from "@/lib/helena/registry";
@@ -83,7 +83,7 @@ function AppSidebar() {
           <SidebarGroup key={g.label}><SidebarGroupLabel>{g.label}</SidebarGroupLabel><NavLinks items={g.items} /></SidebarGroup>
         ))}
         <SidebarGroup><NavLinks items={NAV_MIDDLE} /></SidebarGroup>
-        {NAV_GROUPS_2.map((g) => (
+        {integrationNavFor(isPlatformAdmin(user)).map((g) => (
           <SidebarGroup key={g.label}><SidebarGroupLabel>{g.label}</SidebarGroupLabel><NavLinks items={g.items} /></SidebarGroup>
         ))}
         <SidebarGroup><NavLinks items={NAV_BOTTOM} /></SidebarGroup>
@@ -165,15 +165,29 @@ function TrialStrip() {
   if (isPlatformAdmin(user) || mustSubscribe(user)) return null;
   const label = formatTrialLabel(user);
   if (!label) return null;
+  const trial = user.planId === "trial" || !user.planId;
+  const limit = dailyLimitFor(user);
+  const used = prospectsUsedToday(user);
   return (
-    <button
-      type="button"
-      onClick={() => router.history.push("/planos")}
-      className="mb-4 w-full rounded-lg border border-primary/30 bg-primary/8 px-4 py-2 text-left text-xs text-foreground hover:bg-primary/12"
-    >
-      {label}
-      {user.planId === "trial" ? " · 30 prospecções/dia · ver planos" : " · ver planos"}
-    </button>
+    <div className="mb-4 flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/8 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <button
+        type="button"
+        onClick={() => router.history.push("/planos")}
+        className="text-left text-xs text-foreground"
+      >
+        {label}
+        {` · ${used}/${limit} leads hoje`}
+        {trial ? " (freemium 30/dia). Time Dev no Máquina não sobe a cota até o Cakto confirmar." : " · pago até 150/dia"}
+      </button>
+      {trial && (
+        <a
+          href={caktoCheckoutUrl("maquina", { name: user.name, email: user.email, phone: user.phone })}
+          className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-helena px-3 text-xs font-medium text-helena-foreground"
+        >
+          Ativar plano Máquina
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -182,14 +196,24 @@ function AppLayout() {
   useEffect(() => {
     const me = currentUser(getDB());
     void syncPaidPlanFromCakto(me);
-    if (me) void provisionEvolutionInstance(me);
+    if (me) {
+      if (mustSubscribe(me)) {
+        update((d) => {
+          d.connections.forEach((c) => {
+            if (c.status === "online") c.status = "offline";
+          });
+        });
+      } else {
+        void provisionEvolutionInstance(me, { remote: false });
+      }
+    }
     const paywall = window.setInterval(() => {
       const user = currentUser(getDB());
       if (user && mustSubscribe(user) && !window.location.pathname.startsWith("/planos")) {
         router.history.push("/planos");
       }
     }, 1000);
-    const id = setInterval(() => { tickOperations(); tickSalesFlow(); }, 3000);
+    const id = setInterval(() => { tickOperations(); tickSalesFlow(); tickRpaJobs(); }, 3000);
     const stopPoll = startEvolutionInboxPoller(10000);
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {

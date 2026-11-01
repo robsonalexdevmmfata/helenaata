@@ -26,7 +26,8 @@ import { fmtDate } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 import type { Role, User as UserType } from "@/lib/types";
-import { assignPlan, extendTrial, formatTrialLabel, isPlatformAdmin, setUserActive } from "@/lib/saas";
+import { assignPlan, dailyLimitFor, formatTrialLabel, isPlatformAdmin, setUserActive } from "@/lib/saas";
+import { userAction } from "@/lib/helena/engine";
 
 export const Route = createFileRoute("/_app/configuracoes/usuarios")({
   head: () => pageHead("Usuários & Equipe", "Membros da organização e controle de acesso."),
@@ -44,6 +45,7 @@ function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("agent");
+  const [leadDraft, setLeadDraft] = useState<Record<string, string>>({});
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,19 +157,42 @@ function UsersPage() {
 
       <div className="rounded-xl border bg-card p-5 space-y-3">
         <h3 className="font-semibold text-sm">Contas SaaS cadastradas</h3>
-        <p className="text-xs text-muted-foreground">Trial, plano e bloqueio das contas que se inscreveram na landing. O Cakto confirma o pagamento depois — aqui você libera na mão.</p>
+        <p className="text-xs text-muted-foreground">Trial, plano, dias de acesso (2 / 7 / vitalício) e cota diária de leads. Preços Impulso R$ 70 e Máquina R$ 140 não mudam. Cakto confirma o pagamento — aqui você libera na mão.</p>
         <div className="divide-y">
           {listAccounts().filter((u) => u.kind === "customer").map((u) => (
             <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
               <div>
                 <div className="font-medium">{u.name} · {u.companyName || u.email}</div>
-                <div className="text-xs text-muted-foreground font-mono">{u.username} · {u.email} · {formatTrialLabel(u)} · {u.dailyProspectUsed ?? 0} hoje</div>
+                <div className="text-xs text-muted-foreground font-mono">
+                  {u.username} · {u.email} · {formatTrialLabel(u)} · {u.dailyProspectUsed ?? 0}/{dailyLimitFor(u)} leads hoje
+                  {u.lifetimeAccess ? " · vitalício" : ""}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => { assignPlan(u.id, "impulso"); toast.success("Impulso liberado"); }}>Impulso</Button>
                 <Button size="sm" variant="outline" onClick={() => { assignPlan(u.id, "maquina"); toast.success("Máquina liberada"); }}>Máquina</Button>
                 <Button size="sm" variant="outline" onClick={() => { assignPlan(u.id, "whitelabel"); toast.success("White-label liberado"); }}>WL</Button>
-                <Button size="sm" variant="ghost" onClick={() => { extendTrial(u.id); toast.success("Trial renovado 2 dias"); }}>+2 dias</Button>
+                <Button size="sm" variant="ghost" onClick={() => { const r = userAction("admin.grant_access", { userId: u.id, days: 2 }); r.ok ? toast.success(r.message) : toast.error(r.message); }}>+2 dias</Button>
+                <Button size="sm" variant="ghost" onClick={() => { const r = userAction("admin.grant_access", { userId: u.id, days: 7 }); r.ok ? toast.success(r.message) : toast.error(r.message); }}>+7 dias</Button>
+                <Button size="sm" variant="ghost" onClick={() => { const r = userAction("admin.grant_access", { userId: u.id, lifetime: true }); r.ok ? toast.success(r.message) : toast.error(r.message); }}>Vitalício</Button>
+                <Input
+                  className="h-8 w-20"
+                  inputMode="numeric"
+                  placeholder={`${dailyLimitFor(u)}`}
+                  value={leadDraft[u.id] ?? ""}
+                  onChange={(e) => setLeadDraft((s) => ({ ...s, [u.id]: e.target.value }))}
+                  aria-label={`Leads por dia de ${u.name}`}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const r = userAction("admin.set_daily_leads", { userId: u.id, limit: Number(leadDraft[u.id] || dailyLimitFor(u)) });
+                    r.ok ? toast.success(r.message) : toast.error(r.message);
+                  }}
+                >
+                  Leads/dia
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => { setUserActive(u.id, u.status !== "ativo"); toast.success(u.status === "ativo" ? "Bloqueada" : "Ativada"); }}>
                   {u.status === "ativo" ? "Bloquear" : "Ativar"}
                 </Button>

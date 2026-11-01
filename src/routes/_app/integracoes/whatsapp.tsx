@@ -15,13 +15,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { currentUser, useDB, update, uid, nowISO } from "@/lib/store";
-import { provisionEvolutionInstance } from "@/lib/evolution/provision";
+import { currentUser, getDB, useDB, update, uid, nowISO } from "@/lib/store";
+import { instanceNameFromLabel, provisionEvolutionInstance, sanitizeInstanceName } from "@/lib/evolution/provision";
+import { isPlatformAdmin } from "@/lib/saas";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 import {
   getEvolutionConfigUI, saveEvolutionConfigUI,
   testEvolutionConnection, evolutionSetWebhook, evolutionGetWebhook,
+  evolutionConnectQr, getEvolutionStatus,
   type EvolutionConfig,
 } from "@/lib/evolution/evolutionapi";
 
@@ -53,15 +55,15 @@ function EvolutionPanel() {
   } | null>(null);
 
   useEffect(() => {
-    const user = currentUser();
+    const user = currentUser(getDB());
     if (user) {
-      void provisionEvolutionInstance(user).then(() => {
-        setCfg(getEvolutionConfigUI());
-      });
+      void provisionEvolutionInstance(user)
+        .then(() => setCfg(getEvolutionConfigUI()))
+        .catch(() => setCfg(getEvolutionConfigUI()));
     }
     evolutionGetWebhook().then((res) => {
       if (res.ok && res.url) setWebhookUrl(res.url);
-    });
+    }).catch(() => { /* webhook só para admin */ });
   }, []);
 
   const handleSave = async () => {
@@ -377,35 +379,174 @@ function EvolutionPanel() {
 }
 
 // ── Página principal ──────────────────────────────────────────────────────────
+const CONNECTION_KIND_LABEL = "Linha Helena";
+
+function CustomerWhatsAppConnect() {
+  const db = useDB();
+  const user = currentUser(db);
+  const [busy, setBusy] = useState(false);
+  const [qr, setQr] = useState("");
+  const [status, setStatus] = useState("");
+  const [agentName, setAgentName] = useState(user?.companyName || user?.name || "");
+  const [instanceLabel, setInstanceLabel] = useState(user?.evolutionInstance || "");
+  const [instanceTouched, setInstanceTouched] = useState(Boolean(user?.evolutionInstance));
+
+  const previewInstance = instanceNameFromLabel(instanceLabel || agentName, user?.id);
+
+  const connect = async () => {
+    if (!user) return;
+    const label = agentName.trim() || instanceLabel.trim();
+    if (!label) {
+      toast.error("Diz o nome do agente ou o nome da instância.");
+      return;
+    }
+    const instance = instanceNameFromLabel(instanceLabel || agentName, user.id);
+    if (!instance) {
+      toast.error("O nome da instância precisa ter letras ou números.");
+      return;
+    }
+    setBusy(true);
+    setStatus(`Criando a instância “${instance}” na Evolution…`);
+    try {
+      const created = await provisionEvolutionInstance(user, { instanceName: instance });
+      if (!created.ok) {
+        setStatus(created.error || "Não deu para criar a instância.");
+        setBusy(false);
+        return;
+      }
+      update((d) => {
+        const existing = d.connections.find((c) => c.id === `wa_${instance}`) ?? d.connections[0];
+        if (existing) {
+          existing.name = agentName.trim() || instance;
+          existing.status = "conectando";
+          existing.lastSyncAt = nowISO();
+        } else {
+          d.connections.unshift({
+            id: `wa_${instance}`,
+            organizationId: d.organization.id,
+            name: agentName.trim() || instance,
+            phone: "aguardando QR",
+            type: "cloud_api",
+            status: "conectando",
+            queue: 0,
+            sentToday: 0,
+            dailyLimit: 1000,
+            lastSyncAt: nowISO(),
+          });
+        }
+      });
+      setStatus("Gerando QR do WhatsApp…");
+      const pair = await evolutionConnectQr();
+      if (pair.connected) {
+        setQr("");
+        setStatus("WhatsApp já está conectado nesta instância.");
+        toast.success("WhatsApp conectado.");
+        setBusy(false);
+        return;
+      }
+      if (pair.qr) {
+        setQr(pair.qr);
+        setStatus("Leia o QR no WhatsApp do chip (Aparelhos conectados).");
+        toast.success("Instância pronta. Escaneie o QR.");
+      } else {
+        setStatus(pair.error || "Instância criada. Abra de novo se o QR não aparecer.");
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Falha ao conectar.");
+    }
+    setBusy(false);
+  };
+
+  useEffect(() => {
+    void getEvolutionStatus().then((s) => {
+      if (s.connected) setStatus(`Conectado${s.number ? ` · ${s.number}` : ""}`);
+    }).catch(() => { /* ignore */ });
+  }, []);
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4 max-w-lg">
+      <h2 className="font-semibold">Conectar WhatsApp</h2>
+      <p className="text-sm text-muted-foreground">
+        Dê um nome ao agente ou à instância. A Helena cria na Evolution e o QR aparece sozinho — sem API Key nem URL.
+      </p>
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label>Nome do agente</Label>
+          <Input
+            placeholder="Ex: Helena SDR, Chip da loja"
+            value={agentName}
+            onChange={(e) => {
+              const value = e.target.value;
+              setAgentName(value);
+              if (!instanceTouched) setInstanceLabel(sanitizeInstanceName(value));
+            }}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Nome da instância</Label>
+          <Input
+            placeholder="Ex: hudemo"
+            value={instanceLabel}
+            onChange={(e) => {
+              setInstanceTouched(true);
+              setInstanceLabel(e.target.value);
+            }}
+            className="font-mono"
+          />
+          <p className="text-xs text-muted-foreground">
+            Na Evolution fica <span className="font-mono">{previewInstance || "—"}</span> · tipo {CONNECTION_KIND_LABEL}
+          </p>
+        </div>
+      </div>
+      <Button onClick={() => void connect()} disabled={busy} className="gap-2">
+        {busy ? <RefreshCw className="size-4 animate-spin" /> : <QrCode className="size-4" />}
+        {busy ? "Preparando…" : "Conectar WhatsApp"}
+      </Button>
+      {status && <p className="text-sm text-muted-foreground">{status}</p>}
+      {qr && <img src={qr} alt="QR WhatsApp" className="w-56 h-56 rounded-lg border bg-white p-2" />}
+    </div>
+  );
+}
+
 function WhatsAppPage() {
   const db = useDB();
+  const admin = isPlatformAdmin(currentUser(db));
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newInstance, setNewInstance] = useState("");
+  const [instanceTouched, setInstanceTouched] = useState(false);
   const [newPhone, setNewPhone] = useState("");
-  const [newType, setNewType] = useState<"qrcode" | "cloud_api">("cloud_api");
 
   const online     = db.connections.filter((c) => c.status === "online").length;
   const totalSent  = db.connections.reduce((s, c) => s + c.sentToday, 0);
   const totalQueue = db.connections.reduce((s, c) => s + c.queue, 0);
 
   const handleCreate = () => {
-    if (!newName.trim()) { toast.error("Nome é obrigatório"); return; }
+    if (!newName.trim() && !newInstance.trim()) {
+      toast.error("Informe o nome do agente ou da instância");
+      return;
+    }
     if (!newPhone.trim()) { toast.error("Número é obrigatório"); return; }
+    const instance = instanceNameFromLabel(newInstance || newName, currentUser(db)?.id);
     const id = uid("wa_");
+    const me = currentUser(getDB());
+    if (me && instance) {
+      void provisionEvolutionInstance(me, { instanceName: instance });
+    }
     update((d) => {
       d.connections.push({
         id, organizationId: d.organization.id,
-        name: newName,
+        name: newName.trim() || instance,
         phone: newPhone,
-        type: newType,
+        type: "cloud_api",
         status: "conectando",
         queue: 0, sentToday: 0, dailyLimit: 1000,
         lastSyncAt: nowISO(),
       });
     });
-    toast.success("Conexão registrada — teste a conexão na aba Configuração.");
+    toast.success("Linha Helena criada — o QR aparece em Conectar WhatsApp.");
     setIsNewOpen(false);
-    setNewName(""); setNewPhone("");
+    setNewName(""); setNewInstance(""); setInstanceTouched(false); setNewPhone("");
   };
 
   const handleDisconnect = (id: string) => {
@@ -447,12 +588,16 @@ function WhatsAppPage() {
         <StatCard label="Na Fila" value={totalQueue} hint="Aguardando envio" icon={<Zap />} tone="helena" />
       </div>
 
+      {!admin && <CustomerWhatsAppConnect />}
+
       <Tabs defaultValue="numeros">
         <TabsList>
           <TabsTrigger value="numeros">Números ({db.connections.length})</TabsTrigger>
-          <TabsTrigger value="config" className="gap-1.5">
-            <Settings2 className="size-3.5" /> Configuração Evolution API
-          </TabsTrigger>
+          {admin && (
+            <TabsTrigger value="config" className="gap-1.5">
+              <Settings2 className="size-3.5" /> Configuração Evolution API
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ── ABA NÚMEROS ────────────────────────────────────────────────── */}
@@ -474,7 +619,7 @@ function WhatsAppPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             {db.connections.map((conn) => {
-              const sc = STATUS_CONFIG[conn.status];
+              const sc = STATUS_CONFIG[conn.status] ?? STATUS_CONFIG.offline;
               const dailyPct = conn.dailyLimit > 0
                 ? Math.min(100, Math.round((conn.sentToday / conn.dailyLimit) * 100))
                 : 0;
@@ -529,7 +674,7 @@ function WhatsAppPage() {
                   {/* Tipo + última sync */}
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <Badge variant="outline" className="text-[10px]">
-                      {conn.type === "cloud_api" ? "Evolution API" : "QR Code · Baileys"}
+                      {CONNECTION_KIND_LABEL}
                     </Badge>
                     <span>Sync: {new Date(conn.lastSyncAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
@@ -561,10 +706,11 @@ function WhatsAppPage() {
           </div>
         </TabsContent>
 
-        {/* ── ABA CONFIGURAÇÃO ──────────────────────────────────────────── */}
-        <TabsContent value="config" className="mt-4">
-          <EvolutionPanel />
-        </TabsContent>
+        {admin && (
+          <TabsContent value="config" className="mt-4">
+            <EvolutionPanel />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Modal adicionar número manual */}
@@ -573,36 +719,45 @@ function WhatsAppPage() {
           <DialogHeader>
             <DialogTitle>Adicionar Número WhatsApp</DialogTitle>
             <DialogDescription>
-              Registre um número para aparecer na lista. Para conectar de verdade, configure a Evolution API na aba "Configuração".
+              Nomeia o agente ou a instância. O QR é gerado sozinho na hora de conectar — não precisa escolher tipo QR.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <Label>Nome / Apelido</Label>
-              <Input placeholder="Ex: Chip Agência Info Tech" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <Label>Nome do agente</Label>
+              <Input
+                placeholder="Ex: Helena SDR, Chip da loja"
+                value={newName}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setNewName(value);
+                  if (!instanceTouched) setNewInstance(sanitizeInstanceName(value));
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nome da instância</Label>
+              <Input
+                placeholder="Ex: hudemo"
+                value={newInstance}
+                onChange={(e) => {
+                  setInstanceTouched(true);
+                  setNewInstance(e.target.value);
+                }}
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Na Evolution: <span className="font-mono">{instanceNameFromLabel(newInstance || newName) || "—"}</span>
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>Número (com DDI + DDD)</Label>
               <Input placeholder="5518981011186" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="font-mono" />
               <p className="text-xs text-muted-foreground">Formato: 55 + DDD + número (ex: 5518981011186)</p>
             </div>
-            <div className="space-y-1.5">
-              <Label>Tipo de Conexão</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {(["cloud_api", "qrcode"] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setNewType(t)}
-                    className={`rounded-lg border p-3 text-left text-sm transition-all ${newType === t ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
-                  >
-                    <div className="font-medium">{t === "cloud_api" ? "Evolution API" : "QR Code"}</div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {t === "cloud_api" ? "Recomendado · já conectado" : "Baileys · <80MB RAM"}
-                    </div>
-                  </button>
-                ))}
-              </div>
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="text-sm font-medium">{CONNECTION_KIND_LABEL}</div>
+              <p className="text-[11px] text-muted-foreground">Chip da IA · o QR nasce sozinho depois de conectar</p>
             </div>
           </div>
           <DialogFooter>
