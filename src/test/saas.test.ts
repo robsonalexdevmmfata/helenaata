@@ -1,10 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { getDB, listAccounts, update } from "@/lib/store";
-import { assignPlan, canUseDevTeam, caktoCheckoutUrl, CAKTO_CHECKOUT, dailyLimitFor, grantAccessDays, grantLifetimeAccess, isPlatformAdmin, mustSubscribe, registerCustomer, reserveProspects, SAAS_PLANS, setDailyLeadQuota, trialEndsAtFrom, wantsDevTeamUpgrade, workspaceDisplayName } from "@/lib/saas";
-import { instanceNameForUser, instanceNameFromLabel, sanitizeInstanceName } from "@/lib/evolution/provision";
+import {
+  assignPlan,
+  canUseDevTeam,
+  caktoCheckoutUrl,
+  CAKTO_CHECKOUT,
+  dailyLimitFor,
+  grantAccessDays,
+  grantLifetimeAccess,
+  isPlatformAdmin,
+  mustSubscribe,
+  registerCustomer,
+  reserveProspects,
+  SAAS_PLANS,
+  setDailyLeadQuota,
+  trialEndsAtFrom,
+  wantsDevTeamUpgrade,
+  workspaceDisplayName,
+} from "@/lib/saas";
+import {
+  instanceNameForUser,
+  instanceNameFromLabel,
+  sanitizeInstanceName,
+} from "@/lib/evolution/provision";
 import { isOptedOut } from "@/lib/whatsapp/antiban";
 import { isCaktoPaidEvent, mapCaktoPlan, parseCaktoPayload } from "@/lib/billing/cakto";
-import { applyDevTeamGate, planAllowsDevTeam } from "@/lib/seed";
+import { applyDevTeamGate, createCustomerSeed, planAllowsDevTeam } from "@/lib/seed";
 import { findLocalUser } from "@/lib/auth";
 import { isPresenceIntent } from "@/lib/dev/presence";
 import { runTool } from "@/lib/helena/engine";
@@ -62,7 +83,9 @@ describe("SaaS trial e planos", () => {
     expect(first.allowed).toBe(30);
     const second = reserveProspects(1);
     expect(second.ok).toBe(false);
-    update((d) => { d.currentUserId = "u1"; });
+    update((d) => {
+      d.currentUserId = "u1";
+    });
   });
 
   it("cadastro cria conta customer", () => {
@@ -73,7 +96,9 @@ describe("SaaS trial e planos", () => {
     expect(u?.kind).toBe("customer");
     expect(u?.planId).toBe("trial");
     expect(u?.createdAt).toBeTruthy();
-    expect(new Date(u!.trialEndsAt!).getTime() - new Date(u!.createdAt!).getTime()).toBe(2 * 86_400_000);
+    expect(new Date(u!.trialEndsAt!).getTime() - new Date(u!.createdAt!).getTime()).toBe(
+      2 * 86_400_000,
+    );
     expect(mustSubscribe(u)).toBe(false);
     expect(workspaceDisplayName(u, "Info Tech Ltda")).toBe("Loja Bia");
     expect(u?.organizationId).not.toBe("org_novarota");
@@ -94,25 +119,33 @@ describe("SaaS trial e planos", () => {
     expect(isCaktoPaidEvent("purchase_refused", "refused")).toBe(false);
     const ev = parseCaktoPayload({
       event: "purchase_approved",
-      data: { customer: { email: "bia@loja.com", name: "Bia" }, product: { id: "kmb4vg8_1261686" } },
+      data: {
+        customer: { email: "bia@loja.com", name: "Bia" },
+        product: { id: "kmb4vg8_1261686" },
+      },
     });
     expect(ev.email).toBe("bia@loja.com");
     expect(ev.planId).toBe("impulso");
   });
 
-  it("cliente novo não herda CRM mock da Info Tech", () => {
+  it("cliente novo começa sem registros operacionais de demonstração", () => {
     const email = `vazio${Date.now()}@loja.com`;
-    const res = registerCustomer({ name: "Carla", email, password: "1234", company: "Barbearia Carla" });
+    const res = registerCustomer({
+      name: "Carla",
+      email,
+      password: "1234",
+      company: "Barbearia Carla",
+    });
     expect(res.ok).toBe(true);
-    const key = `helena-ws-${listAccounts().find((x) => x.email === email)?.organizationId}`;
-    const raw = window.localStorage.getItem(key);
-    expect(raw).toBeTruthy();
-    const ws = JSON.parse(raw!) as { contacts: unknown[]; deals: unknown[]; conversations: unknown[]; campaigns: unknown[]; organization: { name: string } };
+    const user = listAccounts().find((x) => x.email === email)!;
+    const ws = createCustomerSeed(user);
     expect(ws.organization.name).toBe("Barbearia Carla");
     expect(ws.contacts).toEqual([]);
     expect(ws.deals).toEqual([]);
     expect(ws.conversations).toEqual([]);
     expect(ws.campaigns).toEqual([]);
+    expect(ws.memories).toEqual([]);
+    expect(ws.sessions).toEqual([]);
   });
 
   it("Time Dev libera no admin e no plano Máquina", () => {
@@ -125,10 +158,11 @@ describe("SaaS trial e planos", () => {
     const email = `devgate${Date.now()}@loja.com`;
     const res = registerCustomer({ name: "Leo", email, password: "1234", company: "Oficina Leo" });
     expect(res.ok).toBe(true);
-    const key = `helena-ws-${listAccounts().find((x) => x.email === email)?.organizationId}`;
-    const ws = JSON.parse(window.localStorage.getItem(key)!) as { teams: { id: string; status: string }[]; agents: { teamId?: string; status: string }[] };
+    const ws = createCustomerSeed(listAccounts().find((x) => x.email === email)!);
     expect(ws.teams.find((t) => t.id === "t_dev")?.status).toBe("pausado");
-    expect(ws.agents.filter((a) => a.teamId === "t_dev").every((a) => a.status === "pausado")).toBe(true);
+    expect(ws.agents.filter((a) => a.teamId === "t_dev").every((a) => a.status === "pausado")).toBe(
+      true,
+    );
     const db = getDB();
     applyDevTeamGate(db, "maquina", "customer");
     expect(db.teams.find((t) => t.id === "t_dev")?.status).toBe("ativo");
@@ -150,11 +184,15 @@ describe("SaaS trial e planos", () => {
   });
 
   it("pedido de restaurante continua no time Dev", () => {
-    expect(isPresenceIntent("Helena, procure 50 restaurantes que não tenham site nem cardápio online")).toBe(true);
+    expect(
+      isPresenceIntent("Helena, procure 50 restaurantes que não tenham site nem cardápio online"),
+    ).toBe(true);
   });
 
-  it("trial não dispara o Time Dev; Máquina dispara", () => {
-    update((d) => { d.currentUserId = "u_demo"; });
+  it("trial bloqueia o Time Dev; Máquina libera o fluxo sem inventar resultados de Maps", () => {
+    update((d) => {
+      d.currentUserId = "u_demo";
+    });
     const blocked = runTool(
       "dev.build_presence",
       { segment: "Restaurantes", city: "Campinas, SP", limit: 1 },
@@ -171,7 +209,8 @@ describe("SaaS trial e planos", () => {
       { segment: "Restaurantes", city: "Campinas, SP", limit: 1 },
       { actor: "Helena", actorType: "helena", requestedBy: "demo" },
     );
-    expect(allowed.ok).toBe(true);
+    expect(allowed.ok).toBe(false);
+    expect(allowed.message).toMatch(/busca real do Maps para gerar prévias/i);
     update((d) => {
       const u = d.users.find((x) => x.id === "u_demo");
       if (u) u.planId = "trial";
@@ -186,11 +225,25 @@ describe("SaaS trial e planos", () => {
   });
 
   it("LGPD registra acesso e anonimiza titular", () => {
-    const id = getDB().contacts[0]?.id;
+    const created = runTool(
+      "crm.create_contact",
+      { name: "Titular LGPD", source: "Teste" },
+      { actor: "Ana", actorType: "user", requestedBy: "Ana" },
+    );
+    const id = typeof created.data?.id === "string" ? created.data.id : undefined;
+    expect(created.ok).toBe(true);
     expect(id).toBeTruthy();
-    const logged = runTool("lgpd.log_access", { contactId: id }, { actor: "Ana", actorType: "user", requestedBy: "Ana" });
+    const logged = runTool(
+      "lgpd.log_access",
+      { contactId: id },
+      { actor: "Ana", actorType: "user", requestedBy: "Ana" },
+    );
     expect(logged.ok).toBe(true);
-    const erased = runTool("lgpd.erase_contact", { contactId: id }, { actor: "Ana", actorType: "user", requestedBy: "Ana" });
+    const erased = runTool(
+      "lgpd.erase_contact",
+      { contactId: id },
+      { actor: "Ana", actorType: "user", requestedBy: "Ana" },
+    );
     expect(erased.ok).toBe(true);
     const gone = getDB().contacts.find((c) => c.id === id);
     expect(gone?.phone).toBe("");
@@ -214,9 +267,17 @@ describe("SaaS trial e planos", () => {
     expect(dx.recommend_offer).toMatch(/cardápio/i);
     const id = getDB().contacts[0]?.id;
     if (id) {
-      const r = runTool("leads.diagnose", { contactId: id }, { actor: "Helena", actorType: "helena", requestedBy: "teste" });
+      const r = runTool(
+        "leads.diagnose",
+        { contactId: id },
+        { actor: "Helena", actorType: "helena", requestedBy: "teste" },
+      );
       expect(r.ok).toBe(true);
-      expect(getDB().contacts.find((c) => c.id === id)?.tags.some((t) => t === "#ciclo-diagnosticado")).toBe(true);
+      expect(
+        getDB()
+          .contacts.find((c) => c.id === id)
+          ?.tags.some((t) => t === "#ciclo-diagnosticado"),
+      ).toBe(true);
     }
   });
 
@@ -225,7 +286,15 @@ describe("SaaS trial e planos", () => {
       organizationId: "org_t",
       companyId: "c1",
       contactId: "p1",
-      place: { name: "Pizzaria Vila Nova", city: "Campinas", address: "Rua A, 10", phone: "+55 19 99999-1111", contactName: "João", rating: 3.8, reviewCount: 21 },
+      place: {
+        name: "Pizzaria Vila Nova",
+        city: "Campinas",
+        address: "Rua A, 10",
+        phone: "+55 19 99999-1111",
+        contactName: "João",
+        rating: 3.8,
+        reviewCount: 21,
+      },
       segment: "Pizzaria",
       slug: "pizzaria-vila-nova",
     });
@@ -233,7 +302,15 @@ describe("SaaS trial e planos", () => {
       organizationId: "org_t",
       companyId: "c2",
       contactId: "p2",
-      place: { name: "Pizzaria da Praça", city: "Campinas", address: "Rua B, 88", phone: "+55 19 98888-2222", contactName: "Maria", rating: 4.5, reviewCount: 90 },
+      place: {
+        name: "Pizzaria da Praça",
+        city: "Campinas",
+        address: "Rua B, 88",
+        phone: "+55 19 98888-2222",
+        contactName: "Maria",
+        rating: 4.5,
+        reviewCount: 90,
+      },
       segment: "Pizzaria",
       slug: "pizzaria-da-praca",
     });

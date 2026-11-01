@@ -28,6 +28,7 @@ export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onC
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Dot tone={tone} pulse={ui.state !== "ocioso"} /> {HELENA_STATE_LABEL[ui.state]}
+            {ui.screenLabel ? <span className="truncate"> · {ui.screenLabel}</span> : null}
           </div>
         </div>
       </div>

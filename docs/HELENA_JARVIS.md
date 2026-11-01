@@ -430,72 +430,22 @@ A Helena usa diferentes tipos de cards para apresentar informações:
 
 ---
 
-## 🔌 Conexão com Backend Real
+## 🔌 Backend e Persistência Supabase
 
-Atualmente o sistema usa **mock store** (localStorage). Para conectar com PostgreSQL:
+O workspace é carregado após a autenticação pela API server-side e mantido no
+cliente apenas como cache reativo em memória. A fonte da verdade é o Supabase:
+`workspace_snapshots` guarda o estado por organização com controle de revisão,
+e `app_accounts` guarda perfis e hashes de senha. O navegador não persiste dados
+operacionais em `localStorage`.
 
-### 1. Criar API REST
+Pré-visualizações, eventos de cobrança e tarefas do worker também usam tabelas
+PostgreSQL. O worker RPA consome `rpa_jobs`; falhas de conexão ou gravação são
+reportadas, sem sucesso simulado em memória ou arquivo local.
 
-```typescript
-// backend/routes/tools.ts
-app.post('/api/tools/:toolName', authenticate, async (req, res) => {
-  const { toolName } = req.params;
-  const params = req.body;
-  const user = req.user;
-  
-  // Executar ferramenta
-  const result = await executeToolReal(
-    toolName,
-    params,
-    {
-      actor: user.name,
-      actorType: 'user',
-      requestedBy: user.name,
-    }
-  );
-  
-  return res.json(result);
-});
-```
-
-### 2. Substituir `runTool()` por chamada HTTP
-
-```typescript
-// Antes (mock)
-const result = runTool("agents.activate", { agentId: "a_sdr1" }, ctx);
-
-// Depois (real)
-const result = await fetch('/api/tools/agents.activate', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ agentId: "a_sdr1" }),
-});
-```
-
-### 3. Backend executa SQL real
-
-```typescript
-async function executeToolReal(name: string, params: any, ctx: ToolContext) {
-  if (name === "agents.activate") {
-    const { agentId } = params;
-    
-    // SQL real
-    await db.query(`
-      UPDATE agents 
-      SET status = 'trabalhando', updated_at = NOW()
-      WHERE id = $1
-    `, [agentId]);
-    
-    // Auditoria
-    await db.query(`
-      INSERT INTO executions (actor, action, result, created_at)
-      VALUES ($1, $2, $3, NOW())
-    `, [ctx.actor, name, 'sucesso']);
-    
-    return { ok: true, message: "Agente ativado" };
-  }
-}
-```
+Para instalar em um projeto Supabase, aplique as migrations na ordem descrita em
+`database/README.md`. Configure `DATABASE_URL`, `SESSION_SECRET` e credenciais de
+integração somente no ambiente do servidor. As alterações comerciais continuam
+passando por `runTool()` para preservar permissões e auditoria.
 
 ---
 
@@ -734,7 +684,7 @@ Quer que eu aumente a operação amanhã?"
    - Interpretação da intenção
    - Planejamento (card com etapas)
    - Solicitação de aprovação (se alto risco)
-   - Execução real (dados no localStorage mudam)
+   - Execução real (cache reativo atualizado e snapshot persistido no Supabase)
    - Registro na auditoria
 
 5. **Verifique a execução**:

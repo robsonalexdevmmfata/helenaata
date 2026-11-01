@@ -1,6 +1,7 @@
 // FreeLLMAPI Integration (tashfeenahmed/freellmapi)
 // 7.4 billion tokens per month. 34 free LLM providers. 635 free model endpoints.
 // All behind one OpenAI-compatible /v1 endpoint with Smart Routing & Automatic Failover.
+import { getWorkspacePreference, saveWorkspacePreference } from "@/lib/store";
 
 export interface FreeLLMConfig {
   endpoint: string;
@@ -12,43 +13,76 @@ export interface FreeLLMConfig {
 }
 
 export const FREE_LLM_MODELS = [
-  { id: "freellm/deepseek-v3", name: "DeepSeek-V3 (671B)", provider: "DeepSeek / Free Router", tag: "Recomendado · Raciocínio & Código" },
-  { id: "freellm/llama-3.3-70b", name: "Llama 3.3 70B Versatile", provider: "Meta / Groq / SambaNova", tag: "Ideal para SDRs & Vendas" },
-  { id: "freellm/qwen-2.5-72b", name: "Qwen 2.5 72B Instruct", provider: "Alibaba / Hyperbolic", tag: "Ultra Rápido" },
-  { id: "freellm/gemini-2.0-flash", name: "Gemini 2.0 Flash", provider: "Google AI Studio Free", tag: "Latência Mínima" },
-  { id: "freellm/auto-failover", name: "Smart Auto-Failover (34 Provedores)", provider: "FreeLLMAPI Engine", tag: "Zero Queda · Failover Automático" },
+  {
+    id: "freellm/deepseek-v3",
+    name: "DeepSeek-V3 (671B)",
+    provider: "DeepSeek / Free Router",
+    tag: "Recomendado · Raciocínio & Código",
+  },
+  {
+    id: "freellm/llama-3.3-70b",
+    name: "Llama 3.3 70B Versatile",
+    provider: "Meta / Groq / SambaNova",
+    tag: "Ideal para SDRs & Vendas",
+  },
+  {
+    id: "freellm/qwen-2.5-72b",
+    name: "Qwen 2.5 72B Instruct",
+    provider: "Alibaba / Hyperbolic",
+    tag: "Ultra Rápido",
+  },
+  {
+    id: "freellm/gemini-2.0-flash",
+    name: "Gemini 2.0 Flash",
+    provider: "Google AI Studio Free",
+    tag: "Latência Mínima",
+  },
+  {
+    id: "freellm/auto-failover",
+    name: "Smart Auto-Failover (34 Provedores)",
+    provider: "FreeLLMAPI Engine",
+    tag: "Zero Queda · Failover Automático",
+  },
 ];
 
 export const FREE_LLM_PROVIDERS_LIST = [
-  "Groq", "Cloudflare Workers AI", "Google AI Studio", "Cerebras", "SambaNova Systems",
-  "Mistral AI", "Together AI", "DeepInfra", "Hyperbolic", "Cohere", "HuggingFace",
-  "OpenRouter (Free Tier)", "Novita AI", "Github Models", "AI21 Labs", "Replicate",
-  "Perplexity (Sonar)", "Fireworks AI", "FriendliAI", "Inference.net", "Nebius AI",
-  "SiliconFlow", "Chutes.ai", "Baseten", "Scaleway", "Lepton AI", "Lambda Labs",
-  "OctoAI", "Predibase", "Anyscale", "DeepSeek Direct", "Mistral Codestral", "Alibaba DashScope", "MonsterAPI"
+  "Groq",
+  "Cloudflare Workers AI",
+  "Google AI Studio",
+  "Cerebras",
+  "SambaNova Systems",
+  "Mistral AI",
+  "Together AI",
+  "DeepInfra",
+  "Hyperbolic",
+  "Cohere",
+  "HuggingFace",
+  "OpenRouter (Free Tier)",
+  "Novita AI",
+  "Github Models",
+  "AI21 Labs",
+  "Replicate",
+  "Perplexity (Sonar)",
+  "Fireworks AI",
+  "FriendliAI",
+  "Inference.net",
+  "Nebius AI",
+  "SiliconFlow",
+  "Chutes.ai",
+  "Baseten",
+  "Scaleway",
+  "Lepton AI",
+  "Lambda Labs",
+  "OctoAI",
+  "Predibase",
+  "Anyscale",
+  "DeepSeek Direct",
+  "Mistral Codestral",
+  "Alibaba DashScope",
+  "MonsterAPI",
 ];
 
-const STORAGE_KEY = "helena_freellmapi_config";
-
 export function getFreeLLMConfig(): FreeLLMConfig {
-  if (typeof window === "undefined") {
-    return {
-      endpoint: "http://localhost:8000/v1",
-      apiKey: "",
-      defaultModel: "freellm/llama-3.3-70b",
-      autoFailover: true,
-      enabled: true,
-      monthlyBudget: 0,
-    };
-  }
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch {}
-
   const defaults: FreeLLMConfig = {
     endpoint: "http://localhost:8000/v1",
     apiKey: "",
@@ -57,22 +91,18 @@ export function getFreeLLMConfig(): FreeLLMConfig {
     enabled: true,
     monthlyBudget: 0,
   };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
-  } catch {}
-  return defaults;
+  return { ...defaults, ...getWorkspacePreference<Partial<FreeLLMConfig>>("freeLlmConfig", {}) };
 }
 
 export function saveFreeLLMConfig(config: Partial<FreeLLMConfig>): FreeLLMConfig {
   const current = getFreeLLMConfig();
   const updated = { ...current, ...config };
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  }
-  return updated;
+  return saveWorkspacePreference("freeLlmConfig", updated);
 }
 
-export async function testFreeLLMConnection(endpointUrl?: string): Promise<{ ok: boolean; message: string; latencyMs: number }> {
+export async function testFreeLLMConnection(
+  endpointUrl?: string,
+): Promise<{ ok: boolean; message: string; latencyMs: number }> {
   const url = (endpointUrl || getFreeLLMConfig().endpoint).replace(/\/$/, "");
   const start = Date.now();
 
@@ -105,7 +135,7 @@ export async function testFreeLLMConnection(endpointUrl?: string): Promise<{ ok:
 
 export async function callFreeLLMOrchestrator(
   userMessage: string,
-  history: Array<{ role: string; content: string }> = []
+  history: Array<{ role: string; content: string }> = [],
 ) {
   const config = getFreeLLMConfig();
   if (!config.enabled) return null;
@@ -125,7 +155,8 @@ export async function callFreeLLMOrchestrator(
         messages: [
           {
             role: "system",
-            content: "Você é a HELENA AI, Tech Lead e orquestradora comercial da agência Info Tech Ltda. Responda em Português do Brasil com foco executivo em vendas, prospecção e fechamento.",
+            content:
+              "Você é a HELENA AI, Tech Lead e orquestradora comercial da agência Info Tech Ltda. Responda em Português do Brasil com foco executivo em vendas, prospecção e fechamento.",
           },
           ...history.slice(-5),
           { role: "user", content: userMessage },
@@ -139,7 +170,7 @@ export async function callFreeLLMOrchestrator(
     const data = await res.json();
     return data.choices?.[0]?.message?.content || null;
   } catch (err) {
-    console.warn("FreeLLMAPI offline or unreachable:", err);
+    /* failover silencioso */
     return null;
   }
 }

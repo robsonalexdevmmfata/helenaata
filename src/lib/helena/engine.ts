@@ -6,7 +6,7 @@ import type {
 } from "@/lib/types";
 import { bumpAutomation, can, currentUser, getDB, nowISO, ownerName, uid, update } from "@/lib/store";
 import {
-    closerFollowupText, evaluateFollowup, FOLLOWUP_REASON_LABEL, hasConflict, parseWhen, pickProposedSlot, shouldHoldOutbound, slotLabel, suggestSlots, unansweredAgentStreak,
+    evaluateFollowup, FOLLOWUP_REASON_LABEL, hasConflict, menuProposalFollowupText, parseWhen, pickProposedSlot, shouldHoldOutbound, slotLabel, unansweredAgentStreak,
   type FollowupReason,
 } from "./sales-flow";
 import { getToolDef, withCalendarTools } from "./registry";
@@ -39,6 +39,10 @@ import { downloadWorkspaceBackup, exportContactBundle } from "@/lib/workspace/ba
 import { diagnoseLead, setCycleTag, type CycleState } from "@/lib/helena/diagnose";
 import { buildDossier, detectBuyIntent } from "@/lib/helena/intelligence";
 import { copilotAnswer, recordDecision } from "@/lib/helena/decision";
+import { agentCouncil, companyBriefing, crisisState, isCompanyStatusQuestion, isCouncilQuestion, isCrisisQuestion } from "@/lib/helena/command";
+import { agentBenchmark, autonomyBlocksTool, circuitBreaker, integrationHealth, missionReplayText, replayMission } from "@/lib/helena/reliability";
+import { createMissionFromObjective, pauseMission, startMission, tickMissions } from "@/lib/helena/mission-engine";
+import { runWatchdog, verifySendOutcome } from "@/lib/helena/always-on";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
 
 export interface ToolContext {
@@ -69,7 +73,10 @@ export function requiresApproval(risk: RiskLevel, autoApproveMedium: boolean) {
 }
 
 export function needsApproval(db: DB, name: string) {
-  return requiresApproval(toolRisk(db, name), db.helenaSettings.autoApproveMedium);
+  if (autonomyBlocksTool(db, name)) return true;
+  const risk = toolRisk(db, name);
+  if ((db.autonomyLevel || 3) >= 4 && risk !== "alto") return false;
+  return requiresApproval(risk, db.helenaSettings.autoApproveMedium);
 }
 
 function logExecution(e: Omit<Execution, "id" | "organizationId" | "at">) {
@@ -139,7 +146,9 @@ export function updateHelenaCard(messageId: string, card: HelenaCard) {
 
 function connectionCheck(db: DB, connectionId?: string): string | null {
   if (mustSubscribe(currentUser(db))) return "WhatsApp pausado: assine Impulso ou Máquina";
-  const conn = db.connections.find((x) => x.id === connectionId) ?? getAgencyConnection(db);
+  const conn = connectionId
+    ? db.connections.find((x) => x.id === connectionId && !x.deletedAt)
+    : getAgencyConnection(db);
   if (!connectionId && !conn) return null;
   const c = conn;
   if (!c) return "a conexão de WhatsApp da agência não existe";
@@ -401,7 +410,7 @@ const handlers: Record<string, Handler> = {
     const problem = conv.channel === "whatsapp" ? connectionCheck(db, conv.connectionId) : null;
     if (problem) return fail(problem);
     const contact = db.contacts.find((c) => c.id === conv.contactId);
-    const gate = evaluateOutbound({ db, conv, contact });
+    const gate = evaluateOutbound({ db, conv, contact, minWaitHours: p.followup === true ? 24 : 48 });
     if (!gate.ok) return fail(gate.message);
     if (conv.flow?.origin === "prospeccao" || p.countAsProspect) {
       const quota = reserveProspects(1);
@@ -423,12 +432,13 @@ const handlers: Record<string, Handler> = {
     const lastClientMsg = [...conv.messages].reverse().find((m) => m.from === "contact")?.text ?? "";
     const handoff = evaluateHandoff(lastClientMsg, currentStage, db);
 
+    const localMessageId = uid("m_");
     update((d) => {
       const c = d.conversations.find((x) => x.id === conv.id)!;
 
       // Registra a mensagem enviada pelo agente
       c.messages.push({
-        id: uid("m_"),
+        id: localMessageId,
         from: p.from ?? "agent",
         authorName: p.authorName ?? (currentAgent?.name ?? ctx.actor),
         text: outText,
@@ -511,6 +521,9 @@ const handlers: Record<string, Handler> = {
             if (!res.ok) {
               // Registra falha de envio na auditoria sem interromper o fluxo
               update((d) => {
+                const sentConversation = d.conversations.find((c) => c.id === conv.id);
+                const sentMessage = sentConversation?.messages.find((m) => m.id === localMessageId);
+                if (sentMessage) sentMessage.deliveryStatus = "failed";
                 d.executions.unshift({
                   id: uid("ex_evo_"),
                   organizationId: d.organization.id,
@@ -525,9 +538,15 @@ const handlers: Record<string, Handler> = {
                   durationMs: 0,
                 });
               });
-              console.warn("[Evolution API] Falha ao enviar:", res.error);
+              /* falha já vai para Execution */
             } else {
               update((d) => {
+                const sentConversation = d.conversations.find((c) => c.id === conv.id);
+                const sentMessage = sentConversation?.messages.find((m) => m.id === localMessageId);
+                if (sentMessage) {
+                  sentMessage.externalId = res.messageId;
+                  sentMessage.deliveryStatus = "sent";
+                }
                 const wa = getAgencyConnection(d);
                 if (wa) wa.sentToday += 1;
                 d.executions.unshift({
@@ -545,11 +564,11 @@ const handlers: Record<string, Handler> = {
                 const camp = d.campaigns.find((x) => x.status === "ativa");
                 if (camp) camp.sent += 1;
               });
-              console.log("[Evolution API] ✅ Enviado:", res.messageId);
+              /* sucesso já vai para Execution */
             }
           })
           .catch((err) => {
-            console.warn("[Evolution API] Erro inesperado:", err);
+            /* erro já vai para Execution */
           });
       }
     }
@@ -861,51 +880,122 @@ const handlers: Record<string, Handler> = {
     if (closer.status === "pausado" || closer.status === "erro") return fail(`${closer.name} está ${closer.status === "erro" ? "com erro" : "pausada"}`);
     const problem = connectionCheck(db, conv.connectionId ?? s.sharedConnectionId);
     if (problem) return fail(problem);
-    if (shouldHoldOutbound(conv) || unansweredAgentStreak(conv) >= 2) {
-      return fail("este número já foi abordado; a Closer só entra depois de 48h sem resposta, e uma vez só");
+    if (shouldHoldOutbound(conv, new Date(), 24) || unansweredAgentStreak(conv) >= 2) {
+      return fail("este número já foi abordado; o follow-up só pode ser proposto após 24h sem resposta, e uma vez só");
     }
     const contact = db.contacts.find((c) => c.id === conv.contactId);
+    if (!contact) return fail("contato não encontrado");
+    if (isOptedOut(contact)) return fail("opt-out / sem consentimento — não envia follow-up");
+    const pending = db.approvals.find((a) =>
+      a.tool === "sales.send_menu_followup" &&
+      a.status === "pendente" &&
+      a.params.conversationId === conv.id,
+    );
+    if (pending) return ok("Este follow-up já está aguardando aprovação.", { approvalId: pending.id });
+    if (conv.flow.state === "aguardando_aprovacao") return fail("follow-up já está aguardando aprovação");
     const reason: FollowupReason = p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : (conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt ? "visualizou_sem_responder" : "sem_resposta");
-    const attempt = conv.flow.closerAttempts + 1;
-    const slots = suggestSlots(db.meetings ?? [], closer.id, new Date(), s, 6);
-    const text = formatForWhatsApp(closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots }));
-    const previous = ownerName(db, conv.handlerId);
-
+    const menuOffer = db.serviceOffers.find((offer) => offer.id === "svc_menu_online" && offer.active);
+    if (!menuOffer) return fail("oferta de cardápio online indisponível no catálogo");
+    const text = formatForWhatsApp(menuProposalFollowupText(contact.name, menuOffer.name, menuOffer.price));
+    const approvalId = requestApproval({
+      title: `Follow-up para ${contact.name} · cardápio online`,
+      description: `A mensagem será enviada após sua aprovação. O contato está sem resposta há pelo menos 24 horas (${FOLLOWUP_REASON_LABEL[reason]}).`,
+      details: [
+        { label: "Oferta", value: menuOffer.name },
+        { label: "Preço", value: `R$ ${menuOffer.price.toFixed(2).replace(".", ",")}/mês` },
+        { label: "Mensagem", value: text },
+      ],
+      tool: "sales.send_menu_followup",
+      params: { conversationId: conv.id, lastOutboundAt: conv.flow.lastOutboundAt, reason, text },
+      risk: "alto",
+      requestedBy: ctx.requestedBy ?? ctx.actor,
+    });
     update((d) => {
-      const c = d.conversations.find((x) => x.id === conv.id);
-      if (!c?.flow) return;
-      const f = c.flow;
-      c.handlerType = "agent";
-      c.handlerId = closer.id;
-      c.status = "aberta";
-      c.messages.push({ id: uid("m_"), from: "agent", authorName: closer.name, text, at: nowISO(), kind: "text" });
-      c.lastMessageAt = nowISO();
-      f.state = "closer";
-      f.closerAttempts = attempt;
-      f.closerSince ??= nowISO();
-      f.lastOutboundAt = nowISO();
-      f.proposedSlots = slots.map((x) => x.toISOString());
-      const wa = d.connections.find((x) => x.id === (c.connectionId ?? d.salesFlow?.sharedConnectionId));
-      if (wa) wa.sentToday += 1;
-      const ag = d.agents.find((a) => a.id === closer.id);
-      if (ag) { ag.metrics.tasks += 1; if (attempt === 1) ag.metrics.conversations += 1; ag.currentTask = `Resgatando ${contact?.name ?? "lead"}`; }
-      const deal = d.deals.find((x) => x.contactId === c.contactId && x.status === "aberto");
-      if (deal) { deal.ownerId = closer.id; deal.ownerType = "agent"; deal.updatedAt = nowISO(); }
+      const current = d.conversations.find((c) => c.id === conv.id);
+      if (current?.flow) current.flow.state = "aguardando_aprovacao";
+    });
+    return ok(`Follow-up de ${contact.name} preparado e aguardando aprovação. Nada foi enviado.`, { approvalId, conversationId: conv.id });
+  },
+  "sales.send_menu_followup": (p, ctx) => {
+    if (!ctx.approvedBy) return fail("este follow-up só pode ser enviado após aprovação");
+    const db = getDB();
+    const conv = db.conversations.find((c) => c.id === p.conversationId);
+    if (!conv?.flow) return fail("conversa de prospecção não encontrada");
+    const closer = db.agents.find((a) => a.id === db.salesFlow?.closerAgentId);
+    if (!closer || closer.status === "pausado" || closer.status === "erro") return fail("agente de follow-up indisponível");
+    const contact = db.contacts.find((c) => c.id === conv.contactId);
+    if (!contact) return fail("contato não encontrado");
+    if (isOptedOut(contact)) return fail("opt-out / sem consentimento — follow-up cancelado");
+    if (conv.handlerType === "human" || conv.status === "resolvida") return fail("um atendente assumiu a conversa; follow-up cancelado");
+    if (conv.flow.repliedAt && conv.flow.repliedAt >= conv.flow.lastOutboundAt) return fail("o contato respondeu; follow-up cancelado");
+    if (conv.messages.at(-1)?.from === "contact") return fail("o contato respondeu; follow-up cancelado");
+    if (conv.flow.state !== "aguardando_aprovacao") return fail("o status da conversa mudou; revise o follow-up antes de enviar");
+    if (conv.flow.lastOutboundAt !== p.lastOutboundAt) return fail("houve uma nova mensagem após a aprovação; follow-up cancelado");
+    const read = Boolean(conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt);
+    const startedAt = read ? conv.flow.readAt! : conv.flow.lastOutboundAt;
+    const waitHours = read ? db.salesFlow.readNoReplyHours : db.salesFlow.noReplyHours;
+    if (Date.now() < new Date(startedAt).getTime() + waitHours * 3_600_000) {
+      return fail("o prazo de 24 horas ainda não venceu; follow-up cancelado");
+    }
+    const sent = runTool("messages.send", {
+      conversationId: conv.id,
+      text: String(p.text || ""),
+      authorName: closer.name,
+      followup: true,
+    }, ctx);
+    if (!sent.ok) return sent;
+    update((d) => {
+      const current = d.conversations.find((c) => c.id === conv.id);
+      if (!current?.flow) return;
+      current.handlerType = "agent";
+      current.handlerId = closer.id;
+      current.status = "aberta";
+      current.flow.state = "closer";
+      current.flow.closerAttempts += 1;
+      current.flow.closerSince ??= nowISO();
+      const agent = d.agents.find((a) => a.id === closer.id);
+      if (agent) {
+        agent.metrics.tasks += 1;
+        agent.metrics.conversations += 1;
+        agent.currentTask = `Retomando ${contact.name}`;
+      }
       d.activities.unshift({
-        id: uid("ac_"), organizationId: d.organization.id, contactId: c.contactId, dealId: deal?.id, type: "handoff",
-        text: attempt === 1
-          ? `${closer.name} assumiu no lugar de ${previous}: o cliente ${FOLLOWUP_REASON_LABEL[reason]}`
-          : `${closer.name} fez a ${attempt}ª tentativa de fechamento`,
-        actor: ctx.actor, createdAt: nowISO(),
+        id: uid("ac_"),
+        organizationId: d.organization.id,
+        contactId: current.contactId,
+        type: "handoff",
+        text: `${closer.name} enviou o follow-up aprovado do cardápio online após ${FOLLOWUP_REASON_LABEL[p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : "sem_resposta"]}.`,
+        actor: ctx.approvedBy,
+        createdAt: nowISO(),
       });
     });
-    const sendTo = conv.remoteJid?.endsWith("@s.whatsapp.net")
-      ? conv.remoteJid.replace(/@.*/, "")
-      : (contact?.phone ?? "");
-    if (sendTo && !(typeof process !== "undefined" && process.env?.VITEST)) {
-      void evolutionSendText(sendTo, text);
+    return ok(`Follow-up aprovado enviado para ${contact.name}.`, { conversationId: conv.id });
+  },
+  "rpa.send_approved_followup": (p, ctx) => {
+    if (!ctx.approvedBy) return fail("este follow-up só pode ser enviado após aprovação");
+    const db = getDB();
+    const job = db.rpaJobs.find((entry) => entry.id === p.jobId && entry.kind === "followup");
+    if (!job || job.status !== "awaiting_approval") return fail("follow-up não está aguardando aprovação");
+    const conv = db.conversations.find((entry) => entry.id === p.conversationId);
+    if (!conv) return fail("conversa não encontrada");
+    const contact = db.contacts.find((entry) => entry.id === conv.contactId);
+    if (!contact || contact.id !== job.contactId) return fail("contato não corresponde ao follow-up");
+    if (isOptedOut(contact)) {
+      markJob(job.id, "skipped", "opt-out / sem consentimento", 0);
+      return fail("opt-out / sem consentimento — follow-up cancelado");
     }
-    return ok(`${closer.name} entrou na conversa com ${contact?.name ?? "o cliente"} e ofereceu ${slots.map((x) => slotLabel(x)).join(" ou ")}`, { conversationId: conv.id, attempt });
+    if (conv.handlerType === "human" || conv.status === "resolvida") return fail("um atendente assumiu a conversa; follow-up cancelado");
+    if (conv.messages.at(-1)?.from === "contact") return fail("o contato respondeu; follow-up cancelado");
+    const lastOutboundAt = conv.flow?.lastOutboundAt
+      ?? [...conv.messages].reverse().find((message) => message.from === "agent" || message.from === "helena")?.at;
+    if (!lastOutboundAt || lastOutboundAt !== p.lastOutboundAt) return fail("houve uma nova mensagem após a aprovação; follow-up cancelado");
+    const sent = runTool("messages.send", {
+      conversationId: conv.id,
+      text: String(p.text || ""),
+      followup: true,
+    }, ctx);
+    markJob(job.id, sent.ok ? "sent" : "failed", sent.ok ? undefined : sent.message, 0);
+    return sent.ok ? ok(`Follow-up aprovado enviado para ${contact.name}.`, { jobId: job.id }) : sent;
   },
   "sales.update_flow_settings": (p) => {
     const db = getDB();
@@ -1019,7 +1109,7 @@ const handlers: Record<string, Handler> = {
               durationMs: 0,
             });
           });
-        }).catch((err) => console.warn("[scan_maps]", err));
+        }).catch(() => {});
       });
       return ok(wave
         ? `Onda comercial iniciada: até ${limitLive} WhatsApp válidos em São Paulo, Campinas, Araçatuba, Andradina e cidades próximas, vários nichos. Só número real; intervalo entre disparos. Time de vendas assume.`
@@ -1182,11 +1272,7 @@ const handlers: Record<string, Handler> = {
             contacts4dispatch,
             buildProspectMessage,
             getDB().organization.id,
-          ).then((res) => {
-            console.log(`[Prospect Dispatcher] Concluído: ${res.sent} enviados, ${res.failed} falhas`);
-          }).catch((err) => {
-            console.warn("[Prospect Dispatcher] Erro:", err);
-          });
+          ).then(() => {}).catch(() => {});
         });
       }
     }
@@ -1756,8 +1842,102 @@ const handlers: Record<string, Handler> = {
   "intelligence.ask": (p) => {
     const q = String(p.question || p.q || "").trim();
     if (!q) return fail("pergunte algo sobre o cadastro desta conta");
-    const answer = copilotAnswer(getDB(), q);
+    const db = getDB();
+    if (isCompanyStatusQuestion(q) || /como esta o comercial/.test(q.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) {
+      const b = companyBriefing(db);
+      return ok(b.text, { answer: b.text, highlights: b.highlights });
+    }
+    if (isCouncilQuestion(q)) {
+      const c = agentCouncil(db, q);
+      const text = `${c.recommendation}\n${c.seats.map((s) => `${s.team} (${s.agent}): ${s.stance} — ${s.evidence}`).join("\n")}\n${c.note}`;
+      return ok(text, { answer: text, seats: c.seats });
+    }
+    if (isCrisisQuestion(q)) {
+      const c = crisisState(db);
+      const text = c.active ? `Modo crise.\n${c.reasons.join("\n")}\n${c.plan.join("\n")}` : c.plan.join("\n");
+      return ok(text, { answer: text, crisis: c });
+    }
+    const answer = copilotAnswer(db, q);
     return ok(answer, { answer });
+  },
+  "missions.plan": (p) => {
+    const objective = String(p.objective || p.goal || "").trim();
+    const title = String(p.title || objective || "Missão comercial").trim();
+    if (!objective) return fail("informe o objetivo da missão");
+    const n = Number(p.targetValue ?? p.target ?? p.meta);
+    const targetValue = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 150) : 20;
+    const { mission, tasks } = createMissionFromObjective({ title, objective, targetValue, createdBy: "Helena" });
+    return ok(`Missão ${mission.code} planejada (${tasks.length} tarefas). Aguarda aprovação para iniciar. ${mission.strategy}`, { missionId: mission.id, code: mission.code });
+  },
+  "missions.start": (p, ctx) => {
+    const id = String(p.missionId || "");
+    if (!id) return fail("informe missionId");
+    const db = getDB();
+    if (db.killSwitchActive) return fail("kill switch ativo — nenhuma missão inicia");
+    const m = db.missions.find((x) => x.id === id);
+    if (!m) return fail("missão não encontrada");
+    if (m.status === "running") return fail("missão já em execução");
+    startMission(id, ctx.approvedBy || ctx.actor || "Helena");
+    tickMissions();
+    const segment = String(p.segment || p.nicho || "").trim();
+    const city = String(p.city || p.cidade || "").trim();
+    if (segment && city) {
+      runTool("rpa.radar_schedule", { segment, city, limit: Math.min(Number(p.limit) || 8, 20), simulate: p.simulate === true }, ctx);
+    }
+    return ok(`Missão ${m.code} em execução. Helena orquestra o Time Comercial; o radar só entra se nicho e cidade vierem no pedido.`, { missionId: id });
+  },
+  "missions.pause": (p, ctx) => {
+    const id = String(p.missionId || "");
+    if (!id) return fail("informe missionId");
+    const m = getDB().missions.find((x) => x.id === id);
+    if (!m) return fail("missão não encontrada");
+    pauseMission(id, ctx.actor || "Helena");
+    return ok(`Missão ${m.code} pausada.`, { missionId: id });
+  },
+  "helena.briefing": () => {
+    const b = companyBriefing(getDB());
+    return ok(b.text, { highlights: b.highlights, crisis: b.crisis });
+  },
+  "helena.council": (p) => {
+    const c = agentCouncil(getDB(), String(p.objective || ""));
+    const text = `${c.recommendation}\n${c.seats.map((s) => `• ${s.team}: ${s.stance} — ${s.evidence}`).join("\n")}`;
+    return ok(text, { seats: c.seats, recommendation: c.recommendation });
+  },
+  "helena.health": () => {
+    const h = integrationHealth(getDB());
+    return ok(
+      `Integrações: kill switch ${h.killSwitch ? "ligado" : "desligado"}; circuito ${h.circuitOpen ? "aberto" : "fechado"}; RPA ${h.rpa.failed} falha(s), ${h.rpa.queued} na fila. ${h.note}`,
+      { ...h },
+    );
+  },
+  "helena.benchmark": () => {
+    const rows = agentBenchmark(getDB());
+    if (!rows.length) return ok("Ainda não há execuções de agentes nesta conta para comparar.");
+    const text = rows.slice(0, 8).map((r) => `${r.actor}: ${r.ok} ok / ${r.fail} falha · erro ${r.errorRate}% · ${r.avgMs}ms`).join("\n");
+    return ok(text, { rows });
+  },
+  "helena.replay": (p) => {
+    const id = String(p.missionId || "");
+    if (!id) return fail("informe missionId");
+    const row = replayMission(getDB(), id);
+    if (!row) return fail("missão não encontrada");
+    return ok(missionReplayText(row), { missionId: id, events: row.events.length, execs: row.execs.length });
+  },
+  "helena.watchdog": () => {
+    const alerts = runWatchdog(getDB());
+    if (!alerts.length) return ok("Watchdog: nenhum travamento no cadastro agora.");
+    return ok(alerts.map((a) => a.detail).join(" "), { alerts });
+  },
+  "helena.verify_outcome": (p) => {
+    const hint = String(p.hint || p.description || "").trim();
+    if (!hint) return fail("informe o rastro (nome do lead ou trecho da execução)");
+    const v = verifySendOutcome(getDB(), hint);
+    return v.verified ? ok(v.reason) : fail(v.reason);
+  },
+  "helena.crisis": () => {
+    const c = crisisState(getDB());
+    const text = c.active ? `Modo crise ativo.\n${c.reasons.join("\n")}\nPlano:\n${c.plan.join("\n")}` : c.plan[0] || "Sem crise.";
+    return ok(text, { active: c.active, reasons: c.reasons, plan: c.plan });
   },
   "intelligence.record_decision": (p) => {
     const contactId = String(p.contactId || "");
@@ -1801,6 +1981,8 @@ const handlers: Record<string, Handler> = {
 };
 
 export function tickRpaJobs() {
+  tickMissions();
+  runWatchdog(getDB());
   maybeEnqueueRadar();
   maybeEnqueueSilenceFollowups();
   const user = currentUser(getDB());
@@ -1834,8 +2016,23 @@ export function tickRpaJobs() {
         markJob(job.id, "failed", "sem conversa", Date.now() - started);
         return;
       }
-      const r = runTool("messages.send", { conversationId: conv.id, text: String(job.payload.text || "Retorno Helena.") }, ctx);
-      markJob(job.id, r.ok ? "sent" : "failed", r.ok ? undefined : r.message, Date.now() - started);
+      if (conv.messages.at(-1)?.from === "contact") {
+        markJob(job.id, "skipped", "o contato respondeu; follow-up cancelado", Date.now() - started);
+        return;
+      }
+      const lastOutboundAt = conv.flow?.lastOutboundAt
+        ?? [...conv.messages].reverse().find((message) => message.from === "agent" || message.from === "helena")?.at;
+      const text = String(job.payload.text || "Retorno Helena.");
+      requestApproval({
+        title: `Follow-up para ${contact.name}`,
+        description: "A mensagem está pronta. O contato será revalidado e nada será enviado sem esta aprovação.",
+        details: [{ label: "Mensagem", value: text }],
+        tool: "rpa.send_approved_followup",
+        params: { jobId: job.id, conversationId: conv.id, lastOutboundAt, text },
+        risk: "alto",
+        requestedBy: "Helena",
+      });
+      markJob(job.id, "awaiting_approval", undefined, Date.now() - started);
       return;
     }
     if (job.kind === "daily_report") {
@@ -1874,10 +2071,14 @@ export function runTool(name: string, params: Record<string, unknown>, ctx: Tool
   else if (db.toolSettings.find((t) => t.name === name)?.enabled === false) result = fail(`a ferramenta "${def.label}" está desativada em IA → Skills`);
   else if (ctx.actorType !== "agent" && ctx.actorType !== "helena" && ctx.actorType !== "sistema" && !can(db, def.permission)) result = fail("seu perfil não tem permissão para essa ação");
   else {
-    try {
-      result = handlers[name](params as Record<string, any>, ctx);
-    } catch (e) {
-      result = fail(e instanceof Error ? e.message : "erro inesperado");
+    const circuit = circuitBreaker(db, name);
+    if (circuit) result = fail(circuit);
+    else {
+      try {
+        result = handlers[name](params as Record<string, any>, ctx);
+      } catch (e) {
+        result = fail(e instanceof Error ? e.message : "erro inesperado");
+      }
     }
   }
   logExecution({
@@ -1929,6 +2130,18 @@ export function decideApproval(id: string, approve: boolean): ToolResult {
       }
       const camp = d.campaigns.find((c) => c.id === ap.params.campaignId);
       if (camp && camp.status === "aguardando_aprovacao") camp.status = "rascunho";
+      if (ap.tool === "sales.send_menu_followup") {
+        const conv = d.conversations.find((c) => c.id === ap.params.conversationId);
+        if (conv?.flow?.state === "aguardando_aprovacao") conv.flow.state = "esfriou";
+      }
+      if (ap.tool === "rpa.send_approved_followup") {
+        const job = d.rpaJobs.find((entry) => entry.id === ap.params.jobId);
+        if (job?.status === "awaiting_approval") {
+          job.status = "skipped";
+          job.error = `Follow-up negado por ${user.name}`;
+          job.finishedAt = nowISO();
+        }
+      }
     });
     pushHelenaMessage(`Entendido. "${ap.title}" foi cancelado e nada foi executado.`);
     return ok("Negado");
@@ -2000,7 +2213,7 @@ export function tickSalesFlow(now = new Date()) {
   const db = getDB();
   if (db.salesFlow && (db.salesFlow.noReplyHours < 24 || db.salesFlow.maxCloserAttempts > 1)) {
     update((d) => {
-      d.salesFlow.noReplyHours = 48;
+      d.salesFlow.noReplyHours = 24;
       d.salesFlow.readNoReplyHours = 24;
       d.salesFlow.respectBusinessHours = true;
       d.salesFlow.maxCloserAttempts = 1;

@@ -431,6 +431,12 @@ export function copilotAnswer(db: DB, question: string) {
     const c = consumptionSnapshot(db);
     return `Leads hoje ${c.used}/${c.limit}. Diagnósticos hoje ${c.dxToday}. Execuções ${c.execToday}. ${c.note}`;
   }
+  if (/como esta|briefing|minha empresa|situacao/.test(q)) {
+    const h = commercialHealth(db);
+    const c = consumptionSnapshot(db);
+    const rec = recoverOpportunities(db);
+    return `Cota ${c.used}/${c.limit}. Saúde: ${h.label}. ${h.detail} Recuperação: ${rec.length}. Missões no comando: ${(db.missions || []).filter((m) => m.status === "running" || m.status === "awaiting_approval").length}.`;
+  }
   const hits = universalSearch(db, question);
   if (hits.length) return hits.map((h) => `${h.kind}: ${h.label}`).join("\n");
   return "Não achei isso no cadastro desta organização. Pergunte por pizzaria, proposta, quente, risco ou cota.";

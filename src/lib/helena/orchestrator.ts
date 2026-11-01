@@ -1,8 +1,8 @@
-// Helena Orchestrator (frontend mock).
+// Helena's client-side conversational orchestrator.
 // Flow: message -> intent -> context -> plan -> tool selection -> risk check ->
 // approval when needed -> execution -> monitoring -> result.
-// Intent detection is rule-based here; swap interpret() for an LLM call with
-// tool calling when the real backend exists. The execution path stays the same.
+// Intent detection combines rules and configured LLM tool calls; business data
+// is persisted through the authenticated workspace API.
 import type { Agent, DB, HelenaCard } from "@/lib/types";
 import { createUiStore, currentUser, getDB } from "@/lib/store";
 import { brl, greeting, normalize } from "@/lib/format";
@@ -13,6 +13,9 @@ import { callGroqOrchestrator } from "./groq";
 import { computeDynamicCadence, getWhatsAppWorkerStatus, OBJECTION_MATRIX, FINANCIAL_GOAL } from "./sales-brain";
 import { computeRevenuePlan, parseDeadline, parseRevenueGoal } from "./revenue-goal";
 import { generateBriefingScript, getBriefingConfig, isHelenaArrivalGreeting } from "./briefing";
+import { agentCouncil, companyBriefing, crisisState, isCompanyStatusQuestion, isCouncilQuestion, isCrisisQuestion, isMissionPlanIntent } from "./command";
+import { recoverOpportunities } from "./decision";
+import { integrationHealth, screenContextLine } from "./reliability";
 import { pauseHappyNation, playFarewellMusic, playHappyNation } from "./music";
 import { extractProspectIntent } from "@/lib/prospect/mapsSearch";
 import { isPresenceIntent } from "@/lib/dev/presence";
@@ -20,11 +23,13 @@ import { canUseDevTeam } from "@/lib/saas";
 
 export type HelenaState = "ocioso" | "ouvindo" | "pensando" | "planejando" | "executando" | "aguardando" | "concluindo";
 
-export const helenaUi = createUiStore<{ open: boolean; state: HelenaState; draft: string; paletteOpen: boolean }>({
+export const helenaUi = createUiStore<{ open: boolean; state: HelenaState; draft: string; paletteOpen: boolean; screenPath: string; screenLabel: string }>({
   open: false,
   state: "ocioso",
   draft: "",
   paletteOpen: false,
+  screenPath: "",
+  screenLabel: "",
 });
 
 export const HELENA_STATE_LABEL: Record<HelenaState, string> = {
@@ -133,6 +138,14 @@ export async function sendToHelena(text: string) {
     content: m.text,
   }));
 
+  if (isCompanyStatusQuestion(clean) || isCouncilQuestion(clean) || isCrisisQuestion(clean) || isMissionPlanIntent(clean)) {
+    helenaUi.set({ state: "planejando" });
+    await sleep(200);
+    interpret(clean).forEach((r) => pushHelenaMessage(r.text, r.card));
+    helenaUi.set({ state: "ocioso" });
+    return;
+  }
+
   // Orquestração inteligente via Groq Cloud
   // Revenue goals always use the deterministic plan so the math and approval card are guaranteed.
   const groqRes = parseRevenueGoal(clean) ? null : await callGroqOrchestrator(clean, history);
@@ -186,6 +199,12 @@ export async function sendToHelena(text: string) {
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Resgate de Leads Frios (>48h)", detail: res.message }
         );
+      } else if (tc.name === "helena_briefing" || tc.name === "helena_council" || tc.name === "helena_crisis") {
+        const tool = tc.name.replace("_", ".") as "helena.briefing" | "helena.council" | "helena.crisis";
+        const res = runTool(tool, tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        pushHelenaMessage(groqRes.text || res.message, { type: "result", ok: res.ok, title: "Comando Helena", detail: res.message });
+      } else if (tc.name === "missions_plan") {
+        interpret(clean).forEach((r) => pushHelenaMessage(r.text, r.card));
       } else {
         const replies = interpret(clean);
         replies.forEach((r) => pushHelenaMessage(r.text, r.card));
@@ -300,6 +319,87 @@ export function interpret(text: string): Reply[] {
 
   if (!db.rolePermissions[user.role]?.includes("helena.use")) {
     return [{ text: "Seu perfil não tem permissão para usar a Helena. Fale com um administrador." }];
+  }
+
+  if (isCompanyStatusQuestion(n) || /como esta minha empresa|como esta a empresa/.test(n)) {
+    const b = companyBriefing(db);
+    return [{
+      text: b.text,
+      card: { type: "stats", title: "Como está a empresa hoje", items: b.highlights.map((h) => ({ label: h.label, value: h.value })) },
+    }];
+  }
+  if (isCouncilQuestion(n)) {
+    const c = agentCouncil(db, text);
+    return [{
+      text: `${c.recommendation}\n\n${c.seats.map((s) => `• ${s.team} (${s.agent}): ${s.stance}. ${s.evidence}`).join("\n")}\n\n${c.note}`,
+      card: { type: "stats", title: "Conselho de agentes", items: c.seats.map((s) => ({ label: s.team, value: s.stance, hint: s.evidence })) },
+    }];
+  }
+  if (isCrisisQuestion(n)) {
+    const c = crisisState(db);
+    return [{
+      text: c.active ? `Modo crise.\n${c.reasons.join("\n")}\n\n${c.plan.join("\n")}` : c.plan.join("\n"),
+      card: { type: "stats", title: "Modo crise", items: (c.active ? c.reasons : c.plan).slice(0, 6).map((r, i) => ({ label: c.active ? `Sinal ${i + 1}` : "Plano", value: r })) },
+    }];
+  }
+  if (/replay da missao|reproduzir missao/.test(n)) {
+    const code = text.match(/MIS-\d+/i)?.[0];
+    const mission = code
+      ? db.missions.find((m) => m.code.toLowerCase() === code.toLowerCase())
+      : db.missions[0];
+    if (!mission) return [{ text: "Nenhuma missão no cadastro para reproduzir." }];
+    return [perform("helena.replay", { missionId: mission.id }, `Replay ${mission.code}`, [{ label: "Missão", value: mission.code }], "Replay montado a partir de eventos e execuções gravados.")];
+  }
+  if (/esta tela|nesta tela|o que estou vendo|neste modulo/.test(n)) {
+    const ui = helenaUi.get();
+    const ctx = screenContextLine(ui.screenPath, ui.screenLabel);
+    return [{
+      text: ctx
+        ? `${ctx}\nPosso falar deste módulo com os dados que seu perfil já vê. Peça um dossiê, uma missão ou a saúde das integrações.`
+        : "Ainda não identifiquei a tela. Navegue no painel e pergunte de novo.",
+    }];
+  }
+  if (/saude das integr|circuit breaker|whatsapp (esta|ta) (on|off)|fila rpa/.test(n)) {
+    const h = integrationHealth(db);
+    return [{
+      text: `Kill switch: ${h.killSwitch ? "ligado" : "desligado"}. Circuito: ${h.circuitOpen ? "aberto (Helena não dispara lote)" : "fechado"}. RPA: ${h.rpa.failed} falha(s), ${h.rpa.queued} na fila. ${h.note}`,
+      card: { type: "stats", title: "Integrações", items: [
+        { label: "Circuito", value: h.circuitOpen ? "aberto" : "ok" },
+        { label: "RPA falhas", value: String(h.rpa.failed) },
+        { label: "Aprovações", value: String(h.pendingApprovals) },
+      ] },
+    }];
+  }
+  if (/leads? parados?|analise os motivos|prepare uma acao para recuperar|recuperar os melhores/.test(n) && /analis|prepare|encontre|recuper/.test(n)) {
+    const rec = recoverOpportunities(db);
+    const replies: Reply[] = [{
+      text: rec.length
+        ? `Cadastro: ${rec.length} oportunidade(s) para recuperar.\n${rec.slice(0, 6).map((r) => `• ${r.name}: ${r.why} → ${r.action}`).join("\n")}\nIsso não é disparo. Posso planejar uma missão de recuperação com aprovação.`
+        : "Nenhuma oportunidade marcada para recuperar neste cadastro. Sem teatro de fila.",
+      card: { type: "list", title: "Recuperação", items: rec.slice(0, 8).map((r) => ({ label: r.name, sub: r.action, href: `/crm/dossie/${r.contactId}` })) },
+    }];
+    if (rec.length) {
+      replies.push(perform(
+        "missions.plan",
+        { title: "Recuperar oportunidades do cadastro", objective: `Recuperar ${rec.length} leads com evidência no dossiê. ${text}`, targetValue: rec.length },
+        "Missão de recuperação",
+        [{ label: "Leads", value: String(rec.length) }, { label: "Origem", value: "recoverOpportunities" }],
+        "Missão de recuperação planejada. Início só com aprovação.",
+      ));
+    }
+    return replies;
+  }
+  if (isMissionPlanIntent(n) || /conquistar \d+|missao para/.test(n)) {
+    const target = Number(n.match(/(\d{1,3})/)?.[1] ?? 20);
+    return [
+      perform(
+        "missions.plan",
+        { title: `Missão · ${target} no objetivo`, objective: text, targetValue: Math.min(target, 150) },
+        `Planejar missão (${target})`,
+        [{ label: "Objetivo", value: text.slice(0, 180) }, { label: "Meta", value: String(Math.min(target, 150)) }, { label: "Time", value: "Comercial (Helena orquestra)" }],
+        "Missão planejada no Mission Control. Início só com aprovação — a Helena não dispara sozinha.",
+      ),
+    ];
   }
 
   // Create agent

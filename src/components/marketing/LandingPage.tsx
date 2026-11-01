@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check, MapPin, MessageCircle, Moon, Sparkles, Sun } from "lucide-react";
 import { HelenaAvatar } from "@/components/helena/HelenaAvatar";
@@ -6,8 +6,6 @@ import { TestimonialsSlider } from "@/components/marketing/TestimonialsSlider";
 import { SAAS_PLANS } from "@/lib/saas";
 import { applyTheme, getTheme } from "@/lib/theme";
 import { useLandingMotion } from "@/hooks/use-landing-motion";
-import { getHealth } from "@/lib/backend";
-
 const STEPS = [
   { n: "01", title: "Ela varre o mapa", text: "Você fala o nicho. A Helena acha quem aparece no Google — e ainda não tem site nem cardápio online." },
   { n: "02", title: "O time de IA constrói", text: "No plano Máquina, front, back e design seniores montam a prévia com fotos, avaliações e WhatsApp." },
@@ -16,19 +14,6 @@ const STEPS = [
 
 function toggleTheme() {
   applyTheme(getTheme() === "dark" ? "light" : "dark");
-}
-
-function ChipPulse() {
-  const [label, setLabel] = useState("Checando o chip…");
-  useEffect(() => {
-    getHealth()
-      .then((h) => {
-        const on = h.whatsapp === "connected" || h.whatsapp === "open" || h.evolution === "remote";
-        setLabel(on ? "Chip / Evolution no ar (Render grátis)" : `Servidor ok · WhatsApp ${h.whatsapp}`);
-      })
-      .catch(() => setLabel("Servidor local ou Render ainda acordando"));
-  }, []);
-  return <p className="mt-4 text-xs text-helena">{label} · <Link to="/status" className="underline">status</Link></p>;
 }
 
 export function LandingPage() {
@@ -85,7 +70,7 @@ export function LandingPage() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/cadastro" className="lp-btn lp-btn--helena inline-flex items-center gap-2 rounded-full bg-helena px-6 py-3 text-sm font-semibold text-helena-foreground">
-              2 dias grátis · 30 leads/dia no freemium · 150 no plano pago <ArrowRight className="size-4" />
+              Começar agora <ArrowRight className="size-4" />
             </Link>
             <a href="#demo" className="lp-btn inline-flex items-center rounded-full border border-border px-6 py-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
               Ver em 20s
@@ -94,8 +79,7 @@ export function LandingPage() {
               Ver planos
             </a>
           </div>
-          <ChipPulse />
-          <p className="mt-4 text-xs text-muted-foreground/80">Sem cartão no trial. Depois, Cakto. White-label sob orçamento.</p>
+          <p className="mt-4 text-xs text-muted-foreground/80">Planos e trial na seção abaixo. Checkout na Cakto.</p>
         </div>
         <div className="lp-reveal lp-hero-orb relative mx-auto w-full max-w-md" style={{ "--i": 3 } as CSSProperties}>
           <div className="absolute -inset-6 rounded-[2rem] bg-helena/20 blur-3xl" />
@@ -201,9 +185,9 @@ export function LandingPage() {
       <section className="border-t border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-5 py-14 sm:flex-row sm:items-center">
           <div className="lp-reveal">
-            <p className="font-serif text-3xl leading-tight">Dois dias. Trinta leads. Sem cartão.</p>
+            <p className="font-serif text-3xl leading-tight">Sua operação empresarial, coordenada por inteligência artificial.</p>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Freemium: 30 prospecções/dia. Impulso e Máquina: até 150/dia. Time Dev não aumenta cota até o pagamento.
+              Encontre oportunidades. Coordene equipes. Execute o que estiver autorizado. Acompanhe o resultado no cadastro.
             </p>
           </div>
           <Link to="/cadastro" className="lp-btn lp-btn--helena inline-flex items-center gap-2 rounded-full bg-helena px-6 py-3 text-sm font-semibold text-helena-foreground">
@@ -255,9 +239,9 @@ export function LandingPage() {
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-helena">Operação</p>
             <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-              <li>30 leads/dia no freemium · 150 no pago</li>
+              <li>Maps, diagnóstico e WhatsApp</li>
               <li>Pagamento via Cakto</li>
-              <li>WhatsApp, CRM e prévia no Máquina</li>
+              <li>Time Dev no plano Máquina</li>
               <li>São Paulo · Brasil</li>
             </ul>
           </div>
@@ -275,7 +259,7 @@ export function LandingPage() {
             </a>
             . HELENA AI. Todos os direitos reservados.
           </p>
-          <p>Trial sem cartão. Assinatura e white-label sob contrato.</p>
+          <p>Assinatura e white-label sob contrato.</p>
         </div>
       </footer>
     </div>

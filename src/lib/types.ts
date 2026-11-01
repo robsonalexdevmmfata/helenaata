@@ -1,5 +1,4 @@
-// Domain types. Mirrors database/schema.sql so the mock layer can be swapped
-// for a real PostgreSQL-backed API later. Every business record carries organizationId.
+// Domain types mirror the PostgreSQL schema. Every business record carries organizationId.
 
 export type ID = string;
 export type Role = "owner" | "admin" | "manager" | "agent" | "viewer";
@@ -37,6 +36,7 @@ export interface User {
   email: string;
   username: string;
   password?: string;
+  passwordHash?: string;
   role: Role;
   title: string;
   color: ColorToken;
@@ -382,6 +382,8 @@ export interface Message {
   text: string;
   at: string;
   kind?: "text" | "image" | "audio" | "document" | "event";
+  externalId?: string;
+  deliveryStatus?: "queued" | "sent" | "delivered" | "read" | "failed";
 }
 
 export interface Conversation {
@@ -404,7 +406,7 @@ export interface Conversation {
 }
 
 /** Estado da conversa iniciada pela prospecção no número compartilhado. */
-export type FlowState = "abordado" | "visualizou" | "respondeu" | "closer" | "reuniao_agendada" | "esfriou";
+export type FlowState = "abordado" | "visualizou" | "respondeu" | "aguardando_aprovacao" | "closer" | "reuniao_agendada" | "esfriou";
 
 export interface ConversationFlow {
   origin: "prospeccao" | "inbound";
@@ -762,8 +764,10 @@ export interface WhatsAppConnection {
   organizationId: ID;
   name: string;
   phone: string;
+  instanceName?: string;
   type: "qrcode" | "cloud_api";
   status: "online" | "offline" | "conectando";
+  deletedAt?: string;
   queue: number;
   sentToday: number;
   dailyLimit: number;
@@ -1046,4 +1050,5 @@ export interface DB {
   dailyReports: DailyReport[];
   retentionDays: number;
   organizationSettings?: { retentionDays: number; mfaEnabled: boolean; ipWhitelist: string[] };
+  clientPreferences?: Record<string, unknown>;
 }

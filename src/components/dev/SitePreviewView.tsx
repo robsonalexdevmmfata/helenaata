@@ -22,10 +22,12 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           <p className="text-[11px] uppercase tracking-[0.2em] opacity-80">{preview.segment} · {preview.city}</p>
           <h1 className="mt-3 font-serif text-3xl sm:text-5xl">{preview.name}</h1>
           <p className="mt-3 max-w-xl text-base opacity-90">{preview.tagline}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            <span style={{ color: palette.accent }}>{stars(preview.rating)} {preview.rating}</span>
-            <span className="opacity-70">{preview.reviewCount} avaliações no mapa</span>
-          </div>
+          {preview.rating > 0 && preview.reviewCount > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+              <span style={{ color: palette.accent }}>{stars(preview.rating)} {preview.rating}</span>
+              <span className="opacity-70">{preview.reviewCount} avaliações no mapa</span>
+            </div>
+          )}
           <div className="mt-8 hidden flex-wrap gap-3 sm:flex">
             <a href={waLink} className="rounded-full px-5 py-2.5 text-sm font-medium" style={{ background: palette.accent, color: palette.bg }}>
               Pedir no WhatsApp
@@ -43,8 +45,8 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           <p className="mt-3 leading-relaxed opacity-90">{preview.about}</p>
           <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
             <div><dt className="opacity-60">Endereço</dt><dd>{preview.address}</dd></div>
-            <div><dt className="opacity-60">Horário</dt><dd>{preview.hours}</dd></div>
-            <div><dt className="opacity-60">Telefone</dt><dd>{preview.phone}</dd></div>
+            {preview.hours && <div><dt className="opacity-60">Horário</dt><dd>{preview.hours}</dd></div>}
+            {preview.phone && <div><dt className="opacity-60">Telefone</dt><dd>{preview.phone}</dd></div>}
           </dl>
         </section>
 
@@ -94,20 +96,22 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           </section>
         )}
 
-        <section>
-          <h2 className="text-sm uppercase tracking-[0.16em] opacity-70">O que dizem no mapa</h2>
-          <ul className="mt-5 space-y-4">
-            {preview.reviews.map((r) => (
-              <li key={r.author} className="rounded-xl border p-4 text-sm" style={{ borderColor: `${palette.fg}22` }}>
-                <div className="flex justify-between gap-2">
-                  <span className="font-medium">{r.author}</span>
-                  <span style={{ color: palette.accent }}>{stars(r.rating)}</span>
-                </div>
-                <p className="mt-2 opacity-80">{r.text}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {preview.reviews.length > 0 && (
+          <section>
+            <h2 className="text-sm uppercase tracking-[0.16em] opacity-70">O que dizem no mapa</h2>
+            <ul className="mt-5 space-y-4">
+              {preview.reviews.map((r) => (
+                <li key={r.author} className="rounded-xl border p-4 text-sm" style={{ borderColor: `${palette.fg}22` }}>
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium">{r.author}</span>
+                    <span style={{ color: palette.accent }}>{stars(r.rating)}</span>
+                  </div>
+                  <p className="mt-2 opacity-80">{r.text}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <p className="text-center text-[11px] opacity-50">
           Prévia montada pela Info Tech a partir de dados públicos do mapa. Não é o site oficial até o proprietário aprovar.

@@ -246,6 +246,39 @@ database/
 │   └── ...
 ```
 
+### Supabase: follow-up de proposta e cardápio online
+
+No SQL Editor do projeto Supabase, execute `supabase-helena-rpa.sql`,
+`002_helena10_app_ids.sql`, `003_rpa_center.sql`, `004_intelligence_3.sql` e, por último,
+`migrations/005_menu_followup_approval.sql`. A migration é idempotente e cria
+as configurações de espera/aprovação e o histórico do follow-up; também guarda
+os estados de entrega/leitura das mensagens e cadastra o Cardápio Online por
+R$ 100/mês para organizações da plataforma.
+
+O fluxo do painel espera 24 horas sem resposta (lida ou não lida), apresenta o
+texto para aprovação e só tenta enviar após a aprovação. Uma resposta,
+assunção por atendente ou opt-out cancela o envio.
+
+### Persistência do workspace
+
+Depois das migrations base acima, execute também
+`migrations/006_supabase_workspace_state.sql`. A aplicação usa `DATABASE_URL`
+somente no servidor, autentica com cookie HttpOnly e grava o estado de cada
+organização em `workspace_snapshots` (JSONB com controle de revisão). Contas e
+hashes de senha ficam em `app_accounts`; senhas nunca são armazenadas no
+snapshot. A mesma migration cria a persistência de prévias (`app_previews`),
+eventos de cobrança (`app_billing_events`) e prepara as colunas da fila RPA para
+o worker usar o banco, sem arquivos JSON nem filas em memória.
+
+Dados que já existiam em arquivos locais de prévias/cobranças não são importados
+automaticamente; faça backup antes de aplicar a migration se precisar preservá-los.
+
+Configure `DATABASE_URL`, `SESSION_SECRET` e `ADMIN_PASSWORD` no ambiente do
+servidor, nunca em variáveis `VITE_*`. O login e o cadastro falham explicitamente
+se o Supabase não estiver disponível; a aplicação não cria nem carrega um
+workspace de demonstração como fallback. `seed.sql` é apenas para desenvolvimento
+isolado e não deve ser executado no projeto de produção.
+
 ## 🛠️ Comandos Úteis
 
 ### Backup
@@ -266,13 +299,9 @@ psql -U postgres -d helenaia -c "DROP SCHEMA public CASCADE; CREATE SCHEMA publi
 
 ## 📝 Próximos Passos
 
-1. ✅ Database criado e populado
-2. 🔲 Implementar camada de acesso a dados (repositories)
-3. 🔲 Implementar API REST (rotas + controllers)
-4. 🔲 Conectar frontend ao backend
-5. 🔲 Implementar autenticação JWT
-6. 🔲 Implementar tool calling da Helena
-7. 🔲 Implementar orquestração de agentes
+1. ✅ Conectar o workspace ao Supabase via API server-side
+2. 🔲 Normalizar gradualmente as entidades além do snapshot JSONB
+3. 🔲 Migrar integrações legadas que ainda persistem tabelas específicas
 
 ## 🆘 Problemas Comuns
 

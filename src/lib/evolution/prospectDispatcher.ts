@@ -64,9 +64,8 @@ export async function dispatchProspectMessages(
     return result;
   }
 
-  // Verifica se a Evolution API está configurada
-  if (!cfg.apiKey || !cfg.baseUrl) {
-    console.warn("[Dispatcher] Evolution API não configurada — simulando envios.");
+  const browser = typeof window !== "undefined";
+  if (!browser && !process.env.EVOLUTION_KEY) {
     result.skipped = contacts.length;
     return result;
   }
@@ -98,7 +97,7 @@ export async function dispatchProspectMessages(
 
     if (res.ok) {
       result.sent++;
-      console.log(`[Dispatcher] ✅ ${i + 1}/${contacts.length} → ${contact.name} (${cleanPhone})`);
+      /* auditoria só em Execution */
 
       update((d) => {
         d.executions.unshift({
@@ -136,7 +135,7 @@ export async function dispatchProspectMessages(
     } else {
       result.failed++;
       result.errors.push(`${contact.name}: ${res.error}`);
-      console.warn(`[Dispatcher] ❌ Falha → ${contact.name}: ${res.error}`);
+      /* falha em result.errors */
 
       // Registra falha na auditoria
       update((d) => {
@@ -160,7 +159,6 @@ export async function dispatchProspectMessages(
     if (i < contacts.length - 1) {
       // A cada MAX_BURST mensagens, pausa mais longa
       if ((i + 1) % MAX_BURST === 0) {
-        console.log(`[Dispatcher] ⏳ Pausa de ${BURST_PAUSE_MS / 1000}s (anti-ban)...`);
         await sleep(BURST_PAUSE_MS);
       } else {
         await sleep(DEFAULT_DELAY_MS);

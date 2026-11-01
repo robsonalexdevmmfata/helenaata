@@ -71,6 +71,7 @@ function Home() {
             <div className="flex flex-wrap gap-2 pt-1">
               <Button size="sm" variant="outline" onClick={() => ask("Quem precisa de follow-up hoje?")}>Ver follow-ups</Button>
               <Button size="sm" variant="outline" onClick={() => ask("Como está o comercial?")}>Como está o comercial?</Button>
+              <Button size="sm" variant="outline" onClick={() => ask("Como está minha empresa hoje?")}>Como está minha empresa?</Button>
             </div>
           </div>
         </div>

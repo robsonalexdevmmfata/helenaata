@@ -1,10 +1,8 @@
 import { createUiStore } from "@/lib/store";
-
-const KEY = "helena-vtuber-anim-paused";
+import { getWorkspacePreference, saveWorkspacePreference } from "@/lib/store";
 
 function readPaused() {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(KEY) === "1";
+  return getWorkspacePreference("vtuberPaused", false);
 }
 
 export const helenaVtuberUi = createUiStore<{ paused: boolean }>({ paused: false });
@@ -15,7 +13,5 @@ export function hydrateVtuberPause() {
 
 export function setVtuberPaused(paused: boolean) {
   helenaVtuberUi.set({ paused });
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(KEY, paused ? "1" : "0");
-  }
+  saveWorkspacePreference("vtuberPaused", paused);
 }

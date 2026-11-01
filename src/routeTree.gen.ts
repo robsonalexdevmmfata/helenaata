@@ -17,6 +17,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
 import { Route as AppAutomacoesRouteImport } from './routes/_app/automacoes'
+import { Route as AppComandoRouteImport } from './routes/_app/comando'
 import { Route as AppEquipeRouteImport } from './routes/_app/equipe'
 import { Route as AppOperacoesRouteImport } from './routes/_app/operacoes'
 import { Route as AppPlanosRouteImport } from './routes/_app/planos'
@@ -50,6 +51,7 @@ import { Route as AppIaSkillsRouteImport } from './routes/_app/ia/skills'
 import { Route as AppIaTimesRouteImport } from './routes/_app/ia/times'
 import { Route as AppIntegracoesApiRouteImport } from './routes/_app/integracoes/api'
 import { Route as AppIntegracoesProvedoresRouteImport } from './routes/_app/integracoes/provedores'
+import { Route as AppIntegracoesSaudeRouteImport } from './routes/_app/integracoes/saude'
 import { Route as AppIntegracoesWebhooksRouteImport } from './routes/_app/integracoes/webhooks'
 import { Route as AppIntegracoesWhatsappRouteImport } from './routes/_app/integracoes/whatsapp'
 import { Route as AppOperacoesIndexRouteImport } from './routes/_app/operacoes/index'
@@ -100,6 +102,11 @@ const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
 const AppAutomacoesRoute = AppAutomacoesRouteImport.update({
   id: '/automacoes',
   path: '/automacoes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppComandoRoute = AppComandoRouteImport.update({
+  id: '/comando',
+  path: '/comando',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEquipeRoute = AppEquipeRouteImport.update({
@@ -272,6 +279,11 @@ const AppIntegracoesProvedoresRoute =
     path: '/integracoes/provedores',
     getParentRoute: () => AppRoute,
   } as any)
+const AppIntegracoesSaudeRoute = AppIntegracoesSaudeRouteImport.update({
+  id: '/integracoes/saude',
+  path: '/integracoes/saude',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIntegracoesWebhooksRoute = AppIntegracoesWebhooksRouteImport.update({
   id: '/integracoes/webhooks',
   path: '/integracoes/webhooks',
@@ -341,6 +353,7 @@ export interface FileRoutesByFullPath {
   '/status': typeof StatusRoute
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
+  '/comando': typeof AppComandoRoute
   '/equipe': typeof AppEquipeRoute
   '/operacoes': typeof AppOperacoesRouteWithChildren
   '/planos': typeof AppPlanosRoute
@@ -374,6 +387,7 @@ export interface FileRoutesByFullPath {
   '/ia/times': typeof AppIaTimesRoute
   '/integracoes/api': typeof AppIntegracoesApiRoute
   '/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
+  '/integracoes/saude': typeof AppIntegracoesSaudeRoute
   '/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
   '/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
   '/operacoes/$id': typeof AppOperacoesIdRoute
@@ -395,6 +409,7 @@ export interface FileRoutesByTo {
   '/status': typeof StatusRoute
   '/analytics': typeof AppAnalyticsRoute
   '/automacoes': typeof AppAutomacoesRoute
+  '/comando': typeof AppComandoRoute
   '/equipe': typeof AppEquipeRoute
   '/planos': typeof AppPlanosRoute
   '/rpa': typeof AppRpaRoute
@@ -426,6 +441,7 @@ export interface FileRoutesByTo {
   '/ia/times': typeof AppIaTimesRoute
   '/integracoes/api': typeof AppIntegracoesApiRoute
   '/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
+  '/integracoes/saude': typeof AppIntegracoesSaudeRoute
   '/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
   '/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
   '/operacoes/$id': typeof AppOperacoesIdRoute
@@ -449,6 +465,7 @@ export interface FileRoutesById {
   '/status': typeof StatusRoute
   '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/automacoes': typeof AppAutomacoesRoute
+  '/_app/comando': typeof AppComandoRoute
   '/_app/equipe': typeof AppEquipeRoute
   '/_app/operacoes': typeof AppOperacoesRouteWithChildren
   '/_app/planos': typeof AppPlanosRoute
@@ -482,6 +499,7 @@ export interface FileRoutesById {
   '/_app/ia/times': typeof AppIaTimesRoute
   '/_app/integracoes/api': typeof AppIntegracoesApiRoute
   '/_app/integracoes/provedores': typeof AppIntegracoesProvedoresRoute
+  '/_app/integracoes/saude': typeof AppIntegracoesSaudeRoute
   '/_app/integracoes/webhooks': typeof AppIntegracoesWebhooksRoute
   '/_app/integracoes/whatsapp': typeof AppIntegracoesWhatsappRoute
   '/_app/operacoes/$id': typeof AppOperacoesIdRoute
@@ -505,6 +523,7 @@ export interface FileRouteTypes {
     | '/status'
     | '/analytics'
     | '/automacoes'
+    | '/comando'
     | '/equipe'
     | '/operacoes'
     | '/planos'
@@ -538,6 +557,7 @@ export interface FileRouteTypes {
     | '/ia/times'
     | '/integracoes/api'
     | '/integracoes/provedores'
+    | '/integracoes/saude'
     | '/integracoes/webhooks'
     | '/integracoes/whatsapp'
     | '/operacoes/$id'
@@ -559,6 +579,7 @@ export interface FileRouteTypes {
     | '/status'
     | '/analytics'
     | '/automacoes'
+    | '/comando'
     | '/equipe'
     | '/planos'
     | '/rpa'
@@ -590,6 +611,7 @@ export interface FileRouteTypes {
     | '/ia/times'
     | '/integracoes/api'
     | '/integracoes/provedores'
+    | '/integracoes/saude'
     | '/integracoes/webhooks'
     | '/integracoes/whatsapp'
     | '/operacoes/$id'
@@ -612,6 +634,7 @@ export interface FileRouteTypes {
     | '/status'
     | '/_app/analytics'
     | '/_app/automacoes'
+    | '/_app/comando'
     | '/_app/equipe'
     | '/_app/operacoes'
     | '/_app/planos'
@@ -645,6 +668,7 @@ export interface FileRouteTypes {
     | '/_app/ia/times'
     | '/_app/integracoes/api'
     | '/_app/integracoes/provedores'
+    | '/_app/integracoes/saude'
     | '/_app/integracoes/webhooks'
     | '/_app/integracoes/whatsapp'
     | '/_app/operacoes/$id'
@@ -725,6 +749,13 @@ declare module '@tanstack/react-router' {
       path: '/automacoes'
       fullPath: '/automacoes'
       preLoaderRoute: typeof AppAutomacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/comando': {
+      id: '/_app/comando'
+      path: '/comando'
+      fullPath: '/comando'
+      preLoaderRoute: typeof AppComandoRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/equipe': {
@@ -958,6 +989,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIntegracoesProvedoresRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/integracoes/saude': {
+      id: '/_app/integracoes/saude'
+      path: '/integracoes/saude'
+      fullPath: '/integracoes/saude'
+      preLoaderRoute: typeof AppIntegracoesSaudeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/integracoes/webhooks': {
       id: '/_app/integracoes/webhooks'
       path: '/integracoes/webhooks'
@@ -1076,6 +1114,7 @@ const AppCrmDossieRouteWithChildren = AppCrmDossieRoute._addFileChildren(
 interface AppRouteChildren {
   AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppAutomacoesRoute: typeof AppAutomacoesRoute
+  AppComandoRoute: typeof AppComandoRoute
   AppEquipeRoute: typeof AppEquipeRoute
   AppOperacoesRoute: typeof AppOperacoesRouteWithChildren
   AppPlanosRoute: typeof AppPlanosRoute
@@ -1108,6 +1147,7 @@ interface AppRouteChildren {
   AppIaTimesRoute: typeof AppIaTimesRoute
   AppIntegracoesApiRoute: typeof AppIntegracoesApiRoute
   AppIntegracoesProvedoresRoute: typeof AppIntegracoesProvedoresRoute
+  AppIntegracoesSaudeRoute: typeof AppIntegracoesSaudeRoute
   AppIntegracoesWebhooksRoute: typeof AppIntegracoesWebhooksRoute
   AppIntegracoesWhatsappRoute: typeof AppIntegracoesWhatsappRoute
   AppProspeccaoBuscarRoute: typeof AppProspeccaoBuscarRoute
@@ -1121,6 +1161,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAnalyticsRoute: AppAnalyticsRoute,
   AppAutomacoesRoute: AppAutomacoesRoute,
+  AppComandoRoute: AppComandoRoute,
   AppEquipeRoute: AppEquipeRoute,
   AppOperacoesRoute: AppOperacoesRouteWithChildren,
   AppPlanosRoute: AppPlanosRoute,
@@ -1153,6 +1194,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIaTimesRoute: AppIaTimesRoute,
   AppIntegracoesApiRoute: AppIntegracoesApiRoute,
   AppIntegracoesProvedoresRoute: AppIntegracoesProvedoresRoute,
+  AppIntegracoesSaudeRoute: AppIntegracoesSaudeRoute,
   AppIntegracoesWebhooksRoute: AppIntegracoesWebhooksRoute,
   AppIntegracoesWhatsappRoute: AppIntegracoesWhatsappRoute,
   AppProspeccaoBuscarRoute: AppProspeccaoBuscarRoute,

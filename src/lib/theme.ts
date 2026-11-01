@@ -1,16 +1,14 @@
-const KEY = "helena-theme";
+import { getWorkspacePreference, saveWorkspacePreference } from "@/lib/store";
 
 export type Theme = "light" | "dark";
+let themeOverride: Theme = "light";
 
 export function getTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  return (window.localStorage.getItem(KEY) as Theme) ?? "light";
+  return getWorkspacePreference<Theme>("theme", themeOverride);
 }
 
 export function applyTheme(theme: Theme) {
+  themeOverride = theme;
   document.documentElement.classList.toggle("dark", theme === "dark");
-  window.localStorage.setItem(KEY, theme);
+  saveWorkspacePreference("theme", theme);
 }
-
-/** Inline script to set the theme class before paint (avoids flash). */
-export const themeBootScript = `try{if(localStorage.getItem('${KEY}')==='dark')document.documentElement.classList.add('dark')}catch(e){}`;

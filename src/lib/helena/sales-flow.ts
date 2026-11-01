@@ -247,10 +247,16 @@ export function closerFollowupText(opts: {
   return `${first}, última da minha parte. Se for o dono ou a dona, me diz um destes horários. Se não, eu paro.\n${menu}`;
 }
 
+export function menuProposalFollowupText(contactName: string, offerName: string, price: number) {
+  const first = contactName.trim().split(/\s+/)[0] || "Olá";
+  return `Oi ${first}, conseguiu dar uma olhada na proposta que te enviei? Se não fez sentido para você, tudo bem — posso entender o que não encaixou. Também temos ${offerName} por R$ ${price.toFixed(2).replace(".", ",")}/mês, com link para compartilhar com seus clientes. Quer que eu te mostre uma demonstração? Se preferir não receber novos contatos, é só me avisar.`;
+}
+
 export const FLOW_STATE_LABEL: Record<FlowState, string> = {
   abordado: "Abordado",
   visualizou: "Visualizou",
   respondeu: "Respondeu",
+  aguardando_aprovacao: "Aguardando aprovação",
   closer: "Closer em ação",
   reuniao_agendada: "Reunião agendada",
   esfriou: "Esfriou",

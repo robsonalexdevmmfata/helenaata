@@ -3,11 +3,8 @@
 import { useEffect, useState } from "react";
 
 const BASE = String(
-  import.meta.env.VITE_API_URL
-    ?? (import.meta.env.PROD ? "https://helenaata.onrender.com" : ""),
+  import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? "https://helenaata.onrender.com" : ""),
 ).replace(/\/$/, "");
-const TOKEN_KEY = "helena-backend-token";
-
 export class BackendError extends Error {
   constructor(
     message: string,
@@ -17,26 +14,19 @@ export class BackendError extends Error {
   }
 }
 
-export function getBackendToken() {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(TOKEN_KEY) ?? "";
-}
-
-export function clearBackendToken() {
-  if (typeof window !== "undefined") window.localStorage.removeItem(TOKEN_KEY);
-}
-
-export async function api<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+export async function api<T>(
+  path: string,
+  init: { method?: string; body?: unknown; timeoutMs?: number } = {},
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
   try {
-    const token = getBackendToken();
     const res = await fetch(`${BASE}${path}`, {
       method: init.method ?? (init.body ? "POST" : "GET"),
       signal: controller.signal,
+      credentials: "include",
       headers: {
         ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: init.body ? JSON.stringify(init.body) : undefined,
     });
@@ -65,21 +55,6 @@ export interface BackendHealth {
 
 export function getHealth() {
   return api<BackendHealth>("/health", { timeoutMs: 4000 });
-}
-
-/**
- * Faz login no servidor. Retorna "ok", "invalid" (senha errada no servidor)
- * ou "offline" (servidor não encontrado — o site segue em modo demonstração).
- */
-export async function backendLogin(username: string, password: string): Promise<"ok" | "invalid" | "offline"> {
-  try {
-    const { token } = await api<{ token: string }>("/api/auth/login", { body: { username, password }, timeoutMs: 5000 });
-    window.localStorage.setItem(TOKEN_KEY, token);
-    return "ok";
-  } catch (e) {
-    if (e instanceof BackendError && e.status === 401) return "invalid";
-    return "offline";
-  }
 }
 
 /** Verifica periodicamente se o servidor está no ar. */
@@ -129,13 +104,14 @@ export const whatsappApi = {
   connect: () => api<WhatsAppStatus>("/api/whatsapp/connect", { method: "POST", timeoutMs: 30000 }),
   logout: () => api<WhatsAppStatus>("/api/whatsapp/logout", { method: "POST" }),
   messages: () => api<{ messages: WhatsAppLogEntry[] }>("/api/whatsapp/messages"),
-  send: (to: string, text: string) => api<{ ok: boolean }>("/api/whatsapp/send", { body: { to, text } }),
-  autoReply: (enabled: boolean) => api<{ autoReply: boolean }>("/api/whatsapp/auto-reply", { body: { enabled } }),
+  send: (to: string, text: string) =>
+    api<{ ok: boolean }>("/api/whatsapp/send", { body: { to, text } }),
+  autoReply: (enabled: boolean) =>
+    api<{ autoReply: boolean }>("/api/whatsapp/auto-reply", { body: { enabled } }),
 };
 
 /** Chat de IA pelo servidor (chave guardada no servidor). Retorna null se indisponível. */
 export async function serverChatCompletion(body: Record<string, unknown>): Promise<any | null> {
-  if (!getBackendToken()) return null;
   try {
     return await api<any>("/api/ai/chat", { body, timeoutMs: 35000 });
   } catch {

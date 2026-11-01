@@ -159,6 +159,64 @@ export function HelenaCardView({ card, messageId }: { card: HelenaCard; messageI
     }
     case "approval":
       return <CardShell label="Aprovação necessária" tone="helena"><ApprovalBlock approvalId={card.approvalId} /></CardShell>;
+    case "mission_plan": {
+      return (
+        <CardShell label={`Missão ${card.code}`} tone="helena">
+          <p className="text-sm font-medium">{card.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{card.strategy}</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {card.targets.map((t) => (
+              <div key={t.label} className="rounded-md bg-muted/60 px-2.5 py-2">
+                <div className="text-[10px] text-muted-foreground">{t.label}</div>
+                <div className="font-mono text-sm">{t.value}</div>
+              </div>
+            ))}
+          </div>
+          <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+            {card.tasks.map((t) => (
+              <li key={t.id}>{t.agent}: {t.label} · {t.status}</li>
+            ))}
+          </ul>
+          {card.approvalId && (
+            <div className="mt-3 border-t pt-3">
+              <ApprovalBlock approvalId={card.approvalId} />
+            </div>
+          )}
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => { helenaUi.set({ open: false }); router.history.push("/comando"); }}>
+            Abrir Mission Control
+          </Button>
+        </CardShell>
+      );
+    }
+    case "war_room":
+      return (
+        <CardShell label="Mission Control" tone="helena">
+          <Button size="sm" onClick={() => { helenaUi.set({ open: false }); router.history.push("/comando"); }}>
+            Abrir comando da missão
+          </Button>
+        </CardShell>
+      );
+    case "briefing":
+      return (
+        <CardShell label={card.title} tone="helena">
+          <p className="text-sm whitespace-pre-wrap">{card.summary}</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {card.stats.map((s) => (
+              <div key={s.label} className="rounded-md bg-muted/60 px-2.5 py-2">
+                <div className="text-[10px] text-muted-foreground">{s.label}</div>
+                <div className="font-mono text-sm">{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </CardShell>
+      );
+    case "decision":
+      return (
+        <CardShell label={card.title}>
+          <p className="text-sm">{card.recommendation}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{card.reason}</p>
+        </CardShell>
+      );
     case "operation": {
       const op = db.operations.find((o) => o.id === card.operationId);
       return <CardShell label={op?.status === "completed" ? "Operação concluída" : "Operação em andamento"} tone={op?.status === "completed" ? "success" : "default"}><OperationBlock operationId={card.operationId} /></CardShell>;

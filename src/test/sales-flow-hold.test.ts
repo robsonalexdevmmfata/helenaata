@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { evaluateFollowup, formatSlotMenu, pickProposedSlot, shouldHoldOutbound, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
+import { evaluateFollowup, formatSlotMenu, menuProposalFollowupText, pickProposedSlot, shouldHoldOutbound, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
+import { parseEvolutionMessageStatuses } from "@/lib/evolution/evolutionapi";
 import type { Conversation, SalesFlowSettings } from "@/lib/types";
 
 const settings: SalesFlowSettings = {
@@ -7,7 +8,7 @@ const settings: SalesFlowSettings = {
   sharedConnectionId: "wa_agency",
   teamUserIds: ["u1"],
   onlyAfterProspecting: true,
-  noReplyHours: 48,
+  noReplyHours: 24,
   readNoReplyHours: 24,
   maxCloserAttempts: 1,
   closerAgentId: "a_valentina",
@@ -37,6 +38,42 @@ function conv(messages: Conversation["messages"], hoursAgo = 1): Conversation {
 }
 
 describe("não insistir no mesmo número", () => {
+  it("aguarda 24 horas sem resposta antes de propor o follow-up", () => {
+    const c = conv([{ id: "m1", from: "agent", authorName: "SDR", text: "proposta", at: "", kind: "text" }], 25);
+    const sentAt = new Date(c.flow!.lastOutboundAt).getTime();
+    expect(evaluateFollowup(c, settings, new Date(sentAt + 23 * 3600_000)).action).toBe("none");
+    expect(evaluateFollowup(c, settings, new Date(sentAt + 24 * 3600_000)).action).toBe("closer");
+  });
+
+  it("conta 24 horas desde a leitura quando o contato visualizou", () => {
+    const c = conv([{ id: "m1", from: "agent", authorName: "SDR", text: "proposta", at: "", kind: "text" }], 30);
+    const sentAt = new Date(c.flow!.lastOutboundAt).getTime();
+    c.flow!.readAt = new Date(sentAt + 2 * 3600_000).toISOString();
+    expect(evaluateFollowup(c, settings, new Date(sentAt + 25 * 3600_000)).action).toBe("none");
+    expect(evaluateFollowup(c, settings, new Date(sentAt + 26 * 3600_000)).action).toBe("closer");
+  });
+
+  it("redige a pergunta sobre a proposta e explicita o preço mensal do cardápio", () => {
+    const text = menuProposalFollowupText("Ana Souza", "Cardápio Online", 100);
+    expect(text).toContain("conseguiu dar uma olhada na proposta");
+    expect(text).toContain("Cardápio Online por R$ 100,00/mês");
+    expect(text).toContain("não receber novos contatos");
+  });
+
+  it("reconhece evento de leitura enviado pela Evolution", () => {
+    const statuses = parseEvolutionMessageStatuses({
+      event: "MESSAGES_UPDATE",
+      data: [{ key: { remoteJid: "5511999999999@s.whatsapp.net", id: "wa-msg-1", fromMe: true }, update: { status: 4 } }],
+    });
+    expect(statuses).toEqual([{
+      remoteJid: "5511999999999@s.whatsapp.net",
+      messageId: "wa-msg-1",
+      fromMe: true,
+      status: "read",
+      at: expect.any(String),
+    }]);
+  });
+
   it("segura follow-up se a última mensagem ainda é do agente", () => {
     const c = conv([{ id: "m1", from: "agent", authorName: "SDR", text: "Oi, é o dono?", at: "", kind: "text" }], 2);
     expect(unansweredAgentStreak(c)).toBe(1);

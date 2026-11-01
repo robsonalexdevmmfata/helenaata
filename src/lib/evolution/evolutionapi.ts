@@ -14,10 +14,12 @@
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+import { getWorkspacePreference, saveWorkspacePreference } from "@/lib/store";
+
 export interface EvolutionConfig {
-  baseUrl: string;       // ex: http://localhost:8080
-  apiKey: string;        // Global API Key (cabeçalho apikey)
-  instance: string;      // Nome da instância (ex: "helena")
+  baseUrl: string; // ex: http://localhost:8080
+  apiKey: string; // Global API Key (cabeçalho apikey)
+  instance: string; // Nome da instância (ex: "helena")
 }
 
 /** Lê configuração do .env.local (VITE_*) */
@@ -25,12 +27,9 @@ export function getEvolutionConfig(): EvolutionConfig {
   const baseUrl =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_URL) ||
     "https://evolutionapi.hostless.app";
-  const apiKey =
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_KEY) ||
-    "";
+  const apiKey = "";
   const instance =
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) ||
-    "helena";
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) || "helena";
   return { baseUrl, apiKey, instance: canonicalInstance(instance) };
 }
 
@@ -38,7 +37,8 @@ export function getEvolutionConfig(): EvolutionConfig {
 export const EVOLUTION_INSTANCE = "helena";
 
 export function canonicalInstance(name?: string) {
-  if (!name || /agencia info tech/i.test(name) || /agência info tech/i.test(name)) return EVOLUTION_INSTANCE;
+  if (!name || /agencia info tech/i.test(name) || /agência info tech/i.test(name))
+    return EVOLUTION_INSTANCE;
   return name;
 }
 
@@ -49,48 +49,57 @@ export const AGENCY_WHATSAPP = {
   instance: EVOLUTION_INSTANCE,
 };
 
-export function getAgencyConnection(db: { connections: Array<{ id: string; name: string; status: string; phone: string }> }) {
+export function getAgencyConnection(db: {
+  connections: Array<{
+    id: string;
+    name: string;
+    status: string;
+    phone: string;
+    deletedAt?: string;
+  }>;
+}) {
+  const connections = db.connections.filter((connection) => !connection.deletedAt);
   return (
-    db.connections.find((c) => c.id === AGENCY_WHATSAPP.id) ||
-    db.connections.find((c) => /info tech|helena/i.test(c.name)) ||
-    db.connections.find((c) => /98101/.test(c.phone)) ||
-    db.connections.find((c) => c.status === "online") ||
-    db.connections[0]
+    connections.find((c) => c.id === AGENCY_WHATSAPP.id) ||
+    connections.find((c) => /info tech|helena/i.test(c.name)) ||
+    connections.find((c) => /98101/.test(c.phone)) ||
+    connections.find((c) => c.status === "online") ||
+    connections[0]
   );
 }
 
-const STORAGE_KEY = "helena_evolution_config";
-
-/** Lê config salva no localStorage (permite override pela UI) */
+/** Lê a configuração do workspace carregado do Supabase. */
 export function getEvolutionConfigUI(): EvolutionConfig {
   const env = getEvolutionConfig();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw) as EvolutionConfig;
-      const merged = { ...env, ...saved, instance: canonicalInstance(saved.instance || env.instance) };
-      if (saved.instance !== merged.instance) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
-      }
-      return merged;
-    }
-  } catch {}
-  return env;
+  const saved = getWorkspacePreference<Partial<EvolutionConfig>>("evolutionConfig", {});
+  return {
+    ...env,
+    ...saved,
+    apiKey: "",
+    instance: canonicalInstance(saved.instance || env.instance),
+  };
 }
 
 export function saveEvolutionConfigUI(cfg: Partial<EvolutionConfig>): EvolutionConfig {
   const current = getEvolutionConfigUI();
-  const updated = { ...current, ...cfg, instance: canonicalInstance(cfg.instance ?? current.instance) };
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch {}
+  const updated = {
+    ...current,
+    ...cfg,
+    apiKey: "",
+    instance: canonicalInstance(cfg.instance ?? current.instance),
+  };
+  saveWorkspacePreference("evolutionConfig", {
+    baseUrl: updated.baseUrl,
+    instance: updated.instance,
+  });
   return updated;
 }
 
 // ── Headers helper ───────────────────────────────────────────────────────────
 
-function headers(cfg: EvolutionConfig) {
+function headers(_cfg: EvolutionConfig) {
   return {
     "Content-Type": "application/json",
-    apikey: cfg.apiKey,
   };
 }
 
@@ -117,13 +126,73 @@ export function extractWaText(raw: any): string {
       m?.buttonsResponseMessage?.selectedDisplayText ??
       "",
   );
-  return text.replace(/\uFFFD/g, "").replace(/[ \t]{2,}/g, " ").trim();
+  return text
+    .replace(/\uFFFD/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 export function waTimestampISO(ts: unknown) {
   const n = Number(ts);
   if (!Number.isFinite(n) || n <= 0) return new Date().toISOString();
   return new Date(n > 1e12 ? n : n * 1000).toISOString();
+}
+
+export type EvolutionDeliveryStatus = "sent" | "delivered" | "read" | "failed";
+
+export function parseEvolutionDeliveryStatus(raw: unknown): EvolutionDeliveryStatus | undefined {
+  const message = raw as {
+    status?: unknown;
+    update?: { status?: unknown };
+    key?: { status?: unknown };
+    ack?: unknown;
+  };
+  const status = String(
+    message?.status ?? message?.update?.status ?? message?.key?.status ?? message?.ack ?? "",
+  ).toLowerCase();
+  if (status === "read" || status === "played" || status === "4" || status === "5") return "read";
+  if (status === "delivery_ack" || status === "delivered" || status === "3") return "delivered";
+  if (status === "server_ack" || status === "sent" || status === "2") return "sent";
+  if (status === "error" || status === "failed" || status === "0") return "failed";
+  return undefined;
+}
+
+export interface EvolutionMessageStatus {
+  remoteJid: string;
+  messageId: string;
+  fromMe: boolean;
+  status: EvolutionDeliveryStatus;
+  at: string;
+}
+
+export function parseEvolutionMessageStatuses(payload: unknown): EvolutionMessageStatus[] {
+  const body = payload as { event?: string; data?: unknown };
+  const event = String(body?.event ?? "")
+    .toLowerCase()
+    .replace(/[._]/g, "");
+  if (event !== "messagesupdate") return [];
+  const rows = Array.isArray(body.data) ? body.data : [body.data];
+  return rows.flatMap((row) => {
+    const item = row as {
+      key?: { remoteJid?: string; id?: string; fromMe?: boolean };
+      update?: { status?: unknown; messageTimestamp?: unknown };
+      status?: unknown;
+      ack?: unknown;
+      messageTimestamp?: unknown;
+    };
+    const key = item?.key;
+    const status = parseEvolutionDeliveryStatus(item);
+    if (!key?.remoteJid || !key.id || !status) return [];
+    return [
+      {
+        remoteJid: key.remoteJid,
+        messageId: key.id,
+        fromMe: key.fromMe === true,
+        status,
+        at: waTimestampISO(item.update?.messageTimestamp ?? item.messageTimestamp),
+      },
+    ];
+  });
 }
 
 async function evoJson(path: string, init: RequestInit, cfg?: EvolutionConfig) {
@@ -138,37 +207,50 @@ async function evoJson(path: string, init: RequestInit, cfg?: EvolutionConfig) {
 
 export async function evolutionFindChats(cfg?: EvolutionConfig) {
   const config = cfg ?? getEvolutionConfigUI();
-  const { ok, data } = await evoJson(`/chat/findChats/${encodeURIComponent(config.instance)}`, {
-    method: "POST",
-    body: "{}",
-  }, config);
+  const { ok, data } = await evoJson(
+    `/chat/findChats/${encodeURIComponent(config.instance)}`,
+    {
+      method: "POST",
+      body: "{}",
+    },
+    config,
+  );
   if (!ok) return { ok: false as const, chats: [] as any[], error: `HTTP` };
-  const chats = Array.isArray(data) ? data : data?.chats ?? data?.data ?? [];
+  const chats = Array.isArray(data) ? data : (data?.chats ?? data?.data ?? []);
   return { ok: true as const, chats };
 }
 
 export async function evolutionFindContacts(cfg?: EvolutionConfig) {
   const config = cfg ?? getEvolutionConfigUI();
-  const { ok, data } = await evoJson(`/chat/findContacts/${encodeURIComponent(config.instance)}`, {
-    method: "POST",
-    body: "{}",
-  }, config);
+  const { ok, data } = await evoJson(
+    `/chat/findContacts/${encodeURIComponent(config.instance)}`,
+    {
+      method: "POST",
+      body: "{}",
+    },
+    config,
+  );
   if (!ok) return { ok: false as const, contacts: [] as any[], error: "HTTP" };
-  const contacts = Array.isArray(data) ? data : data?.contacts ?? data?.data ?? [];
+  const contacts = Array.isArray(data) ? data : (data?.contacts ?? data?.data ?? []);
   return { ok: true as const, contacts };
 }
 
-export async function evolutionFindChatMessages(remoteJid: string, count = 40, cfg?: EvolutionConfig) {
+export async function evolutionFindChatMessages(
+  remoteJid: string,
+  count = 40,
+  cfg?: EvolutionConfig,
+) {
   const config = cfg ?? getEvolutionConfigUI();
-  const { ok, data } = await evoJson(`/chat/findMessages/${encodeURIComponent(config.instance)}`, {
-    method: "POST",
-    body: JSON.stringify({ where: { key: { remoteJid } }, page: 1, offset: count }),
-  }, config);
+  const { ok, data } = await evoJson(
+    `/chat/findMessages/${encodeURIComponent(config.instance)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ where: { key: { remoteJid } }, page: 1, offset: count }),
+    },
+    config,
+  );
   if (!ok) return { ok: false as const, messages: [] as any[] };
-  let records =
-    data?.messages?.records ??
-    data?.messages ??
-    (Array.isArray(data) ? data : []);
+  let records = data?.messages?.records ?? data?.messages ?? (Array.isArray(data) ? data : []);
   if (!Array.isArray(records)) records = [];
   if (records.length === 0) {
     const all = await evolutionListAllMessages(cfg);
@@ -182,10 +264,14 @@ export async function evolutionListAllMessages(cfg?: EvolutionConfig, maxPages =
   const out: any[] = [];
   let pages = 1;
   for (let page = 1; page <= Math.min(pages, maxPages); page++) {
-    const { ok, data } = await evoJson(`/chat/findMessages/${encodeURIComponent(config.instance)}`, {
-      method: "POST",
-      body: JSON.stringify({ page, offset: 50 }),
-    }, config);
+    const { ok, data } = await evoJson(
+      `/chat/findMessages/${encodeURIComponent(config.instance)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ page, offset: 50 }),
+      },
+      config,
+    );
     if (!ok) break;
     const rec = data?.messages?.records ?? (Array.isArray(data) ? data : []);
     pages = Number(data?.messages?.pages ?? pages);
@@ -224,9 +310,7 @@ export interface EvoWebhookResult {
  * Verifica se a instância está conectada ao WhatsApp.
  * GET /instance/connectionState/{instance}
  */
-export async function getEvolutionStatus(
-  cfg?: EvolutionConfig
-): Promise<EvoStatusResult> {
+export async function getEvolutionStatus(cfg?: EvolutionConfig): Promise<EvoStatusResult> {
   const config = cfg ?? getEvolutionConfigUI();
   const url = evoUrl(`/instance/connectionState/${config.instance}`, config);
 
@@ -274,21 +358,43 @@ export async function evolutionConnectQr(cfg?: EvolutionConfig): Promise<{
   try {
     const res = await fetch(url, { method: "GET", headers: headers(config) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, error: String(data?.message || data?.error || `HTTP ${res.status}`) };
-    const qr =
-      data?.qrcode?.base64 ||
-      data?.base64 ||
-      data?.qrcode?.code ||
-      data?.qr ||
-      "";
+    if (!res.ok)
+      return { ok: false, error: String(data?.message || data?.error || `HTTP ${res.status}`) };
+    const qr = data?.qrcode?.base64 || data?.base64 || data?.qrcode?.code || data?.qr || "";
     const state = String(data?.instance?.state || data?.state || "");
     return {
       ok: true,
-      qr: qr && String(qr).startsWith("data:") ? String(qr) : qr ? `data:image/png;base64,${String(qr).replace(/^data:image\/png;base64,/, "")}` : "",
+      qr:
+        qr && String(qr).startsWith("data:")
+          ? String(qr)
+          : qr
+            ? `data:image/png;base64,${String(qr).replace(/^data:image\/png;base64,/, "")}`
+            : "",
       connected: state === "open",
     };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : "Falha ao gerar QR" };
+  }
+}
+
+export async function evolutionLogoutInstance(
+  instance?: string,
+  cfg?: EvolutionConfig,
+): Promise<{ ok: boolean; error?: string }> {
+  const baseConfig = cfg ?? getEvolutionConfigUI();
+  const config = { ...baseConfig, instance: canonicalInstance(instance || baseConfig.instance) };
+  const url = evoUrl(`/instance/logout/${encodeURIComponent(config.instance)}`, config);
+  try {
+    const res = await fetch(url, { method: "DELETE", headers: headers(config) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok)
+      return { ok: false, error: String(data?.message || data?.error || `HTTP ${res.status}`) };
+    return { ok: true };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Falha ao desconectar a instância",
+    };
   }
 }
 
@@ -305,7 +411,7 @@ export async function evolutionConnectQr(cfg?: EvolutionConfig): Promise<{
 export async function evolutionSendText(
   number: string,
   text: string,
-  cfg?: EvolutionConfig
+  cfg?: EvolutionConfig,
 ): Promise<EvoSendResult> {
   const config = cfg ?? getEvolutionConfigUI();
   if (typeof process !== "undefined" && process.env?.VITEST) {
@@ -325,8 +431,8 @@ export async function evolutionSendText(
         number: cleanNumber,
         text,
         // Opcionais Evolution API v2:
-        delay: 1200,          // ms entre mensagens (simula digitação humana)
-        linkPreview: false,   // não gera preview de links (menos spammy)
+        delay: 1200, // ms entre mensagens (simula digitação humana)
+        linkPreview: false, // não gera preview de links (menos spammy)
       }),
     });
 
@@ -365,7 +471,7 @@ export async function evolutionSendMedia(
   mediaUrl: string,
   caption: string,
   mediatype: "image" | "document" | "audio" = "image",
-  cfg?: EvolutionConfig
+  cfg?: EvolutionConfig,
 ): Promise<EvoSendResult> {
   const config = cfg ?? getEvolutionConfigUI();
   const cleanNumber = number.replace(/\D/g, "");
@@ -403,7 +509,7 @@ export async function evolutionSendMedia(
  */
 export async function evolutionSetWebhook(
   webhookUrl: string,
-  cfg?: EvolutionConfig
+  cfg?: EvolutionConfig,
 ): Promise<EvoWebhookResult> {
   const config = cfg ?? getEvolutionConfigUI();
   const url = evoUrl(`/webhook/set/${config.instance}`, config);
@@ -417,10 +523,11 @@ export async function evolutionSetWebhook(
         webhook_by_events: false, // envia todos os eventos no mesmo endpoint
         webhook_base64: false,
         events: [
-          "MESSAGES_UPSERT",    // mensagens recebidas/enviadas
-          "CONNECTION_UPDATE",  // status da conexão (online/offline)
-          "QRCODE_UPDATED",     // QR Code renovado
-          "SEND_MESSAGE",       // confirmação de envio
+          "MESSAGES_UPSERT", // mensagens recebidas/enviadas
+          "MESSAGES_UPDATE", // status de entrega e leitura
+          "CONNECTION_UPDATE", // status da conexão (online/offline)
+          "QRCODE_UPDATED", // QR Code renovado
+          "SEND_MESSAGE", // confirmação de envio
         ],
       }),
     });
@@ -436,7 +543,7 @@ export async function evolutionSetWebhook(
 // ── 5. Obter Webhook atual ────────────────────────────────────────────────────
 
 export async function evolutionGetWebhook(
-  cfg?: EvolutionConfig
+  cfg?: EvolutionConfig,
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   const config = cfg ?? getEvolutionConfigUI();
   const url = evoUrl(`/webhook/find/${config.instance}`, config);
@@ -460,17 +567,20 @@ export async function evolutionGetWebhook(
 export async function evolutionFindMessages(
   number: string,
   count = 20,
-  cfg?: EvolutionConfig
+  cfg?: EvolutionConfig,
 ): Promise<{ ok: boolean; messages?: any[]; error?: string }> {
   const config = cfg ?? getEvolutionConfigUI();
   const cleanNumber = number.replace(/\D/g, "");
-  const url = evoUrl(`/chat/findMessages/${config.instance}?number=${cleanNumber}&count=${count}`, config);
+  const url = evoUrl(
+    `/chat/findMessages/${config.instance}?number=${cleanNumber}&count=${count}`,
+    config,
+  );
 
   try {
     const res = await fetch(url, { method: "GET", headers: headers(config) });
     const data = await res.json();
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-    return { ok: true, messages: Array.isArray(data) ? data : data?.messages ?? [] };
+    return { ok: true, messages: Array.isArray(data) ? data : (data?.messages ?? []) };
   } catch (err: any) {
     return { ok: false, error: err?.message };
   }
@@ -483,8 +593,14 @@ export async function evolutionFindMessages(
  * Retorna latência em ms.
  */
 export async function testEvolutionConnection(
-  cfg?: EvolutionConfig
-): Promise<{ ok: boolean; connected: boolean; latencyMs: number; message: string; number?: string }> {
+  cfg?: EvolutionConfig,
+): Promise<{
+  ok: boolean;
+  connected: boolean;
+  latencyMs: number;
+  message: string;
+  number?: string;
+}> {
   const start = Date.now();
   const config = cfg ?? getEvolutionConfigUI();
 
@@ -526,13 +642,13 @@ export async function testEvolutionConnection(
  * Use no handler do n8n ou no endpoint Express que recebe os eventos.
  */
 export interface IncomingWhatsAppMessage {
-  from: string;           // Número do remetente (ex: "5518981011186")
-  fromName?: string;      // Nome do contato (se disponível)
-  text: string;           // Texto da mensagem
-  messageId: string;      // ID da mensagem no WhatsApp
-  timestamp: number;      // Unix timestamp
-  isGroup: boolean;       // Se é mensagem de grupo
-  instance: string;       // Nome da instância Evolution
+  from: string; // Número do remetente (ex: "5518981011186")
+  fromName?: string; // Nome do contato (se disponível)
+  text: string; // Texto da mensagem
+  messageId: string; // ID da mensagem no WhatsApp
+  timestamp: number; // Unix timestamp
+  isGroup: boolean; // Se é mensagem de grupo
+  instance: string; // Nome da instância Evolution
 }
 
 export function parseEvolutionWebhook(payload: any): IncomingWhatsAppMessage | null {

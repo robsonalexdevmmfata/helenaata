@@ -1,8 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
-
-const FILE = process.env.BILLING_EVENTS_FILE || path.join(process.cwd(), "data", "billing-events.json");
-
 function fold(v) {
   return String(v ?? "").toLowerCase();
 }
@@ -48,36 +43,4 @@ export function parseCaktoPayload(body) {
     sourceId: String(data.id || root.id || ""),
     paid: isCaktoPaidEvent(event, status),
   };
-}
-
-function readAll() {
-  try {
-    if (!existsSync(FILE)) return [];
-    const raw = JSON.parse(readFileSync(FILE, "utf8"));
-    return Array.isArray(raw) ? raw : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeAll(rows) {
-  mkdirSync(path.dirname(FILE), { recursive: true });
-  writeFileSync(FILE, JSON.stringify(rows.slice(0, 500), null, 2));
-}
-
-export function recordBillingEvent(row) {
-  const rows = readAll();
-  rows.unshift(row);
-  writeAll(rows);
-  return row;
-}
-
-export function listBillingEvents() {
-  return readAll();
-}
-
-export function latestPaidPlan(email) {
-  const key = String(email || "").trim().toLowerCase();
-  if (!key) return null;
-  return readAll().find((r) => r.paid && r.email === key && r.planId) || null;
 }

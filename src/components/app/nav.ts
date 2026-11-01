@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact, FileText,
+  Activity, BarChart3, Bot, BookOpen, Brain, Building2, Cable, CalendarClock, CircleDollarSign, Contact, FileText, Target,
   CreditCard, Gauge, Inbox, KeyRound, KanbanSquare, ListChecks, Lock, MessageSquareQuote, Network, Receipt,
   Radar, Repeat, Rocket, Scale, Settings2, ShieldCheck, Sparkles, Users, UsersRound, Webhook, Workflow,
   Wrench, Zap, Cpu, MessageCircle, List, Globe,
@@ -19,6 +19,7 @@ export interface NavGroup {
 
 export const NAV_TOP: NavItem[] = [
   { label: "Visão geral", to: "/visao-geral", icon: Gauge },
+  { label: "Mission Control", to: "/comando", icon: Target },
   { label: "Operações", to: "/operacoes", icon: Rocket },
   { label: "Central RPA", to: "/rpa", icon: Workflow },
 ];
@@ -62,6 +63,7 @@ export const NAV_MIDDLE: NavItem[] = [{ label: "Automações", to: "/automacoes"
 export const NAV_GROUPS_2: NavGroup[] = [
   { label: "Integrações", icon: Cable, items: [
     { label: "WhatsApp", to: "/integracoes/whatsapp", icon: MessageCircle },
+    { label: "Saúde", to: "/integracoes/saude", icon: Activity },
     { label: "Webhooks", to: "/integracoes/webhooks", icon: Webhook },
     { label: "API", to: "/integracoes/api", icon: KeyRound },
     { label: "Provedores", to: "/integracoes/provedores", icon: Cpu },
@@ -103,7 +105,7 @@ export function navGroupsFor(isAdmin: boolean, allowDev = isAdmin): NavGroup[] {
 export function integrationNavFor(isAdmin: boolean): NavGroup[] {
   return NAV_GROUPS_2.map((g) => ({
     ...g,
-    items: isAdmin ? g.items : g.items.filter((i) => i.to === "/integracoes/whatsapp"),
+    items: isAdmin ? g.items : g.items.filter((i) => i.to === "/integracoes/whatsapp" || i.to === "/integracoes/saude"),
   }));
 }
 

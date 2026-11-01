@@ -4,7 +4,7 @@ import { HelenaAvatar } from "@/components/helena/HelenaAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isAuthenticated } from "@/lib/auth";
+import { restoreSession } from "@/lib/auth";
 import { currentUser, getDB, patchUserEverywhere, update, nowISO } from "@/lib/store";
 import { instanceNameFromLabel, provisionEvolutionInstance, sanitizeInstanceName } from "@/lib/evolution/provision";
 import { evolutionConnectQr, evolutionSendText, getEvolutionStatus } from "@/lib/evolution/evolutionapi";
@@ -16,8 +16,8 @@ import { QrCode, RefreshCw } from "lucide-react";
 export const Route = createFileRoute("/comecar")({
   ssr: false,
   head: () => pageHead("Começar", "Nomeie a Linha Helena, leia o QR e mande a primeira mensagem."),
-  beforeLoad: () => {
-    if (!isAuthenticated()) throw redirect({ to: "/login" });
+  beforeLoad: async () => {
+    if (!(await restoreSession())) throw redirect({ to: "/login" });
   },
   component: OnboardingPage,
 });

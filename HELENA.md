@@ -2,7 +2,7 @@
 
 > **Documento gerado em:** 21 de Outubro de 2026  
 > **Status:** FASE 1 & FASE 2 100% Funcionais e Operacionais  
-> **Ambiente:** Frontend SPA reativo (TanStack Start / Vite / Nitro), sem backend externo obrigatório, compatível com migração futura para PostgreSQL via `database/schema.sql`.
+> **Ambiente:** Frontend SPA reativo (TanStack Start / Vite / Nitro) com API server-side e persistência PostgreSQL/Supabase.
 
 ---
 
@@ -10,8 +10,8 @@
 A **HELENA** é uma inteligência artificial executiva e orquestradora operacional para empresas. Ela não funciona como um simples chatbot isolado, mas sim como o cérebro central conectado a ferramentas reais de CRM, mensageria (WhatsApp), prospecção, agendamento de reuniões e supervisão de times de agentes de IA.
 
 - **Organização Padrão:** Info Tech Ltda
-- **Login Demo:** `admin` / `123456` (Perfil Owner / CEO)
-- **Persistência de Estado:** Store reativo local (`src/lib/store.ts` via `localStorage`), espelhando o schema relacional PostgreSQL.
+- **Autenticação:** Sessões assinadas em cookie HttpOnly; contas de clientes e hashes de senha ficam no backend.
+- **Persistência de Estado:** `src/lib/store.ts` é um cache reativo em memória; o estado oficial de cada organização fica no Supabase e é sincronizado pela API autenticada. O navegador não usa `localStorage` como fonte de dados.
 
 ---
 
@@ -224,4 +224,3 @@ Estruturas já preparadas no PostgreSQL (`database/schema.sql` e migration `001_
    - Outbox pattern e log de eventos imutáveis para auditoria.
 5. **`system_settings`:**
    - Kill switch global e governança de autonomia server-side.
-

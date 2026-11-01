@@ -1,6 +1,36 @@
 import type { Contact, DB, Execution, User } from "@/lib/types";
 import { isPlatformAdmin } from "@/lib/saas";
 import { currentUser, getDB, update } from "@/lib/store";
+import { api } from "@/lib/backend";
+import { toast } from "sonner";
+
+interface CycleContactRow {
+  app_id?: string;
+  id?: string;
+  tags?: string[];
+  cycle_state?: string | null;
+  score?: number | null;
+  phone?: string | null;
+  name?: string | null;
+  email?: string | null;
+  source?: string | null;
+  status?: string | null;
+  consent?: boolean | null;
+  created_at?: string | null;
+  last_contact_at?: string | null;
+}
+
+interface CycleExecutionRow {
+  app_id?: string;
+  id?: string;
+  created_at?: string | null;
+  actor?: string | null;
+  actor_type?: string | null;
+  action?: string | null;
+  description?: string | null;
+  result?: string | null;
+  duration_ms?: number | null;
+}
 
 function skipPersist() {
   try {
@@ -70,7 +100,9 @@ export function cycleSnapshot(db: DB, user: User) {
         score: c.score,
         opportunity: c.score >= 75 ? "alta" : c.score >= 50 ? "media" : "baixa",
         findings: (c.tags || []).filter((t) => t.startsWith("#")),
-        recommend_offer: (c.tags || []).includes("#sem-site") ? "Site institucional + WhatsApp" : "Automação de atendimento",
+        recommend_offer: (c.tags || []).includes("#sem-site")
+          ? "Site institucional + WhatsApp"
+          : "Automação de atendimento",
         recommend_pitch: `Diagnóstico Helena: ${c.name} (${c.score}/100).`,
       })),
     rpaJobs: (db.rpaJobs || []).slice(0, 80).map((j) => ({
@@ -102,11 +134,14 @@ export function scheduleCyclePush() {
   if (!user || isPlatformAdmin(user)) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
-    void fetch("/api/helena/cycle", {
+    void api("/api/helena/cycle", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(cycleSnapshot(db, user)),
-    }).catch(() => { /* servidor local/Render pode estar frio */ });
+      body: cycleSnapshot(db, user),
+    }).catch((error: unknown) => {
+      toast.error(
+        `Não foi possível sincronizar os dados do ciclo: ${error instanceof Error ? error.message : "erro desconhecido"}.`,
+      );
+    });
   }, 800);
 }
 
@@ -116,16 +151,19 @@ export async function pullCycleIntoStore() {
   const user = currentUser(db);
   if (!user || isPlatformAdmin(user)) return;
   try {
-    const res = await fetch(`/api/helena/cycle?appUserId=${encodeURIComponent(user.id)}&email=${encodeURIComponent(user.email)}`);
-    const data = await res.json().catch(() => ({}));
+    const data = await api<{
+      ok?: boolean;
+      contacts?: CycleContactRow[];
+      executions?: CycleExecutionRow[];
+    }>("/api/helena/cycle");
     if (!data?.ok || !Array.isArray(data.contacts)) return;
     update((d) => {
       for (const row of data.contacts) {
         const id = row.app_id || row.id;
         if (!id) continue;
         const existing = d.contacts.find((c) => c.id === id);
-        const tags = Array.isArray(row.tags) ? row.tags : [];
-        if (!tags.some((t: string) => t.startsWith("#ciclo-")) && row.cycle_state) {
+        const tags = [...(row.tags ?? [])];
+        if (!tags.some((tag) => tag.startsWith("#ciclo-")) && row.cycle_state) {
           tags.push(`#ciclo-${row.cycle_state}`);
         }
         if (existing) {
@@ -169,7 +207,9 @@ export async function pullCycleIntoStore() {
         });
       }
     });
-  } catch {
-    /* offline */
+  } catch (error) {
+    toast.error(
+      `Não foi possível carregar os dados do ciclo: ${error instanceof Error ? error.message : "erro desconhecido"}.`,
+    );
   }
 }

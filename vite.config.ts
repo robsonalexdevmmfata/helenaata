@@ -56,5 +56,6 @@ export default defineConfig({
     : {
         server: { port: PORT, strictPort: true },
         preview: { port: PORT, strictPort: true },
+        build: { sourcemap: false },
       },
 });

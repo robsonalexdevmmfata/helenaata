@@ -30,7 +30,7 @@
  *   e chame registerEvolutionWebhook() uma vez após conectar.
  */
 
-import { parseEvolutionWebhook, evolutionSendText, getEvolutionConfigUI } from "./evolutionapi";
+import { parseEvolutionMessageStatuses, parseEvolutionWebhook, evolutionSendText, getEvolutionConfigUI } from "./evolutionapi";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { bumpAutomation, getDB, update, uid, nowISO } from "@/lib/store";
 import { evaluateHandoff } from "@/lib/helena/whatsapp-formatter";
@@ -45,7 +45,7 @@ import { syncLiveCommercial } from "@/lib/analytics";
 
 export interface WebhookProcessResult {
   handled: boolean;
-  action: "new_message" | "handoff" | "skipped" | "error";
+  action: "new_message" | "handoff" | "status_update" | "skipped" | "error";
   reply?: string;
   error?: string;
 }
@@ -72,6 +72,28 @@ const STOP_CHAT =
 export async function processEvolutionWebhook(
   rawPayload: unknown
 ): Promise<WebhookProcessResult> {
+  const statuses = parseEvolutionMessageStatuses(rawPayload);
+  if (statuses.length) {
+    update((d) => {
+      for (const status of statuses) {
+        if (!status.fromMe) continue;
+        const conv = d.conversations.find((c) => c.remoteJid === status.remoteJid);
+        const message = conv?.messages.find((m) => m.externalId === status.messageId || m.id === `evo_${status.messageId}`);
+        if (!conv || !message) continue;
+        message.deliveryStatus = status.status;
+        if (
+          status.status === "read" &&
+          conv.flow &&
+          new Date(message.at).getTime() >= new Date(conv.flow.lastOutboundAt).getTime()
+        ) {
+          conv.flow.readAt = status.at;
+          if (conv.flow.state === "abordado") conv.flow.state = "visualizou";
+        }
+      }
+    });
+    return { handled: true, action: "status_update" };
+  }
+
   // 1. Parseia o payload
   const incoming = parseEvolutionWebhook(rawPayload);
   if (!incoming) {
@@ -325,7 +347,7 @@ export async function processEvolutionWebhook(
         if (wa) wa.sentToday += 1;
       });
     } else {
-      console.warn("[Webhook Handler] Falha ao enviar resposta:", sendRes.error);
+      /* webhook: erro vai para Execution se houver */
     }
   }
 
@@ -457,7 +479,7 @@ export function buildWebhookConfig(n8nWebhookUrl: string) {
       url: n8nWebhookUrl,
       webhook_by_events: false,
       webhook_base64: false,
-      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"],
+      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"],
     },
     description: "Configure este webhook na Evolution API para receber mensagens no n8n",
   };

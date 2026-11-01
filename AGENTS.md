@@ -10,7 +10,7 @@
 <!-- LOVABLE:END -->
 
 ## Architecture rules
-- Frontend only: all data lives in the mock store `src/lib/store.ts` (seeded by `src/lib/seed.ts`, persisted in localStorage); never add Lovable Cloud/Supabase — the owner builds their own PostgreSQL backend later.
-- Every Helena/agent/user action goes through `runTool()` in `src/lib/helena/engine.ts`, which checks permission, mutates the store and logs an Execution — so swapping to a real API changes one layer only.
+- Workspace data is loaded into the in-memory reactive cache in `src/lib/store.ts` and persisted in Supabase through the authenticated server API; never use browser `localStorage` as a source of truth. Keep database credentials on the server and add schema changes as SQL migrations.
+- Helena tool actions go through `runTool()` in `src/lib/helena/engine.ts` for permission checks, mutations, and execution logs; the client cache is synchronized to the authenticated Supabase workspace snapshot.
 - Authenticated pages live under the pathless `src/routes/_app.tsx` layout (ssr: false, client-side session guard).
-- tsconfig strict extras (exactOptionalPropertyTypes, noUncheckedIndexedAccess, noPropertyAccessFromIndexSignature) are off to keep mock-heavy UI code simple.
+- tsconfig strict extras (exactOptionalPropertyTypes, noUncheckedIndexedAccess, noPropertyAccessFromIndexSignature) are disabled; preserve the existing project type-check settings.

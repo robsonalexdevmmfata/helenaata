@@ -1,14 +1,12 @@
 // Helena Autonomous Mission & Supervisor Engine
 import type {
-  AbExperiment,
-  AgentHealth,
-  DB,
   Mission,
-  MissionEvent,
   MissionFunnel,
   MissionTask,
 } from "@/lib/types";
-import { getDB, nowISO, uid, update } from "@/lib/store";
+import { currentUser, getDB, nowISO, uid, update } from "@/lib/store";
+import { dailyLimitFor } from "@/lib/saas";
+import { missionProgress } from "@/lib/helena/command";
 
 export interface StrategyCalculation {
   targetMetric: string;
@@ -23,44 +21,36 @@ export interface StrategyCalculation {
   recommendedTeam: string[];
 }
 
+function commercialTeamIds() {
+  const db = getDB();
+  const ids = ["a_supcom", "a_sdr1", "a_sdr2", "a_qual", "a_closer"].filter((id) => db.agents.some((a) => a.id === id));
+  if (ids.length) return ids;
+  return db.agents.filter((a) => a.teamId === "t_com").map((a) => a.id).slice(0, 5);
+}
+
 export function calculateMissionStrategy(objective: string, targetValue = 20): StrategyCalculation {
+  const db = getDB();
   const isMeetings = /reuni[aã]o|calls?/i.test(objective);
   const isProspects = /prospect|empresas|maps|contatos/i.test(objective);
+  const limit = Math.max(1, dailyLimitFor(currentUser(db)));
 
-  let salesTarget = targetValue;
-  let meetingsNeeded = Math.ceil(salesTarget / 0.55);
-  let qualifiedNeeded = Math.ceil(meetingsNeeded / 0.6);
-  let repliesNeeded = Math.ceil(qualifiedNeeded / 0.4);
-  let prospectsNeeded = Math.ceil(repliesNeeded / 0.15);
-
-  if (isMeetings) {
-    meetingsNeeded = targetValue;
-    salesTarget = Math.round(meetingsNeeded * 0.55);
-    qualifiedNeeded = Math.ceil(meetingsNeeded / 0.6);
-    repliesNeeded = Math.ceil(qualifiedNeeded / 0.4);
-    prospectsNeeded = Math.ceil(repliesNeeded / 0.15);
-  } else if (isProspects) {
-    prospectsNeeded = targetValue;
-    repliesNeeded = Math.round(prospectsNeeded * 0.15);
-    qualifiedNeeded = Math.round(repliesNeeded * 0.4);
-    meetingsNeeded = Math.round(qualifiedNeeded * 0.6);
-    salesTarget = Math.round(meetingsNeeded * 0.55);
-  }
-
-  const budgetEstimated = Math.round(prospectsNeeded * 0.45);
-  const estimatedDays = Math.max(14, Math.ceil(prospectsNeeded / 40));
+  const targetMetric = isMeetings ? "reunioes" : isProspects ? "prospects" : "vendas";
+  const prospectsNeeded = isProspects
+    ? targetValue
+    : Math.min(targetValue * limit, limit * 7);
+  const estimatedDays = Math.max(1, Math.ceil(prospectsNeeded / limit));
 
   return {
-    targetMetric: isMeetings ? "reunioes" : isProspects ? "prospects" : "vendas",
+    targetMetric,
     targetValue,
     prospectsNeeded,
-    repliesNeeded,
-    qualifiedNeeded,
-    meetingsNeeded,
-    salesTarget,
+    repliesNeeded: 0,
+    qualifiedNeeded: 0,
+    meetingsNeeded: isMeetings ? targetValue : 0,
+    salesTarget: targetMetric === "vendas" ? targetValue : 0,
     estimatedDays,
-    budgetEstimated,
-    recommendedTeam: ["a_supcom", "a_sdr1", "a_sdr2", "a_qual", "a_closer"],
+    budgetEstimated: 0,
+    recommendedTeam: commercialTeamIds(),
   };
 }
 
@@ -92,7 +82,7 @@ export function createMissionFromObjective(opts: {
     won: 0,
   };
 
-  const strategyText = `Meta de ${strat.targetValue} ${strat.targetMetric}. Necessários ~${strat.prospectsNeeded} prospects, ${strat.repliesNeeded} respostas, ${strat.qualifiedNeeded} qualificados e ${strat.meetingsNeeded} reuniões para atingir ${strat.salesTarget} fechamentos em ${strat.estimatedDays} dias com orçamento de R$ ${strat.budgetEstimated}.`;
+  const strategyText = `Objetivo: ${strat.targetValue} ${strat.targetMetric}. Plano operacional pela cota diária desta conta (~${strat.prospectsNeeded} abordagens em até ${strat.estimatedDays} dia(s)). Hipótese de capacidade, não previsão de conversão — a Helena não inventa taxa de resposta nem fechamento.`;
 
   const mission: Mission = {
     id: missionId,
@@ -127,8 +117,8 @@ export function createMissionFromObjective(opts: {
     {
       id: t1Id,
       missionId,
-      title: `Varredura Google Maps: ${strat.prospectsNeeded} empresas sem site`,
-      description: "Identificar negócios locais sem site e injetar no CRM com tag #sem-site",
+      title: `Radar Maps: até ${Math.min(strat.prospectsNeeded, 20)} empresas (cota e fila RPA)`,
+      description: "Helena agenda o radar existente. Time Comercial executa; sem disparo em massa nesta etapa.",
       agentId: "a_sdr1",
       status: "ready",
       dependsOn: [],
@@ -139,8 +129,8 @@ export function createMissionFromObjective(opts: {
     {
       id: t2Id,
       missionId,
-      title: "Abordagem Consultiva WhatsApp (Teste A/B)",
-      description: "Disparo do primeiro contato com split de variantes A/B pelo SDR 01 e SDR 02",
+      title: "Abordagem WhatsApp pelo Time Comercial",
+      description: "SDRs disparam só depois do diagnóstico. Sem A/B inventado e sem conversão prometida.",
       agentId: "a_sdr2",
       status: "pending",
       dependsOn: [t1Id],
@@ -172,8 +162,8 @@ export function createMissionFromObjective(opts: {
     {
       id: t5Id,
       missionId,
-      title: "Apresentação de Proposta e Fechamento",
-      description: "Condução das reuniões e assinatura de contratos",
+      title: "Proposta do catálogo e fechamento",
+      description: "Proposta só com item ativo do catálogo. Aceite no CRM — não é assinatura eletrônica.",
       agentId: "a_closer",
       status: "pending",
       dependsOn: [t4Id],
@@ -191,7 +181,7 @@ export function createMissionFromObjective(opts: {
       at: nowISO(),
       actor: opts.createdBy || "Helena",
       kind: "decision",
-      text: `Missão ${code} planejada com decomposição de 5 tarefas interdependentes e meta de ${strat.targetValue} ${strat.targetMetric}.`,
+      text: `Missão ${code} planejada: 5 tarefas do Time Comercial (radar → abordagem → BANT → agenda → proposta). Meta ${strat.targetValue} ${strat.targetMetric} é objetivo, não garantia.`,
     });
   });
 
@@ -357,65 +347,25 @@ export function rebalanceSupervisorWorkload(supervisorTeam = "Comercial") {
   return { ok: true, message: "Carga de trabalho já está balanceada entre os agentes." };
 }
 
-// Background simulation ticker for autonomous missions
+/** Sync running missions from executions/CRM. Never invents funnel with Math.random. */
 export function tickMissions() {
   const db = getDB();
   if (db.killSwitchActive) return;
-
-  const runningMissions = db.missions.filter((m) => m.status === "running");
-  if (runningMissions.length === 0) return;
+  const running = (db.missions || []).filter((m) => m.status === "running");
+  if (!running.length) return;
 
   update((d) => {
     d.missions.forEach((m) => {
       if (m.status !== "running") return;
-
-      const tasks = d.missionTasks.filter((t) => t.missionId === m.id);
-
-      // Check task dependency progression
-      tasks.forEach((t) => {
-        if (t.status === "pending") {
-          const depsComplete = t.dependsOn.every((depId) => {
-            const depTask = tasks.find((x) => x.id === depId);
-            return depTask && depTask.status === "completed";
-          });
-          if (depsComplete) {
-            t.status = "running";
-            t.startedAt = nowISO();
-            d.missionEvents.unshift({
-              id: uid("me_"),
-              missionId: m.id,
-              at: nowISO(),
-              actor: "Supervisor Comercial",
-              kind: "info",
-              text: `Dependências concluídas. Tarefa "${t.title}" iniciada.`,
-            });
-          }
-        }
-      });
-
-      // Advance funnel simulation incrementally
-      if (m.funnel.prospects < m.targetValue * 40) {
-        m.funnel.prospects += Math.floor(Math.random() * 4) + 1;
-        if (m.funnel.prospects > 10 && m.funnel.contacted < m.funnel.prospects) {
-          m.funnel.contacted += Math.floor(Math.random() * 3) + 1;
-        }
-        if (m.funnel.contacted > 8 && m.funnel.replied < Math.floor(m.funnel.contacted * 0.2)) {
-          m.funnel.replied += 1;
-        }
-        if (m.funnel.replied > 4 && m.funnel.qualified < Math.floor(m.funnel.replied * 0.45)) {
-          m.funnel.qualified += 1;
-        }
-        if (m.funnel.qualified > 2 && m.funnel.meetings < Math.floor(m.funnel.qualified * 0.6)) {
-          m.funnel.meetings += 1;
-        }
-        if (m.funnel.meetings > 1 && m.funnel.won < Math.floor(m.funnel.meetings * 0.55)) {
-          m.funnel.won += 1;
-          m.currentValue = m.funnel.won;
-        }
-      }
-
-      // Check mission completion
-      if (m.currentValue >= m.targetValue) {
+      const snap = missionProgress(d, m);
+      m.funnel.prospects = snap.prospects;
+      m.funnel.contacted = snap.contacted;
+      m.funnel.qualified = snap.diagnosed;
+      m.funnel.meetings = snap.meetings;
+      m.funnel.won = snap.won;
+      m.currentValue = snap.current;
+      m.spent = snap.cost;
+      if (m.currentValue >= m.targetValue && m.targetValue > 0) {
         m.status = "completed";
         m.completedAt = nowISO();
         d.missionEvents.unshift({
@@ -424,30 +374,8 @@ export function tickMissions() {
           at: nowISO(),
           actor: "Helena",
           kind: "success",
-          text: `🎉 META ATINGIDA! A Missão ${m.code} (${m.title}) foi concluída com sucesso com ${m.currentValue} ${m.targetMetric}.`,
+          text: `Missão ${m.code}: objetivo de ${m.targetValue} ${m.targetMetric} atingido no cadastro (${m.currentValue}).`,
         });
-      }
-    });
-
-    // Check A/B testing thresholds
-    d.abExperiments.forEach((exp) => {
-      if (exp.status === "running") {
-        exp.variantA.sent += Math.floor(Math.random() * 2);
-        exp.variantB.sent += Math.floor(Math.random() * 2);
-        if (exp.variantA.sent > 25 && Math.random() > 0.65) exp.variantA.replies += 1;
-        if (exp.variantB.sent > 25 && Math.random() > 0.5) exp.variantB.replies += 1;
-
-        const rateA = exp.variantA.replies / Math.max(1, exp.variantA.sent);
-        const rateB = exp.variantB.replies / Math.max(1, exp.variantB.sent);
-
-        if (exp.variantA.sent >= 50 && exp.variantB.sent >= 50) {
-          exp.status = "completed";
-          exp.winner = rateB > rateA ? "B" : "A";
-          exp.recommendation =
-            exp.winner === "B"
-              ? `Variante B superou a Variante A com ${(rateB * 100).toFixed(1)}% de resposta vs ${(rateA * 100).toFixed(1)}%. Helena adotou a abordagem B para todas as novas prospecções.`
-              : `Variante A manteve a melhor taxa de conversão (${(rateA * 100).toFixed(1)}%).`;
-        }
       }
     });
   });

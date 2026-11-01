@@ -1,7 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  CheckCircle2, CreditCard, Download, ExternalLink, Receipt, Sparkles, TrendingUp, Zap,
+  CheckCircle2,
+  CreditCard,
+  Download,
+  ExternalLink,
+  Receipt,
+  Sparkles,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/app/kit";
 import { Button } from "@/components/ui/button";
@@ -12,6 +19,7 @@ import { formatTrialLabel, isPlatformAdmin } from "@/lib/saas";
 import type { CaktoBillingEvent } from "@/lib/billing/cakto";
 import { brl } from "@/lib/format";
 import { pageHead } from "@/lib/head";
+import { api } from "@/lib/backend";
 
 export const Route = createFileRoute("/_app/configuracoes/billing")({
   head: () => pageHead("Billing", "Plano, faturas e consumo da conta."),
@@ -39,24 +47,32 @@ const PLAN_FEATURES: Record<string, string[]> = {
     "CRM e Pipeline",
     "Suporte padrão",
   ],
-  Starter: [
-    "Até 2 agentes",
-    "Até 2 usuários",
-    "WhatsApp",
-    "Suporte e-mail",
-  ],
+  Starter: ["Até 2 agentes", "Até 2 usuários", "WhatsApp", "Suporte e-mail"],
 };
 
 function BillingPage() {
   const db = useDB();
   const user = currentUser(db);
+  const isAdmin = isPlatformAdmin(user);
   const [caktoEvents, setCaktoEvents] = useState<CaktoBillingEvent[]>([]);
+  const [billingEventsError, setBillingEventsError] = useState("");
   useEffect(() => {
-    fetch("/api/billing/events")
-      .then((r) => r.json())
-      .then((data) => setCaktoEvents(Array.isArray(data?.events) ? data.events : []))
-      .catch(() => setCaktoEvents([]));
-  }, []);
+    if (!isAdmin) return;
+    let active = true;
+    api<{ events: CaktoBillingEvent[] }>("/api/billing/events")
+      .then((data) => {
+        if (active) setCaktoEvents(Array.isArray(data.events) ? data.events : []);
+      })
+      .catch((error) => {
+        if (active)
+          setBillingEventsError(
+            error instanceof Error ? error.message : "Não foi possível carregar os pagamentos.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, user?.id]);
   const plan = db.organization.plan ?? "Scale";
   const planLabel = formatTrialLabel(user) || plan;
   const aiLimit = db.helenaSettings?.monthlyBudget ?? 800;
@@ -73,21 +89,34 @@ function BillingPage() {
         description="Plano da conta, consumo de IA e pagamentos Cakto (webhook)."
       />
 
-      {isPlatformAdmin(user) && (
+      {isAdmin && (
         <section className="space-y-3 rounded-xl border p-4">
           <h2 className="text-sm font-semibold">Assinaturas Cakto</h2>
           <p className="text-xs text-muted-foreground">
-            Na Cakto, webhook: <code className="rounded bg-muted px-1">https://helenaata.onrender.com/api/billing/cakto</code>
-            . Quando o Pix/cartão confirmar, o e-mail e o plano aparecem aqui. O cliente, no próximo login, sai do trial sozinho.
+            Na Cakto, webhook:{" "}
+            <code className="rounded bg-muted px-1">
+              https://helenaata.onrender.com/api/billing/cakto
+            </code>
+            . Quando o Pix/cartão confirmar, o e-mail e o plano aparecem aqui. O cliente, no próximo
+            login, sai do trial sozinho.
           </p>
-          {caktoEvents.length === 0 ? (
+          {billingEventsError ? (
+            <p className="text-xs text-destructive">{billingEventsError}</p>
+          ) : caktoEvents.length === 0 ? (
             <p className="text-xs text-muted-foreground">Nenhum pagamento recebido ainda.</p>
           ) : (
             <ul className="space-y-2 text-sm">
               {caktoEvents.map((ev, i) => (
-                <li key={`${ev.at}-${i}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
-                  <span>{ev.email || "(sem e-mail)"} · {ev.name || "—"}</span>
-                  <span className="text-xs text-muted-foreground">{ev.planId || ev.event || ev.status} · {ev.at.slice(0, 16).replace("T", " ")}</span>
+                <li
+                  key={`${ev.at}-${i}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                >
+                  <span>
+                    {ev.email || "(sem e-mail)"} · {ev.name || "—"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {ev.planId || ev.event || ev.status} · {ev.at.slice(0, 16).replace("T", " ")}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -106,9 +135,7 @@ function BillingPage() {
               <p className="text-xl font-bold">{planLabel}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Sua conta está em dia.</p>
             </div>
-            <Badge className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
-              Ativo
-            </Badge>
+            <Badge className="bg-primary/10 text-primary border-primary/20 px-3 py-1">Ativo</Badge>
           </div>
           <ul className="grid sm:grid-cols-2 gap-1.5">
             {(PLAN_FEATURES[plan] ?? PLAN_FEATURES["Scale"]!).map((f) => (
@@ -119,10 +146,22 @@ function BillingPage() {
             ))}
           </ul>
           <div className="flex gap-2 pt-1">
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { window.location.href = "/planos"; }}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => {
+                window.location.href = "/planos";
+              }}
+            >
               <TrendingUp className="size-3.5" /> Ver todos os planos
             </Button>
-            <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground" onClick={() => window.open("https://helena.ai/cancelar", "_blank")}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5 text-muted-foreground"
+              onClick={() => window.open("https://helena.ai/cancelar", "_blank")}
+            >
               <ExternalLink className="size-3.5" /> Cancelar plano
             </Button>
           </div>
@@ -137,15 +176,20 @@ function BillingPage() {
         <div className="rounded-xl border p-4 space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Budget mensal de IA</span>
-            <span className="font-semibold">{brl(aiSpent)} / {brl(aiLimit)}</span>
+            <span className="font-semibold">
+              {brl(aiSpent)} / {brl(aiLimit)}
+            </span>
           </div>
-          <Progress value={aiPct} className={`h-2 ${aiPct > 80 ? "[&>div]:bg-destructive" : aiPct > 60 ? "[&>div]:bg-warning" : ""}`} />
+          <Progress
+            value={aiPct}
+            className={`h-2 ${aiPct > 80 ? "[&>div]:bg-destructive" : aiPct > 60 ? "[&>div]:bg-warning" : ""}`}
+          />
           <p className="text-xs text-muted-foreground">
             {aiPct < 60
               ? `Consumo saudável. Você tem ${brl(aiLimit - aiSpent)} de saldo disponível.`
               : aiPct < 80
-              ? `Atenção: ${aiPct}% do orçamento consumido. Monitore os agentes mais ativos.`
-              : `Alerta: ${aiPct}% do orçamento. Considere aumentar o limite em IA → Custos.`}
+                ? `Atenção: ${aiPct}% do orçamento consumido. Monitore os agentes mais ativos.`
+                : `Alerta: ${aiPct}% do orçamento. Considere aumentar o limite em IA → Custos.`}
           </p>
         </div>
       </section>
@@ -171,7 +215,13 @@ function BillingPage() {
                   </p>
                 </div>
                 <Badge
-                  variant={inv.status === "paga" ? "default" : inv.status === "vencida" ? "destructive" : "outline"}
+                  variant={
+                    inv.status === "paga"
+                      ? "default"
+                      : inv.status === "vencida"
+                        ? "destructive"
+                        : "outline"
+                  }
                   className="text-[10px] shrink-0"
                 >
                   {inv.status}
@@ -200,7 +250,9 @@ function BillingPage() {
               <p className="text-xs text-muted-foreground">•••• •••• •••• 4242 · Vence 12/27</p>
             </div>
           </div>
-          <Button size="sm" variant="outline">Alterar</Button>
+          <Button size="sm" variant="outline">
+            Alterar
+          </Button>
         </div>
       </section>
     </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { pauseHappyNationIfGreeting } from "@/lib/helena/music";
+import { getWorkspacePreference, saveWorkspacePreference } from "@/lib/store";
 
 // Cross-browser SpeechRecognition types
 interface SpeechRecognitionEventLike extends Event {
@@ -50,19 +51,15 @@ export function cleanTextForSpeech(raw: string): string {
     .trim();
 }
 
-const VOICE_PREF_KEY = "helena-voice-enabled";
-
 export function useHelenaVoice(opts?: {
   onTranscript?: (text: string) => void;
   onListeningChange?: (listening: boolean) => void;
 }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const stored = window.localStorage.getItem(VOICE_PREF_KEY);
-    return stored !== null ? stored === "true" : true;
-  });
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() =>
+    getWorkspacePreference("voiceEnabled", true),
+  );
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const resumeWatchRef = useRef<number | null>(null);
@@ -74,11 +71,9 @@ export function useHelenaVoice(opts?: {
   const toggleVoiceEnabled = useCallback(() => {
     setVoiceEnabled((prev) => {
       const next = !prev;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(VOICE_PREF_KEY, String(next));
-        if (!next && window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-        }
+      saveWorkspacePreference("voiceEnabled", next);
+      if (!next && typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
       }
       return next;
     });

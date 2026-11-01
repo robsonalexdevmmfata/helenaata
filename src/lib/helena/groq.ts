@@ -9,9 +9,7 @@ import { serverChatCompletion } from "@/lib/backend";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export function getGroqApiKey(): string {
-  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_GROQ_API_KEY) {
-    return import.meta.env.VITE_GROQ_API_KEY;
-  }
+  if (typeof window !== "undefined") return "";
   if (typeof process !== "undefined" && process.env?.GROQ_API_KEY) {
     return process.env.GROQ_API_KEY;
   }
@@ -223,6 +221,48 @@ export const GROQ_TOOLS = [
   {
     type: "function",
     function: {
+      name: "helena_briefing",
+      description: "Briefing da empresa com dados reais do cadastro: o que aconteceu, o que está acontecendo, riscos e próxima ação. Sem previsão inventada.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "helena_council",
+      description: "Pede pareceres independentes do Comercial, Operações, Desenvolvimento (se liberado) e Qualidade. Helena orquestra; não cria departamentos fictícios.",
+      parameters: {
+        type: "object",
+        properties: { objective: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "helena_crisis",
+      description: "Avalia se há crise real (WhatsApp offline, RPA falho, kill switch) e devolve um plano. Sem teatro.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "missions_plan",
+      description: "Planeja uma missão comercial rastreável (radar → abordagem → BANT → agenda → proposta). Não dispara WhatsApp sozinha.",
+      parameters: {
+        type: "object",
+        properties: {
+          objective: { type: "string" },
+          targetValue: { type: "number" },
+        },
+        required: ["objective"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "sales_rescue_cold_leads",
       description: "Varre o pipeline por oportunidades paradas há mais de 48h e dispara mensagem de resgate com oferta especial de parcelamento.",
       parameters: {
@@ -321,7 +361,6 @@ Responda sempre em Português do Brasil.`;
     });
 
     if (!res.ok) {
-      console.warn("Groq API error:", res.status, await res.text());
       return null;
     }
 
@@ -330,7 +369,7 @@ Responda sempre em Português do Brasil.`;
     if (!choice) return null;
     return parseChoice(choice);
   } catch (err) {
-    console.warn("Failed to contact Groq Cloud, attempting FreeLLMAPI failover:", err);
+    /* failover silencioso */
     try {
       const freeReply = await callFreeLLMOrchestrator(userMessage, history);
       if (freeReply) return { text: freeReply };
