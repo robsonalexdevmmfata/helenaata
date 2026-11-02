@@ -16,7 +16,12 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { currentUser, getDB, useDB, update, uid, nowISO } from "@/lib/store";
-import { instanceNameFromLabel, provisionEvolutionInstance, sanitizeInstanceName } from "@/lib/evolution/provision";
+import {
+  evolutionCreateInstance,
+  instanceNameFromLabel,
+  provisionEvolutionInstance,
+  sanitizeInstanceName,
+} from "@/lib/evolution/provision";
 import { isPlatformAdmin } from "@/lib/saas";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
@@ -395,7 +400,9 @@ function CustomerWhatsAppConnect() {
     try {
       const created = await provisionEvolutionInstance(user, { instanceName: instance });
       if (!created.ok) {
-        setStatus(created.error || "Não deu para criar a instância.");
+        setStatus(
+          ("error" in created && created.error) || "Não deu para criar a instância.",
+        );
         setBusy(false);
         return;
       }
@@ -424,7 +431,10 @@ function CustomerWhatsAppConnect() {
         }
       });
       setStatus("Gerando QR do WhatsApp…");
-      const pair = await evolutionConnectQr();
+      const pair = await evolutionConnectQr({
+        ...getEvolutionConfigUI(),
+        instance: created.instance,
+      });
       if (pair.connected) {
         setQr("");
         setStatus("WhatsApp já está conectado nesta instância.");
@@ -500,6 +510,14 @@ function WhatsAppPage() {
   const db = useDB();
   const admin = isPlatformAdmin(currentUser(db));
   const [isNewOpen, setIsNewOpen] = useState(false);
+  const [qrSession, setQrSession] = useState<{
+    connectionId: string;
+    name: string;
+    instance: string;
+    qr: string;
+    status: string;
+    busy: boolean;
+  } | null>(null);
   const [newName, setNewName] = useState("");
   const [newInstance, setNewInstance] = useState("");
   const [instanceTouched, setInstanceTouched] = useState(false);
@@ -513,34 +531,126 @@ function WhatsAppPage() {
   const totalSent  = connections.reduce((s, c) => s + c.sentToday, 0);
   const totalQueue = connections.reduce((s, c) => s + c.queue, 0);
 
-  const handleCreate = () => {
+  const loadConnectionQr = async (connection: {
+    id: string;
+    name: string;
+    instanceName?: string;
+  }) => {
+    const instance = connection.instanceName || getEvolutionConfigUI().instance;
+    setQrSession({
+      connectionId: connection.id,
+      name: connection.name,
+      instance,
+      qr: "",
+      status: "Gerando QR Code…",
+      busy: true,
+    });
+    const result = await evolutionConnectQr({ ...getEvolutionConfigUI(), instance });
+    if (result.connected) {
+      update((d) => {
+        const current = d.connections.find((entry) => entry.id === connection.id);
+        if (current) {
+          current.status = "online";
+          current.lastSyncAt = nowISO();
+        }
+      });
+      setQrSession((current) =>
+        current?.connectionId === connection.id
+          ? { ...current, qr: "", status: "WhatsApp já conectado.", busy: false }
+          : current,
+      );
+      toast.success(`${connection.name} já está conectado.`);
+      return;
+    }
+    if (!result.ok || !result.qr) {
+      const message = result.error || "A Evolution não retornou o QR Code. Tente sincronizar novamente.";
+      setQrSession((current) =>
+        current?.connectionId === connection.id
+          ? { ...current, status: message, busy: false }
+          : current,
+      );
+      toast.error(message);
+      return;
+    }
+    setQrSession((current) =>
+      current?.connectionId === connection.id
+        ? { ...current, qr: result.qr || "", status: "Escaneie pelo WhatsApp em Aparelhos conectados.", busy: false }
+        : current,
+    );
+  };
+
+  useEffect(() => {
+    if (
+      !qrSession ||
+      !qrSession.qr ||
+      qrSession.status === "WhatsApp já conectado." ||
+      qrSession.status === "WhatsApp conectado."
+    )
+      return;
+    let active = true;
+    const checkConnection = async () => {
+      const status = await getEvolutionStatus({
+        ...getEvolutionConfigUI(),
+        instance: qrSession.instance,
+      });
+      if (!active || !status.connected) return;
+      update((d) => {
+        const current = d.connections.find((entry) => entry.id === qrSession.connectionId);
+        if (current) {
+          current.status = "online";
+          current.phone = status.number || current.phone;
+          current.lastSyncAt = nowISO();
+        }
+      });
+      setQrSession((current) =>
+        current?.connectionId === qrSession.connectionId
+          ? { ...current, qr: "", status: "WhatsApp conectado.", busy: false }
+          : current,
+      );
+      toast.success(`${qrSession.name} conectado ao WhatsApp.`);
+    };
+    const timer = window.setInterval(() => void checkConnection(), 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [qrSession?.connectionId, qrSession?.instance, qrSession?.status]);
+
+  const handleCreate = async () => {
     if (!newName.trim() && !newInstance.trim()) {
       toast.error("Informe o nome do agente ou da instância");
       return;
     }
     if (!newPhone.trim()) { toast.error("Número é obrigatório"); return; }
-    const instance = instanceNameFromLabel(newInstance || newName, currentUser(db)?.id);
-    const id = uid("wa_");
-    const me = currentUser(getDB());
-    let instanceName = getEvolutionConfigUI().instance;
-    if (me && instance) {
-      void provisionEvolutionInstance(me, { instanceName: instance });
-      instanceName = getEvolutionConfigUI().instance;
+    const me = currentUser(db);
+    const instance = instanceNameFromLabel(newInstance || newName, me?.id);
+    if (!instance) {
+      toast.error("Informe um nome válido para a instância.");
+      return;
     }
+    const config = { ...getEvolutionConfigUI(), instance };
+    const created = await evolutionCreateInstance(instance, config);
+    if (!created.ok) {
+      toast.error(`Não foi possível criar a instância: ${created.error || "erro desconhecido"}`);
+      return;
+    }
+
+    const id = uid("wa_");
     update((d) => {
       d.connections.push({
         id, organizationId: d.organization.id,
         name: newName.trim() || instance,
-        phone: newPhone,
-        instanceName,
+        phone: newPhone.trim(),
+        instanceName: instance,
         type: "cloud_api",
         status: "conectando",
         queue: 0, sentToday: 0, dailyLimit: 1000,
         lastSyncAt: nowISO(),
       });
     });
-    toast.success("Linha Helena criada — o QR aparece em Conectar WhatsApp.");
+    toast.success("Instância criada. Conecte pelo QR Code.");
     setIsNewOpen(false);
+    void loadConnectionQr({ id, name: newName.trim() || instance, instanceName: instance });
     setNewName(""); setNewInstance(""); setInstanceTouched(false); setNewPhone("");
   };
 
@@ -579,13 +689,19 @@ function WhatsAppPage() {
     update((d) => {
       const c = d.connections.find((x) => x.id === id);
       if (c) {
-        c.status = result.connected ? "online" : "offline";
+        c.status = result.connected ? "online" : result.ok ? "conectando" : "offline";
         c.lastSyncAt = nowISO();
         if (result.number) c.phone = result.number;
       }
     });
     if (result.connected) toast.success(`Sincronizado! ${result.number} · ${result.latencyMs}ms`);
-    else toast.error(result.message);
+    else if (result.ok) {
+      await loadConnectionQr({
+        id: connection.id,
+        name: connection.name,
+        instanceName: connection.instanceName || config.instance,
+      });
+    } else toast.error(result.message);
   };
 
   return (
@@ -791,6 +907,47 @@ function WhatsAppPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNewOpen(false)}>Cancelar</Button>
             <Button onClick={handleCreate}>Adicionar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(qrSession)}
+        onOpenChange={(open) => {
+          if (!open) setQrSession(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Conectar {qrSession?.name || "WhatsApp"}</DialogTitle>
+            <DialogDescription>
+              Instância <span className="font-mono">{qrSession?.instance}</span>. No celular, abra WhatsApp → Aparelhos conectados → Conectar aparelho.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-2">
+            {qrSession?.qr && (
+              <img src={qrSession.qr} alt="QR Code para conectar WhatsApp" className="size-64 rounded-lg border bg-white p-2" />
+            )}
+            <p className="text-center text-sm text-muted-foreground">{qrSession?.status}</p>
+            {qrSession?.status !== "WhatsApp conectado." && qrSession?.status !== "WhatsApp já conectado." && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  qrSession &&
+                  void loadConnectionQr({
+                    id: qrSession.connectionId,
+                    name: qrSession.name,
+                    instanceName: qrSession.instance,
+                  })
+                }
+                disabled={qrSession?.busy}
+              >
+                {qrSession?.busy ? "Gerando QR…" : qrSession?.qr ? "Gerar novo QR" : "Gerar QR novamente"}
+              </Button>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQrSession(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

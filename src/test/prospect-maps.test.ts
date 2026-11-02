@@ -52,8 +52,8 @@ describe("scan_maps nacional", () => {
     expect(replies[0]!.text.toLowerCase()).toMatch(/aprovação|varredura|odontológ|brasil|helena/);
   });
 
-  it("Evolution usa instância helena", () => {
-    expect(getEvolutionConfig().instance).toBe("helena");
+  it("Evolution usa a instância configurada do Hostless", () => {
+    expect(getEvolutionConfig().instance).toBe("hudemo");
   });
 
   it("importa só lead sem site e com WhatsApp válido", () => {

@@ -6,8 +6,8 @@
  *
  * Configuração via .env.local:
  *   VITE_EVOLUTION_URL=https://evolutionapi.hostless.app
- *   VITE_EVOLUTION_KEY= (só local; o proxy do servidor também usa EVOLUTION_KEY)
- *   VITE_EVOLUTION_INSTANCE=helena
+ *   EVOLUTION_KEY fica somente no servidor
+ *   VITE_EVOLUTION_INSTANCE=hudemo
  *
  * Documentação Evolution API: https://doc.evolution-api.com
  */
@@ -29,12 +29,12 @@ export function getEvolutionConfig(): EvolutionConfig {
     "https://evolutionapi.hostless.app";
   const apiKey = "";
   const instance =
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) || "helena";
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_EVOLUTION_INSTANCE) || "hudemo";
   return { baseUrl, apiKey, instance: canonicalInstance(instance) };
 }
 
 /** Instância Evolution Manager (screenshot: Connected, JID 5518981011186). */
-export const EVOLUTION_INSTANCE = "helena";
+export const EVOLUTION_INSTANCE = "hudemo";
 
 export function canonicalInstance(name?: string) {
   if (!name || /agencia info tech/i.test(name) || /agência info tech/i.test(name))

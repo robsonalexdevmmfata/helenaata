@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evolutionLogoutInstance } from "@/lib/evolution/evolutionapi";
+import { evolutionConnectQr, evolutionLogoutInstance } from "@/lib/evolution/evolutionapi";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -20,6 +20,25 @@ describe("logout da Evolution", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/instance/logout/linha-teste"),
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("gera o QR para a instância solicitada", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ qrcode: { base64: "cXI=" } }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await evolutionConnectQr({
+      baseUrl: "https://evolution.example",
+      apiKey: "",
+      instance: "hudemo",
+    });
+
+    expect(result).toMatchObject({ ok: true, qr: "data:image/png;base64,cXI=" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/evolution/instance/connect/hudemo",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 });

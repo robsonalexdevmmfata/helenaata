@@ -33,8 +33,7 @@ export function instanceNameFromLabel(label: string, userId?: string) {
 
 export function bindUserEvolutionInstance(user: User | null | undefined, preferredName?: string) {
   if (!user || isPlatformAdmin(user)) {
-    saveEvolutionConfigUI({ instance: "helena" });
-    return "helena";
+    return getEvolutionConfigUI().instance;
   }
   const name =
     sanitizeInstanceName(preferredName || "") ||
