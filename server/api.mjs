@@ -503,12 +503,12 @@ export async function handleApi(req, res) {
     }
 
     if (p === "/api/auth/login" && req.method === "POST") {
-      if (!(await dbReady())) return send(res, 503, { error: "Banco Supabase indisponível. Configure DATABASE_URL no servidor." }), true;
       const { username, password } = await readJson(req);
       let user = null;
       if (checkLogin(username, password)) {
         user = adminProfile();
       } else {
+        if (!(await dbReady())) return send(res, 503, { error: "Banco Supabase indisponível para login de clientes." }), true;
         const account = await workspaceAccountByLogin(String(username || "").trim());
         if (account && await workspacePasswordMatches(password, account.password_hash)) user = account.profile;
       }
@@ -559,7 +559,9 @@ export async function handleApi(req, res) {
     const route = `${req.method} ${p}`;
     switch (route) {
       case "GET /api/auth/me":
-        if (!(await dbReady())) return send(res, 503, { error: "Banco Supabase indisponível." }), true;
+        if (session.u !== "u1" && !(await dbReady())) {
+          return send(res, 503, { error: "Banco Supabase indisponível." }), true;
+        }
         {
           const user = session.u === "u1" ? adminProfile() : await workspaceAccountById(session.u);
           if (!user) {

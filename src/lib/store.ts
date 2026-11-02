@@ -14,7 +14,7 @@ import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
 import { AGENCY_WHATSAPP } from "./evolution/evolutionapi";
 import { hashPw, sanitizeDb, sanitizeUser } from "@/lib/security/secrets";
-import { api } from "@/lib/backend";
+import { api, BackendError } from "@/lib/backend";
 import { toast } from "sonner";
 
 let seedCache: DB | null = null;
@@ -59,11 +59,28 @@ function load(): DB {
 }
 
 export async function activateWorkspaceForUser(user: User) {
-  const { snapshot, revision, accounts } = await api<{
-    snapshot: DB | null;
-    revision: number;
-    accounts: User[];
-  }>("/api/workspace");
+  let workspace: { snapshot: DB | null; revision: number; accounts: User[] };
+  try {
+    workspace = await api<{
+      snapshot: DB | null;
+      revision: number;
+      accounts: User[];
+    }>("/api/workspace");
+  } catch (error) {
+    if (!isPlatformUser(user) || !(error instanceof BackendError) || error.status !== 503) {
+      throw error;
+    }
+    state = createSeed();
+    state.currentUserId = user.id;
+    state.users = [sanitizeUser(user), ...state.users.filter((entry) => entry.id !== user.id)];
+    cloudRevision = 0;
+    cloudPersistenceEnabled = false;
+    pendingSnapshot = null;
+    toast.warning("Supabase indisponível: demonstração em memória, alterações não serão salvas.");
+    listeners.forEach((listener) => listener());
+    return;
+  }
+  const { snapshot, revision, accounts } = workspace;
   if (snapshot && snapshot.organization?.id !== user.organizationId) {
     throw new Error("O workspace recebido não pertence à conta autenticada.");
   }
