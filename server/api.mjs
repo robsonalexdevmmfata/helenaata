@@ -100,7 +100,6 @@ function isPublicPath(method, p) {
   if (p === "/api/billing/cakto" && method === "POST") return true;
   if (method === "GET" && p.startsWith("/api/previews/")) return true;
   if (p.startsWith("/api/maps/")) return true;
-  if (p.startsWith("/api/evolution")) return true;
   return false;
 }
 
@@ -475,9 +474,14 @@ export async function handleApi(req, res) {
     }
 
     if (p.startsWith("/api/evolution/") || p === "/api/evolution") {
+      // A chave global da Evolution fica no servidor: só quem está logado usa este repasse.
+      if (!readToken(sessionToken(req))) return send(res, 401, { error: "Faça login." }), true;
       const rest = p.slice("/api/evolution".length) || "/";
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
       const payload = hasBody ? await readJson(req) : {};
+      if (remoteEvolutionUrl() && !evolutionApiKey(req)) {
+        return send(res, 500, { error: "EVOLUTION_KEY não configurada no servidor (Render)." }), true;
+      }
       const remote = remoteEvolutionUrl();
       if (!remote) {
         await handleEvolutionLocal(rest, req.method, payload, send, res);

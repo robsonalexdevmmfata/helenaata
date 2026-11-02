@@ -16,8 +16,9 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
+      # Em produção "*" bloqueia tudo. Liste os endereços do site separados por vírgula.
       - key: CORS_ORIGIN
-        value: "*"
+        value: "https://helenaata.vercel.app,https://helenaata.onrender.com"
       - key: WHATSAPP_AUTH_DIR
         value: /opt/render/project/src/data/whatsapp-auth
       - key: HELENA_AUTO_REPLY

@@ -22,7 +22,7 @@ export function activateCommercialTeam() {
   });
 }
 
-function ownerForSegment(segment: string, slot: number, agents: { id: string; teamId?: string; role: string }[]) {
+function ownerForSegment<T extends { id: string; teamId?: string; role: string }>(segment: string, slot: number, agents: T[]): T {
   const roster = agents.filter((a) => a.teamId === "t_com" && a.role === "SDR");
   const n = segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const saude = /odont|dentist|clinic|estetic|veterin|pet shop|medico|saude/;

@@ -49,15 +49,9 @@ export const AGENCY_WHATSAPP = {
   instance: EVOLUTION_INSTANCE,
 };
 
-export function getAgencyConnection(db: {
-  connections: Array<{
-    id: string;
-    name: string;
-    status: string;
-    phone: string;
-    deletedAt?: string;
-  }>;
-}) {
+export function getAgencyConnection<
+  T extends { id: string; name: string; status: string; phone: string; deletedAt?: string },
+>(db: { connections: T[] }): T | undefined {
   const connections = db.connections.filter((connection) => !connection.deletedAt);
   return (
     connections.find((c) => c.id === AGENCY_WHATSAPP.id) ||
@@ -346,35 +340,46 @@ export async function getEvolutionStatus(cfg?: EvolutionConfig): Promise<EvoStat
   }
 }
 
-/** QR para parear o WhatsApp. GET /instance/connect/{instance} */
-export async function evolutionConnectQr(cfg?: EvolutionConfig): Promise<{
+/** Extrai a imagem do QR de uma resposta da Evolution (create ou connect). `code` é texto de pareamento, não imagem. */
+export function qrImageFromEvolution(data: any): string {
+  const raw = String(data?.qrcode?.base64 || data?.base64 || "");
+  if (!raw) return "";
+  return raw.startsWith("data:") ? raw : `data:image/png;base64,${raw}`;
+}
+
+/** QR para parear o WhatsApp. GET /instance/connect/{instance}. Tenta algumas vezes: logo após criar, a Evolution pode responder sem QR. */
+export async function evolutionConnectQr(
+  cfg?: EvolutionConfig,
+  attempts = 5,
+): Promise<{
   ok: boolean;
   qr?: string;
   connected?: boolean;
   error?: string;
 }> {
   const config = cfg ?? getEvolutionConfigUI();
-  const url = evoUrl(`/instance/connect/${config.instance}`, config);
-  try {
-    const res = await fetch(url, { method: "GET", headers: headers(config) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok)
-      return { ok: false, error: String(data?.message || data?.error || `HTTP ${res.status}`) };
-    const qr = data?.qrcode?.base64 || data?.base64 || data?.qrcode?.code || data?.qr || "";
-    const state = String(data?.instance?.state || data?.state || "");
-    return {
-      ok: true,
-      qr:
-        qr && String(qr).startsWith("data:")
-          ? String(qr)
-          : qr
-            ? `data:image/png;base64,${String(qr).replace(/^data:image\/png;base64,/, "")}`
-            : "",
-      connected: state === "open",
-    };
-  } catch (err: unknown) {
-    return { ok: false, error: err instanceof Error ? err.message : "Falha ao gerar QR" };
+  const url = evoUrl(`/instance/connect/${encodeURIComponent(config.instance)}`, config);
+  let lastError = "";
+  for (let i = 0; i < Math.max(1, attempts); i++) {
+    try {
+      const res = await fetch(url, { method: "GET", headers: headers(config), credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        lastError = String(data?.response?.message || data?.message || data?.error || `HTTP ${res.status}`);
+        if (res.status === 401 || res.status === 403 || res.status === 404) break;
+      } else {
+        const state = String(data?.instance?.state || data?.state || "");
+        if (state === "open") return { ok: true, connected: true, qr: "" };
+        const qr = qrImageFromEvolution(data);
+        if (qr) return { ok: true, connected: false, qr };
+        lastError = "A Evolution ainda não gerou o QR.";
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : "Falha ao gerar QR";
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500));
   }
+  return { ok: false, error: lastError || "Falha ao gerar QR" };
 }
 
 export async function evolutionLogoutInstance(
