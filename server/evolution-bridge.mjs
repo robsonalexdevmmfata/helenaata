@@ -59,7 +59,7 @@ export async function handleEvolutionLocal(pathname, method, body, send, res) {
     const s = getStatus();
     return send(res, 200, [
       {
-        name: process.env.EVOLUTION_INSTANCE || "hudemo",
+        name: process.env.EVOLUTION_INSTANCE || "helena",
         connectionStatus: stateFromBaileys(s.status),
         owner: s.phone || "",
         qrcode: s.qrCode ? { base64: s.qrCode } : undefined,

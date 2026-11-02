@@ -5,7 +5,7 @@ services:
     name: helena-ai
     runtime: node
     region: frankfurt
-    repo: https://github.com/robsonalexdevmmfata/sample-admin-harbor
+    repo: https://github.com/robsonalexdevmmfata/helenaata
     branch: main
     buildCommand: npm ci && npm run build:render
     startCommand: npm start
@@ -23,8 +23,10 @@ services:
       - key: HELENA_AUTO_REPLY
         value: "true"
       - key: EVOLUTION_INSTANCE
-        value: hudemo
+        value: helena
       - key: GROQ_API_KEY
+        sync: false
+      - key: VITE_GROQ_API_KEY
         sync: false
       - key: ADMIN_USER
         value: admin
@@ -38,8 +40,6 @@ services:
         sync: false
       - key: VITE_EVOLUTION_URL
         value: https://evolutionapi.hostless.app
-      - key: VITE_EVOLUTION_INSTANCE
-        value: hudemo
       - key: VITE_PUBLIC_SITE_URL
         value: https://helenaata.vercel.app
       - key: GITHUB_TOKEN
