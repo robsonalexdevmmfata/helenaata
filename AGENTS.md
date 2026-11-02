@@ -14,3 +14,4 @@
 - Helena tool actions go through `runTool()` in `src/lib/helena/engine.ts` for permission checks, mutations, and execution logs; the client cache is synchronized to the authenticated Supabase workspace snapshot.
 - Authenticated pages live under the pathless `src/routes/_app.tsx` layout (ssr: false, client-side session guard).
 - tsconfig strict extras (exactOptionalPropertyTypes, noUncheckedIndexedAccess, noPropertyAccessFromIndexSignature) are disabled; preserve the existing project type-check settings.
+- The browser calls the API same-origin (`/api/*`, rewritten by Vercel to Render); the Evolution global key lives only on the server and `/api/evolution/*` requires a signed-in session, so the key is never exposed or usable anonymously.
