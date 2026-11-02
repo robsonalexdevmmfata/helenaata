@@ -26,6 +26,7 @@ import {
   evolutionConnectQr, evolutionLogoutInstance, getEvolutionStatus,
   type EvolutionConfig,
 } from "@/lib/evolution/evolutionapi";
+import { useEvolutionPairing } from "@/hooks/use-evolution-pairing";
 
 export const Route = createFileRoute("/_app/integracoes/whatsapp")({
   head: () => pageHead("WhatsApp · Evolution API", "Conecte o número da agência via Evolution API para prospecção e atendimento real."),
@@ -424,7 +425,7 @@ function CustomerWhatsAppConnect() {
         }
       });
       setStatus("Gerando QR do WhatsApp…");
-      const pair = await evolutionConnectQr();
+      const pair = created.qr ? { ok: true, qr: created.qr, connected: false } : await evolutionConnectQr();
       if (pair.connected) {
         setQr("");
         setStatus("WhatsApp já está conectado nesta instância.");
@@ -444,6 +445,19 @@ function CustomerWhatsAppConnect() {
     }
     setBusy(false);
   };
+
+  useEvolutionPairing(qr, setQr, (number) => {
+    setStatus(`Conectado${number ? ` · ${number}` : ""}`);
+    toast.success("WhatsApp conectado.");
+    update((d) => {
+      const conn = d.connections.find((c) => c.id === `wa_${previewInstance}`) ?? d.connections.find((c) => c.status === "conectando");
+      if (conn) {
+        conn.status = "online";
+        if (number) conn.phone = number;
+        conn.lastSyncAt = nowISO();
+      }
+    });
+  });
 
   useEffect(() => {
     void getEvolutionStatus().then((s) => {

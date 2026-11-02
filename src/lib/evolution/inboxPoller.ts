@@ -234,7 +234,7 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
     if (!c) return;
     const existing = new Set(c.messages.map((m) => m.id));
     const mapped = res.messages
-      .map((raw) => {
+      .map((raw: any) => {
         const key = raw?.key ?? {};
         const id = String(key.id ?? raw?.id ?? "");
         const text = sanitizeChatText(extractWaText(raw));

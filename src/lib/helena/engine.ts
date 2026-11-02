@@ -965,7 +965,7 @@ const handlers: Record<string, Handler> = {
         contactId: current.contactId,
         type: "handoff",
         text: `${closer.name} enviou o follow-up aprovado do cardápio online após ${FOLLOWUP_REASON_LABEL[p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : "sem_resposta"]}.`,
-        actor: ctx.approvedBy,
+        actor: ctx.approvedBy ?? "Helena",
         createdAt: nowISO(),
       });
     });

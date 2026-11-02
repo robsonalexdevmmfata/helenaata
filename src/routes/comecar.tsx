@@ -56,7 +56,7 @@ function OnboardingPage() {
         setBusy(false);
         return;
       }
-      const pair = await evolutionConnectQr();
+      const pair = created.qr ? { ok: true, qr: created.qr, connected: false, error: "" } : await evolutionConnectQr();
       if (pair.connected) {
         setQr("");
         setStatus("Chip já conectado.");
