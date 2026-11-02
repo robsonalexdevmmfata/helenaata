@@ -32,8 +32,6 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: DATABASE_URL
-        sync: false
       - key: EVOLUTION_URL
         value: https://evolutionapi.hostless.app
       - key: EVOLUTION_KEY
