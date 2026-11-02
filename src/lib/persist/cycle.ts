@@ -158,7 +158,7 @@ export async function pullCycleIntoStore() {
     }>("/api/helena/cycle");
     if (!data?.ok || !Array.isArray(data.contacts)) return;
     update((d) => {
-      for (const row of data.contacts) {
+      for (const row of data.contacts ?? []) {
         const id = row.app_id || row.id;
         if (!id) continue;
         const existing = d.contacts.find((c) => c.id === id);
@@ -180,7 +180,7 @@ export async function pullCycleIntoStore() {
             phone: row.phone || "",
             title: "",
             tags,
-            source: row.source || "Prospecção",
+            source: (row.source || "Prospecção") as Contact["source"],
             ownerId: d.currentUserId,
             status: row.status === "cliente" || row.status === "inativo" ? row.status : "lead",
             score: Number(row.score) || 0,
@@ -198,10 +198,10 @@ export async function pullCycleIntoStore() {
           organizationId: d.organization.id,
           at: row.created_at || new Date().toISOString(),
           actor: row.actor || "Helena",
-          actorType: row.actor_type || "helena",
+          actorType: (row.actor_type || "helena") as Execution["actorType"],
           action: row.action || "sync",
           description: row.description || "",
-          result: row.result || "sucesso",
+          result: (row.result || "sucesso") as Execution["result"],
           requestedBy: row.actor || "Helena",
           durationMs: row.duration_ms || 0,
         });
