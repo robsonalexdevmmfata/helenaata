@@ -8,6 +8,7 @@ import { restoreSession } from "@/lib/auth";
 import { currentUser, getDB, patchUserEverywhere, update, nowISO } from "@/lib/store";
 import { instanceNameFromLabel, provisionEvolutionInstance, sanitizeInstanceName } from "@/lib/evolution/provision";
 import { evolutionConnectQr, evolutionSendText, getEvolutionStatus } from "@/lib/evolution/evolutionapi";
+import { useEvolutionPairing } from "@/hooks/use-evolution-pairing";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 import { userAction } from "@/lib/helena/engine";
@@ -56,7 +57,7 @@ function OnboardingPage() {
         setBusy(false);
         return;
       }
-      const pair = await evolutionConnectQr();
+      const pair = created.qr ? { ok: true, qr: created.qr, connected: false, error: "" } : await evolutionConnectQr();
       if (pair.connected) {
         setQr("");
         setStatus("Chip já conectado.");
@@ -73,6 +74,12 @@ function OnboardingPage() {
     }
     setBusy(false);
   };
+
+  useEvolutionPairing(qr, setQr, (number) => {
+    setStatus(`Chip conectado${number ? ` · ${number}` : ""}.`);
+    toast.success("WhatsApp conectado.");
+    setStep(3);
+  });
 
   const sendTest = async () => {
     const to = phone.replace(/\D/g, "");

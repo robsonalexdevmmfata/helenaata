@@ -20,9 +20,8 @@ export const Route = createFileRoute("/cadastro")({
       "Criar conta",
       "Trial de 2 dias. 30 leads/dia no freemium. 150 após assinar. Sem cartão agora.",
     ),
-  validateSearch: (s: Record<string, unknown>) => ({
-    plano: s.plano === "maquina" || s.plano === "impulso" ? s.plano : undefined,
-  }),
+  validateSearch: (s: Record<string, unknown>): { plano?: "maquina" | "impulso" } =>
+    s.plano === "maquina" || s.plano === "impulso" ? { plano: s.plano } : {},
   component: CadastroPage,
 });
 

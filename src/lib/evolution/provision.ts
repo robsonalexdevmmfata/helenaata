@@ -3,6 +3,7 @@ import { currentUser, getDB, patchUserEverywhere } from "@/lib/store";
 import { isPlatformAdmin } from "@/lib/saas";
 import {
   getEvolutionConfigUI,
+  qrImageFromEvolution,
   saveEvolutionConfigUI,
   type EvolutionConfig,
 } from "./evolutionapi";
@@ -49,7 +50,20 @@ export function bindUserEvolutionInstance(user: User | null | undefined, preferr
   return name;
 }
 
-export async function evolutionCreateInstance(instance: string, cfg?: EvolutionConfig) {
+export interface ProvisionResult {
+  ok: boolean;
+  instance: string;
+  error?: string;
+  existed?: boolean;
+  skipped?: boolean;
+  /** QR já devolvido pela Evolution no /instance/create (data URL). */
+  qr?: string;
+}
+
+export async function evolutionCreateInstance(
+  instance: string,
+  cfg?: EvolutionConfig,
+): Promise<ProvisionResult> {
   const config = cfg ?? getEvolutionConfigUI();
   const url =
     typeof window !== "undefined"
@@ -59,6 +73,7 @@ export async function evolutionCreateInstance(instance: string, cfg?: EvolutionC
   try {
     res = await fetch(url, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json", apikey: config.apiKey },
       body: JSON.stringify({
         instanceName: instance,
@@ -70,20 +85,27 @@ export async function evolutionCreateInstance(instance: string, cfg?: EvolutionC
     return { ok: false, instance, error: err instanceof Error ? err.message : "Sem rede" };
   }
   const data = await res.json().catch(() => ({}));
-  if (res.ok || res.status === 403 || res.status === 409) {
-    return { ok: true, instance, existed: res.status === 403 || res.status === 409, raw: data };
+  const message = String(
+    (Array.isArray(data?.response?.message) ? data.response.message.join(" ") : data?.response?.message) ||
+      data?.message ||
+      data?.error ||
+      "",
+  );
+  if (res.status === 401) {
+    return { ok: false, instance, error: "A Evolution recusou a chave (EVOLUTION_KEY no Render)." };
   }
-  return {
-    ok: false,
-    instance,
-    error: String(data?.message || data?.error || `HTTP ${res.status}`),
-  };
+  // Evolution v2 responde 403 "already in use" quando a instância já existe.
+  const exists = res.status === 409 || (res.status === 403 && /use|exist/i.test(message));
+  if (res.ok || exists) {
+    return { ok: true, instance, existed: exists, qr: qrImageFromEvolution(data) };
+  }
+  return { ok: false, instance, error: message || `HTTP ${res.status}` };
 }
 
 export async function provisionEvolutionInstance(
   user: User,
   opts?: { instanceName?: string; remote?: boolean },
-) {
+): Promise<ProvisionResult> {
   if (!user || isPlatformAdmin(user)) {
     bindUserEvolutionInstance(user);
     return { ok: true, instance: "helena", skipped: true };

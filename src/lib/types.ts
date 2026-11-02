@@ -11,7 +11,8 @@ export type LeadSource =
   | "Site"
   | "Prospecção"
   | "Instagram"
-  | "Evento";
+  | "Evento"
+  | "WhatsApp";
 export type RiskLevel = "baixo" | "medio" | "alto";
 export type OwnerType = "user" | "agent";
 

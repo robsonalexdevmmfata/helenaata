@@ -2,9 +2,9 @@
 // mesmo endereço do site (mesma porta). Defina VITE_API_URL para usar outro endereço.
 import { useEffect, useState } from "react";
 
-const BASE = String(
-  import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? "https://helenaata.onrender.com" : ""),
-).replace(/\/$/, "");
+// Padrão: mesmo endereço do site. Na Vercel, /api e /health são repassados ao Render (vercel.json),
+// então o login e o cadastro não dependem de CORS nem de cookie entre domínios.
+const BASE = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 export class BackendError extends Error {
   constructor(
     message: string,
