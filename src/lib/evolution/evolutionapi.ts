@@ -92,8 +92,13 @@ export function saveEvolutionConfigUI(cfg: Partial<EvolutionConfig>): EvolutionC
 // ── Headers helper ───────────────────────────────────────────────────────────
 
 function headers(_cfg: EvolutionConfig) {
+  const token =
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("helena-backend-token") || ""
+      : "";
   return {
     "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 

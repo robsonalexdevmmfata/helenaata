@@ -43,7 +43,12 @@ function CadastroPage() {
       const account = await registerBackend({ name, email, password, company });
       upsertAccount(account);
       startSession(account.id);
-      void provisionEvolutionInstance(account, { remote: false });
+      // Cria a instância na Hostless (via Render) já no cadastro; QR vem em /comecar.
+      void provisionEvolutionInstance(account).then((created) => {
+        if (!created.ok && !("skipped" in created && created.skipped)) {
+          console.warn("[cadastro] Evolution:", "error" in created ? created.error : "falhou");
+        }
+      });
       if (plano === "impulso" || plano === "maquina") {
         window.location.assign(caktoCheckoutUrl(plano, { name, email }));
         return;

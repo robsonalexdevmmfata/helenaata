@@ -423,3 +423,71 @@ export async function rpaMonitorDb() {
   const avg = (await q("select coalesce(avg(duration_ms),0)::int as n from rpa_jobs where duration_ms is not null")).rows[0]?.n || 0;
   return { queued, failed, running, lastAt: last?.finished_at || last?.started_at || "", nextAt: next?.run_at || "", avgMs: avg };
 }
+
+/** Cakto → Supabase (sobrevive restart do Render). */
+export async function recordAppBillingEvent(row) {
+  const p = await getPool();
+  if (!p) return { ok: false, skipped: true };
+  await p.query(
+    `insert into public.app_billing_events
+       (source_id, email, name, plan_id, status, event, amount, paid, occurred_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::timestamptz, now()))
+     on conflict (source_id) where source_id <> '' do update set
+       email = excluded.email,
+       name = excluded.name,
+       plan_id = excluded.plan_id,
+       status = excluded.status,
+       event = excluded.event,
+       amount = excluded.amount,
+       paid = excluded.paid,
+       occurred_at = excluded.occurred_at`,
+    [
+      String(row.sourceId || ""),
+      String(row.email || "").toLowerCase(),
+      String(row.name || ""),
+      String(row.planId || ""),
+      String(row.status || ""),
+      String(row.event || ""),
+      row.amount ?? null,
+      Boolean(row.paid),
+      row.at || null,
+    ],
+  );
+  return { ok: true };
+}
+
+export async function latestPaidAppBillingEvent(email) {
+  const p = await getPool();
+  if (!p) return null;
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return null;
+  const result = await p.query(
+    `select plan_id as "planId", occurred_at as at, paid
+       from public.app_billing_events
+      where lower(email) = $1 and paid = true and plan_id <> ''
+      order by occurred_at desc
+      limit 1`,
+    [key],
+  );
+  return result.rows[0] ?? null;
+}
+
+/** Libera Impulso/Máquina no profile da conta após pagamento Cakto. */
+export async function applyPaidPlanToAccount(email, planId) {
+  if (!email || !planId) return { ok: false };
+  const p = await getPool();
+  if (!p) return { ok: false, skipped: true };
+  const account = await workspaceAccountByLogin(email);
+  if (!account?.profile) return { ok: false, error: "conta não encontrada" };
+  const profile = { ...account.profile, planId, status: "ativo" };
+  if (planId === "maquina" || planId === "impulso") {
+    profile.lifetimeAccess = false;
+  }
+  await p.query(
+    `update public.app_accounts
+        set profile = $2::jsonb, updated_at = now()
+      where lower(email) = lower($1)`,
+    [email, JSON.stringify(profile)],
+  );
+  return { ok: true, userId: account.app_user_id, planId };
+}

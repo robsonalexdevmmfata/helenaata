@@ -71,10 +71,17 @@ export async function evolutionCreateInstance(
       : `${config.baseUrl.replace(/\/$/, "")}/instance/create`;
   let res: Response;
   try {
+    const token =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("helena-backend-token") || ""
+        : "";
     res = await fetch(url, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json", apikey: config.apiKey },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         instanceName: instance,
         qrcode: true,

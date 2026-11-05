@@ -206,8 +206,9 @@ function AppLayout() {
             if (c.status === "online") c.status = "offline";
           });
         });
-      } else {
-        void provisionEvolutionInstance(me, { remote: false });
+      } else if (me.evolutionInstance) {
+        // Garante a instância na Hostless depois do trial/plano liberado.
+        void provisionEvolutionInstance(me);
       }
     }
     const paywall = window.setInterval(() => {

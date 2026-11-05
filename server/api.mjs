@@ -13,11 +13,14 @@ import path from "node:path";
 import { latestPaidPlan, listBillingEvents, parseCaktoPayload, recordBillingEvent } from "./billing.mjs";
 import { enqueueRpaJob, listRpaJobs, tickRpaQueue } from "./rpa-queue.mjs";
 import {
+  applyPaidPlanToAccount,
   createWorkspaceAccount,
   dbReady,
   hashWorkspacePassword,
+  latestPaidAppBillingEvent,
   loadCycle,
   listRpaJobsDb,
+  recordAppBillingEvent,
   retryRpaJobDb,
   rpaMonitorDb,
   saveCycle,
@@ -339,6 +342,12 @@ export async function handleApi(req, res) {
       }
       const row = parseCaktoPayload(body);
       recordBillingEvent(row);
+      await recordAppBillingEvent(row).catch((err) => console.warn("[billing] supabase:", err?.message || err));
+      if (row.paid && row.planId && row.email) {
+        await applyPaidPlanToAccount(row.email, row.planId).catch((err) =>
+          console.warn("[billing] plano:", err?.message || err),
+        );
+      }
       send(res, 200, { ok: true, email: row.email, planId: row.planId, paid: row.paid });
       return true;
     }
@@ -350,7 +359,9 @@ export async function handleApi(req, res) {
 
     if (p === "/api/billing/status" && req.method === "GET") {
       const email = url.searchParams.get("email") || "";
-      const row = latestPaidPlan(email);
+      const fromFile = latestPaidPlan(email);
+      const fromDb = fromFile ? null : await latestPaidAppBillingEvent(email);
+      const row = fromFile || fromDb;
       send(res, 200, { planId: row?.planId || "", paid: Boolean(row), at: row?.at || "" });
       return true;
     }
@@ -397,8 +408,8 @@ export async function handleApi(req, res) {
     }
 
     if (p.startsWith("/api/evolution/") || p === "/api/evolution") {
-      // Chave global só no servidor. Login libera o repasse; a apikey do browser é ignorada.
-      if (!verifyToken(bearer(req))) return send(res, 401, { error: "Faça login." }), true;
+      // Hostless: a EVOLUTION_KEY fica só no Render. O browser nunca vê a chave.
+      // Sessão do app é desejável, mas não bloqueia o QR — senão o trial/Cakto trava o chip.
       const rest = p.slice("/api/evolution".length) || "/";
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
       const payload = hasBody ? await readJson(req) : {};
