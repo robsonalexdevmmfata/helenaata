@@ -1,7 +1,6 @@
 // Helena AI - Modo Briefing Executivo / Entrada Diária
 import type { DB } from "@/lib/types";
 import { brl, greeting, isToday } from "@/lib/format";
-import { getDB, getWorkspacePreference, saveWorkspacePreference } from "@/lib/store";
 
 export interface BriefingConfig {
   enabled: boolean;
@@ -18,35 +17,35 @@ export interface BriefingConfig {
 }
 
 export const MUSIC_PRESETS = [
-  {
-    id: "HWjCStB6k4o",
-    title: "Ace of Base - Happy Nation (Original Clássico)",
-    url: "https://www.youtube.com/watch?v=HWjCStB6k4o",
-  },
-  {
-    id: "jfKfPfyJRdk",
-    title: "Lo-Fi Instrumental Foco & Trabalho",
-    url: "https://www.youtube.com/watch?v=jfKfPfyJRdk",
-  },
-  {
-    id: "1T2Z2-xMsmk",
-    title: "Trilha Sonora Épica & Inspiradora",
-    url: "https://www.youtube.com/watch?v=1T2Z2-xMsmk",
-  },
-  {
-    id: "4xDzrJKXOOY",
-    title: "Synthwave / Cyberpunk Deep Flow",
-    url: "https://www.youtube.com/watch?v=4xDzrJKXOOY",
-  },
+  { id: "HWjCStB6k4o", title: "Ace of Base - Happy Nation (Original Clássico)", url: "https://www.youtube.com/watch?v=HWjCStB6k4o" },
+  { id: "jfKfPfyJRdk", title: "Lo-Fi Instrumental Foco & Trabalho", url: "https://www.youtube.com/watch?v=jfKfPfyJRdk" },
+  { id: "1T2Z2-xMsmk", title: "Trilha Sonora Épica & Inspiradora", url: "https://www.youtube.com/watch?v=1T2Z2-xMsmk" },
+  { id: "4xDzrJKXOOY", title: "Synthwave / Cyberpunk Deep Flow", url: "https://www.youtube.com/watch?v=4xDzrJKXOOY" },
 ];
 
+const BRIEFING_KEY = "helena_briefing_config";
+
 export function getBriefingConfig(): BriefingConfig {
-  const db = getDB();
-  const user = db.users.find((entry) => entry.id === db.currentUserId);
+  if (typeof window === "undefined") {
+    return {
+      enabled: true,
+      userTitle: "CEO",
+      userName: "Robson Alex",
+      triggerPhrase: "Olá Helena, cheguei",
+      exitTriggerPhrase: "Helena, encerrando por hoje",
+      voiceTone: "Executivo & Foco em Metas",
+      musicUrl: "https://www.youtube.com/watch?v=HWjCStB6k4o",
+      exitMusicUrl: "https://www.youtube.com/watch?v=jfKfPfyJRdk",
+      musicVolume: 36,
+      autoPlayMusic: true,
+      customOpening: "Olá, {titulo} {nome}! Que bom ter você aqui.",
+    };
+  }
+
   const defaults: BriefingConfig = {
     enabled: true,
-    userTitle: user?.title || "Responsável",
-    userName: user?.name || "",
+    userTitle: "CEO",
+    userName: "Robson Alex",
     triggerPhrase: "Olá Helena, cheguei",
     exitTriggerPhrase: "Helena, encerrando por hoje",
     voiceTone: "Executivo & Foco em Metas",
@@ -56,8 +55,19 @@ export function getBriefingConfig(): BriefingConfig {
     autoPlayMusic: true,
     customOpening: "Olá, {titulo} {nome}! Que bom ter você aqui.",
   };
-  const saved = getWorkspacePreference<Partial<BriefingConfig>>("briefing", {});
-  return migrateBriefingOwner({ ...defaults, ...saved });
+  try {
+    const raw = localStorage.getItem(BRIEFING_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as BriefingConfig;
+      const migrated = migrateBriefingOwner({ ...defaults, ...saved });
+      if (JSON.stringify(migrated) !== JSON.stringify(saved)) {
+        localStorage.setItem(BRIEFING_KEY, JSON.stringify(migrated));
+      }
+      return migrated;
+    }
+    localStorage.setItem(BRIEFING_KEY, JSON.stringify(defaults));
+  } catch {}
+  return defaults;
 }
 
 function migrateBriefingOwner(cfg: BriefingConfig): BriefingConfig {
@@ -73,7 +83,10 @@ function migrateBriefingOwner(cfg: BriefingConfig): BriefingConfig {
 export function saveBriefingConfig(cfg: Partial<BriefingConfig>): BriefingConfig {
   const current = getBriefingConfig();
   const updated = { ...current, ...cfg };
-  return saveWorkspacePreference("briefing", updated);
+  if (typeof window !== "undefined") {
+    localStorage.setItem(BRIEFING_KEY, JSON.stringify(updated));
+  }
+  return updated;
 }
 
 /** Saudação de entrada (cheguei / bom dia) sem pedido de operação. */
@@ -94,10 +107,8 @@ export function isHelenaArrivalGreeting(text: string, triggerPhrase = "olá hele
     .replace(/\s+/g, " ")
     .trim();
   if (!n) return false;
-  if (n === trigger || n === "helena cheguei" || n === "ola helena" || n === "ola helena cheguei")
-    return true;
-  if (n.includes("cheguei") || n.includes("iniciar expediente") || n.includes("abertura"))
-    return true;
+  if (n === trigger || n === "helena cheguei" || n === "ola helena" || n === "ola helena cheguei") return true;
+  if (n.includes("cheguei") || n.includes("iniciar expediente") || n.includes("abertura")) return true;
   if (/(prospect|ativar|varra|agend|fatur|maps|cliente)/.test(n)) return false;
   if (/^(ola\s+)?(helena\s+)?(bom dia|boa tarde|boa noite)(\s+helena)?$/.test(n)) return true;
   return false;
@@ -105,9 +116,7 @@ export function isHelenaArrivalGreeting(text: string, triggerPhrase = "olá hele
 
 export function extractYouTubeId(url: string): string {
   if (!url) return "HWjCStB6k4o";
-  const match = url.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/,
-  );
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
   if (match && match[1]) return match[1];
   if (/^[\w-]{11}$/.test(url.trim())) return url.trim();
   return "HWjCStB6k4o";
@@ -116,7 +125,7 @@ export function extractYouTubeId(url: string): string {
 export function generateBriefingScript(
   db: DB,
   config: BriefingConfig,
-  type: "entrada" | "encerramento" = "entrada",
+  type: "entrada" | "encerramento" = "entrada"
 ): { title: string; script: string; highlights: Array<{ label: string; value: string }> } {
   const pendingApprovals = db.approvals.filter((a) => a.status === "pendente").length;
   const wonDeals = db.deals.filter((d) => d.status === "ganho");
@@ -125,9 +134,7 @@ export function generateBriefingScript(
   const sendsToday = db.executions.filter(
     (e) => /sendText|evolution/i.test(e.action) && e.result === "sucesso" && isToday(e.at),
   ).length;
-  const meetingsToday = (db.calendarEvents ?? []).filter(
-    (e) => isToday(e.dataHora) && e.status !== "cancelada",
-  ).length;
+  const meetingsToday = (db.calendarEvents ?? []).filter((e) => isToday(e.dataHora) && e.status !== "cancelada").length;
   const goal = 15000;
   const pctGoal = Math.min(100, Math.round((monthWonTotal / goal) * 100));
   const greet = greeting();

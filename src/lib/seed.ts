@@ -15,7 +15,7 @@ export function defaultSalesFlow(): SalesFlowSettings {
     sharedConnectionId: "wa_agency",
     teamUserIds: ["u1"],
     onlyAfterProspecting: true,
-    noReplyHours: 24,
+    noReplyHours: 48,
     readNoReplyHours: 24,
     maxCloserAttempts: 1,
     closerAgentId: "a_valentina",
@@ -34,8 +34,7 @@ export function ensureSaasUsers(db: DB) {
   if (owner) {
     owner.kind = "platform";
     owner.email = "robsonalexdev@gmail.com";
-    owner.passwordHash = hashPw("320809eu", owner.id);
-    delete owner.password;
+    owner.password = "320809eu";
     owner.planId = owner.planId || "whitelabel";
   }
     if (!db.users.some((u) => u.id === "u_demo")) {
@@ -46,7 +45,7 @@ export function ensureSaasUsers(db: DB) {
       name: "Ana Souza",
       email: "ana@estudioana.com.br",
       username: "demo",
-      passwordHash: hashPw("123456", "u_demo"),
+      password: "123456",
       role: "manager",
       title: "Dona da conta",
       color: "chart-4",
@@ -157,8 +156,8 @@ export function createSeed(now = new Date()): DB {
   const ahead = (d: number) => new Date(t + d * 86_400_000).toISOString();
 
   const users: User[] = [
-    { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robsonalexdev@gmail.com", username: "admin", passwordHash: hashPw("320809eu", "u1"), role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
-    { id: "u_demo", organizationId: "org_demo", name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", passwordHash: hashPw("123456", "u_demo"), role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), createdAt: now.toISOString(), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
+    { id: "u1", organizationId: ORG, name: "Robson Alex", email: "robsonalexdev@gmail.com", username: "admin", password: "320809eu", role: "owner", title: "CEO", color: "chart-1", status: "ativo", workHours: "08:00–19:00", goal: 15000, achieved: 0, lastSeen: ago(1), kind: "platform", planId: "whitelabel" },
+    { id: "u_demo", organizationId: "org_demo", name: "Ana Souza", email: "ana@estudioana.com.br", username: "demo", password: "123456", role: "manager", title: "Dona da conta", color: "chart-4", status: "ativo", workHours: "09:00–18:00", goal: 8000, achieved: 0, lastSeen: ago(12), createdAt: now.toISOString(), kind: "customer", planId: "trial", trialEndsAt: new Date(t + 2 * 86_400_000).toISOString(), dailyProspectUsed: 0, dailyProspectDate: now.toISOString().slice(0, 10), companyName: "Estúdio Ana", phone: "+55 11 98888-0001" },
   ];
 
   const mkAgent = (a: Partial<Agent> & Pick<Agent, "id" | "name" | "role">): Agent => ({
@@ -400,7 +399,7 @@ export function createSeed(now = new Date()): DB {
   }
 
   return {
-    version: 13,
+    version: 12,
     organization: { id: ORG, name: "Info Tech Ltda", slug: "info-tech", industry: "Agência de Marketing & Tecnologia B2B", timezone: "America/Sao_Paulo", document: "12.345.678/0001-90", plan: "Scale", createdAt: days(180) },
     currentUserId: "u1",
     users,
@@ -571,7 +570,6 @@ export function createCustomerSeed(owner: User): DB {
   db.webhooks = [];
   db.webhookLogs = [];
   db.apiTokens = [];
-  db.providers = [];
   db.aiUsage = [];
   db.helenaMessages = [];
   db.lgpdRequests = [];
@@ -586,8 +584,7 @@ export function createCustomerSeed(owner: User): DB {
   db.missionEvents = [];
   db.abExperiments = [];
   db.invoices = [];
-  db.invoices = [];
-  db.sessions = [];
+  db.sessions = [{ id: "ss1", device: "Este navegador", ip: "", location: "", lastActive: now, current: true }];
   db.salesFlow = { ...defaultSalesFlow(), teamUserIds: [owner.id] };
   db.connections = [{
     id: "wa_agency",
@@ -621,7 +618,17 @@ export function createCustomerSeed(owner: User): DB {
   db.templates.forEach((t) => { t.organizationId = orgId; });
   db.automations = liveMapsAutomations(orgId);
   db.serviceOffers = liveServiceOffers(orgId);
-  db.memories = [];
+  db.memories = db.memories.map((m) => ({
+    ...m,
+    organizationId: orgId,
+    content: m.content
+      .replace(/Info Tech Ltda/gi, company)
+      .replace(/Robson Alex/gi, owner.name)
+      .replace(/Robson/gi, owner.name.split(" ")[0] || owner.name),
+    source: owner.name,
+    createdAt: now,
+    updatedAt: now,
+  }));
   applyDevTeamGate(db, owner.planId, owner.kind);
   return db;
 }

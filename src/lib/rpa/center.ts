@@ -3,7 +3,7 @@ import type {
 } from "@/lib/types";
 import { currentUser, getDB, nowISO, uid, update } from "@/lib/store";
 import { isOptedOut } from "@/lib/whatsapp/antiban";
-import { menuProposalFollowupText, nextBusinessTime } from "@/lib/helena/sales-flow";
+import { nextBusinessTime } from "@/lib/helena/sales-flow";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
 import { diagnoseLead } from "@/lib/helena/diagnose";
 
@@ -127,20 +127,17 @@ export function followupDueAt(hours = 24) {
 
 export function scheduleFollowup(contact: Contact, kind: "preco_alto" | "sem_resposta" | "pedido_retorno" | "objecao", fact: string) {
   if (isOptedOut(contact)) return null;
-  const menuOffer = getDB().serviceOffers.find((offer) => offer.id === "svc_menu_online" && offer.active);
   const text =
     kind === "preco_alto"
       ? `${contact.name}, 1 cliente novo no mês que hoje vai pro concorrente no Google já paga o projeto. Sem pressão: 10 minutos e você decide.`
       : kind === "pedido_retorno"
         ? `${contact.name}, como combinamos: ainda faz sentido uns 10 minutos pra eu te mostrar a prévia?`
-        : menuOffer
-          ? menuProposalFollowupText(contact.name, menuOffer.name, menuOffer.price)
-          : `${contact.name}, conseguiu avaliar a proposta? Se não fez sentido para você, tudo bem. Quer conversar sobre o próximo passo?`;
+        : `${contact.name}, só passando: a prévia continua no ar se quiser ver com calma. Prefere terça 10h ou quinta 16h?`;
   return enqueueRpa({
     kind: "followup",
     contactId: contact.id,
     idempotencyKey: `followup:${kind}:${contact.id}`,
-    runAt: followupDueAt(kind === "sem_resposta" ? 24 : 22),
+    runAt: followupDueAt(kind === "sem_resposta" ? 48 : 22),
     payload: { kind, fact, text, phone: contact.phone },
   });
 }
@@ -301,9 +298,8 @@ export function maybeEnqueueRadar() {
 
 export function maybeEnqueueSilenceFollowups() {
   const db = getDB();
-  const cutoff = Date.now() - 24 * 3600_000;
+  const cutoff = Date.now() - 48 * 3600_000;
   for (const conv of db.conversations) {
-    if (conv.flow) continue;
     const contact = db.contacts.find((c) => c.id === conv.contactId);
     if (!contact || isOptedOut(contact)) continue;
     const lastAgent = [...conv.messages].reverse().find((m) => m.from === "agent" || m.from === "helena");

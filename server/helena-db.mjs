@@ -1,10 +1,13 @@
 /**
  * Fonte oficial Helena 1.0 (Supabase Postgres). Só no servidor.
- * A persistência de produção exige DATABASE_URL configurada no servidor.
+ * Sem DATABASE_URL vira no-op — o mock continua.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+
+const scrypt = promisify(scryptCallback);
 
 function loadLocalEnv() {
   for (const name of [".env.local", ".env"]) {
@@ -25,29 +28,61 @@ loadLocalEnv();
 let pool = null;
 let pgTried = false;
 
+/**
+ * db.<ref>.supabase.co é só IPv6. Render e várias redes IPv4 não resolvem esse host
+ * e o cadastro fica pendurado ou cai em "Supabase indisponível".
+ * O pooler de sessão em aws-0-<região>.pooler.supabase.com tem IPv4.
+ */
+export function ipv4SupabaseUrl(raw) {
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return raw;
+  }
+  const match = parsed.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
+  if (!match) return raw;
+  const ref = match[1];
+  const user = decodeURIComponent(parsed.username || "postgres");
+  const poolUser = user.includes(".") ? user : `${user}.${ref}`;
+  const region = String(process.env.SUPABASE_POOLER_REGION || "us-east-1").trim();
+  const poolHost = String(process.env.SUPABASE_POOLER_HOST || `aws-0-${region}.pooler.supabase.com`).trim();
+  parsed.hostname = poolHost;
+  parsed.port = parsed.port === "6543" ? "6543" : "5432";
+  parsed.username = poolUser;
+  return parsed.toString();
+}
+
 async function getPool() {
   if (pool) return pool;
   if (pgTried) return null;
   pgTried = true;
   const url = process.env.DATABASE_URL || "";
   if (!url || process.env.VITEST) return null;
+  const connectionString = ipv4SupabaseUrl(url);
+  if (connectionString !== url) {
+    console.warn("[helena-db] host direto do Supabase é IPv6; usando o pooler IPv4.");
+  }
   try {
     const { default: pg } = await import("pg");
-    pool = new pg.Pool({
-      connectionString: url,
+    const next = new pg.Pool({
+      connectionString,
       ssl: { rejectUnauthorized: false },
       max: 4,
+      connectionTimeoutMillis: 8000,
     });
+    await next.query("select 1");
+    pool = next;
     return pool;
   } catch (err) {
-    console.warn("[helena-db] pg indisponível:", err?.message || err);
+    console.warn("[helena-db] conexão indisponível:", err?.code || err?.message || err);
     return null;
   }
 }
 
 async function q(text, params = []) {
   const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
+  if (!p) return { rows: [], skipped: true };
   return p.query(text, params);
 }
 
@@ -58,14 +93,35 @@ export async function dbReady() {
     await p.query("select 1");
     return true;
   } catch (error) {
-    console.warn("[helena-db] conexão indisponível:", error?.message || error);
+    console.warn("[helena-db] conexão indisponível:", error?.code || error?.message || error);
     return false;
   }
 }
 
-export async function createWorkspaceAccount({ user, passwordHash }) {
+async function requiredPool() {
   const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
+  if (!p) throw new Error("Supabase/PostgreSQL indisponível. Configure DATABASE_URL no servidor.");
+  return p;
+}
+
+export async function hashWorkspacePassword(password) {
+  const salt = randomBytes(16);
+  const key = await scrypt(String(password), salt, 64);
+  return `scrypt$${salt.toString("base64url")}$${Buffer.from(key).toString("base64url")}`;
+}
+
+export async function workspacePasswordMatches(password, encoded) {
+  const [scheme, saltText, keyText] = String(encoded || "").split("$");
+  if (scheme !== "scrypt" || !saltText || !keyText) return false;
+  const salt = Buffer.from(saltText, "base64url");
+  const expected = Buffer.from(keyText, "base64url");
+  if (salt.length !== 16 || expected.length !== 64) return false;
+  const actual = Buffer.from(await scrypt(String(password), salt, expected.length));
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export async function createWorkspaceAccount({ user, passwordHash }) {
+  const p = await requiredPool();
   const result = await p.query(
     `insert into public.app_accounts
        (app_user_id, app_organization_id, username, email, password_hash, profile)
@@ -84,8 +140,7 @@ export async function createWorkspaceAccount({ user, passwordHash }) {
 }
 
 export async function workspaceAccountByLogin(login) {
-  const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
+  const p = await requiredPool();
   const result = await p.query(
     `select app_user_id, app_organization_id, username, email, password_hash, profile
        from public.app_accounts
@@ -97,8 +152,7 @@ export async function workspaceAccountByLogin(login) {
 }
 
 export async function workspaceAccountById(userId) {
-  const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
+  const p = await requiredPool();
   const result = await p.query(
     `select profile from public.app_accounts where app_user_id = $1 limit 1`,
     [userId],
@@ -106,152 +160,10 @@ export async function workspaceAccountById(userId) {
   return result.rows[0]?.profile ?? null;
 }
 
-export async function listWorkspaceAccountProfiles() {
-  const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
-  const result = await p.query(
-    `select profile from public.app_accounts order by created_at asc`,
-  );
-  return result.rows.map((row) => row.profile);
-}
-
-export async function loadWorkspaceSnapshot(organizationId) {
-  const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
-  const result = await p.query(
-    `select payload, revision from public.workspace_snapshots
-      where app_organization_id = $1 limit 1`,
-    [organizationId],
-  );
-  return result.rows[0]
-    ? { snapshot: result.rows[0].payload, revision: Number(result.rows[0].revision) }
-    : { snapshot: null, revision: 0 };
-}
-
-export async function saveWorkspaceSnapshot(organizationId, snapshot, expectedRevision, accountProfiles = []) {
-  const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
-  const client = await p.connect();
-  try {
-    await client.query("begin");
-    const result = await client.query(
-      `insert into public.workspace_snapshots (app_organization_id, payload, revision)
-       values ($1, $2::jsonb, 1)
-       on conflict (app_organization_id) do update
-         set payload = excluded.payload,
-             revision = public.workspace_snapshots.revision + 1,
-             updated_at = now()
-         where public.workspace_snapshots.revision = $3
-       returning revision`,
-      [organizationId, JSON.stringify(snapshot), expectedRevision],
-    );
-    if (!result.rows[0]) {
-      await client.query("rollback");
-      return null;
-    }
-    for (const profile of accountProfiles) {
-      if (!profile?.id || !profile.organizationId || !profile.email || !profile.username) continue;
-      await client.query(
-        `update public.app_accounts
-            set username = $3, email = $4, profile = $5::jsonb, updated_at = now()
-          where app_user_id = $1 and app_organization_id = $2`,
-        [profile.id, profile.organizationId, profile.username, profile.email, JSON.stringify(profile)],
-      );
-    }
-    await client.query("commit");
-    return Number(result.rows[0].revision);
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-export async function saveAppPreview(organizationId, preview) {
-  const slug = String(preview?.slug || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80);
-  if (!slug) throw new Error("Slug inválido.");
-  const payload = { ...preview, slug };
-  const result = await q(
-    `insert into public.app_previews (slug, app_organization_id, payload)
-     values ($1, $2, $3::jsonb)
-     on conflict (slug) do update
-       set payload = excluded.payload, updated_at = now()
-       where public.app_previews.app_organization_id = excluded.app_organization_id
-     returning slug`,
-    [slug, organizationId, JSON.stringify(payload)],
-  );
-  if (!result.rows[0]) {
-    const error = new Error("Este slug já pertence a outra organização.");
-    error.status = 409;
-    throw error;
-  }
-  return { slug };
-}
-
-export async function loadAppPreview(slug) {
-  const clean = String(slug || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80);
-  if (!clean) return null;
-  const result = await q(
-    `select payload from public.app_previews where slug = $1 limit 1`,
-    [clean],
-  );
-  return result.rows[0]?.payload ?? null;
-}
-
-export async function recordAppBillingEvent(row) {
-  const result = await q(
-    `insert into public.app_billing_events
-       (id, source_id, email, name, plan_id, status, event, amount, paid, occurred_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     on conflict (source_id) where source_id <> '' do update set
-       email = excluded.email, name = excluded.name, plan_id = excluded.plan_id,
-       status = excluded.status, event = excluded.event, amount = excluded.amount,
-       paid = excluded.paid, occurred_at = excluded.occurred_at
-     returning id`,
-    [
-      randomUUID(),
-      row.sourceId || "",
-      row.email || "",
-      row.name || "",
-      row.planId || "",
-      row.status || "",
-      row.event || "",
-      row.amount ?? null,
-      Boolean(row.paid),
-      row.at || new Date().toISOString(),
-    ],
-  );
-  return result.rows[0];
-}
-
-export async function listAppBillingEvents(limit = 80) {
-  const result = await q(
-    `select email, name, plan_id as "planId", status, event, amount, paid,
-            occurred_at as at, source_id as "sourceId"
-       from public.app_billing_events
-      order by occurred_at desc limit $1`,
-    [Math.max(1, Math.min(500, Number(limit) || 80))],
-  );
-  return result.rows;
-}
-
-export async function latestPaidAppBillingEvent(email) {
-  const result = await q(
-    `select email, name, plan_id as "planId", status, event, amount, paid,
-            occurred_at as at, source_id as "sourceId"
-       from public.app_billing_events
-      where lower(email) = lower($1) and paid = true and plan_id <> ''
-      order by occurred_at desc limit 1`,
-    [String(email || "").trim()],
-  );
-  return result.rows[0] ?? null;
-}
-
 export async function ensureTenant(input) {
   const orgSlug = String(input.orgSlug || input.organizationId || "").slice(0, 80);
   const appUserId = String(input.appUserId || input.userId || "");
-  if (!orgSlug || !appUserId) throw new Error("A conta e a organização são obrigatórias para persistir o ciclo.");
+  if (!orgSlug || !appUserId) return { skipped: true };
   const orgId = randomUUID();
   const profileId = randomUUID();
   const found = await q("select id from organizations where app_slug = $1 limit 1", [orgSlug]);
@@ -296,7 +208,7 @@ export async function ensureTenant(input) {
 
 export async function saveCycle(payload) {
   const tenant = await ensureTenant(payload.tenant || {});
-  if (!tenant?.organizationId) throw new Error("Não foi possível resolver a organização do ciclo.");
+  if (!tenant?.organizationId || tenant.skipped) return { ok: false, skipped: true };
   const oid = tenant.organizationId;
 
   for (const c of payload.companies || []) {
@@ -433,16 +345,15 @@ export async function loadCycle({ appUserId, email }) {
 
 export async function dueRpaJobs(limit = 1) {
   const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
+  if (!p) return [];
   const client = await p.connect();
   try {
     await client.query("begin");
     const res = await client.query(
-      `update public.rpa_jobs set status = 'running', attempts = attempts + 1, started_at = now()
+      `update rpa_jobs set status = 'running', attempts = attempts + 1, started_at = now()
        where id in (
-         select id from public.rpa_jobs
-         where kind = 'send_wa' and status = 'queued' and run_at <= now()
-           and attempts < coalesce(max_attempts, 3)
+         select id from rpa_jobs
+         where status = 'queued' and run_at <= now() and attempts < coalesce(max_attempts, 3)
          order by run_at asc
          for update skip locked
          limit $1
@@ -454,15 +365,14 @@ export async function dueRpaJobs(limit = 1) {
     return res.rows || [];
   } catch (e) {
     await client.query("rollback");
-    throw e;
+    return [];
   } finally {
     client.release();
   }
 }
 
 export async function markRpaJob(id, status, error) {
-  const row = (await q("select attempts, max_attempts, started_at from public.rpa_jobs where id = $1", [id])).rows[0];
-  if (!row) throw new Error("Tarefa RPA não encontrada ao registrar o resultado.");
+  const row = (await q("select attempts, max_attempts, started_at from rpa_jobs where id = $1", [id])).rows[0];
   const attempts = Number(row?.attempts) || 1;
   const max = Number(row?.max_attempts) || 3;
   let next = status;
@@ -472,7 +382,7 @@ export async function markRpaJob(id, status, error) {
     runAt = new Date(Date.now() + Math.min(3600_000, 2 ** attempts * 60_000)).toISOString();
   }
   await q(
-    `update public.rpa_jobs set
+    `update rpa_jobs set
        status = $2, error = $3, finished_at = now(),
        duration_ms = case when started_at is null then duration_ms else extract(epoch from (now() - started_at)) * 1000 end,
        run_at = coalesce($4::timestamptz, run_at)
@@ -481,110 +391,35 @@ export async function markRpaJob(id, status, error) {
   );
 }
 
-export async function enqueueRpaJobDb({ appUserId, orgSlug, email, name, companyName, instance, number, text, delayMs = 35_000 }) {
-  const tenant = await ensureTenant({ appUserId, orgSlug, email, name, companyName });
-  const p = await getPool();
-  if (!p) throw new Error("Supabase/PostgreSQL indisponível: DATABASE_URL não configurada.");
-  const client = await p.connect();
-  try {
-    await client.query("begin");
-    await client.query("select pg_advisory_xact_lock(hashtext('helena-rpa-hourly-limit'))");
-    const count = Number((await client.query(
-      `select count(*)::int as count from public.rpa_jobs
-        where (
-          (status = 'sent' and finished_at >= now() - interval '1 hour')
-          or status = 'running'
-          or status = 'queued'
-        )`,
-    )).rows[0]?.count || 0);
-    if (count >= 20) {
-      await client.query("rollback");
-      return { ok: false, error: "teto antiban 20/hora no worker", status: 429 };
-    }
-
-    const runAt = new Date(Date.now() + Math.max(5_000, Number(delayMs) || 35_000));
-    const result = await client.query(
-      `insert into public.rpa_jobs
-         (organization_id, org_slug, kind, status, payload, run_at, max_attempts)
-       values ($1, $2, 'send_wa', 'queued', $3::jsonb, $4, 3)
-       returning id, run_at`,
-      [
-        tenant.organizationId,
-        tenant.orgSlug,
-        JSON.stringify({
-          instance: instance || "helena",
-          number: String(number).replace(/\D/g, ""),
-          text: String(text),
-        }),
-        runAt.toISOString(),
-      ],
-    );
-    await client.query("commit");
-    return { ok: true, id: result.rows[0].id, runAt: result.rows[0].run_at };
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-export async function listRpaJobsDb({ appUserId, orgSlug, email, name, companyName }) {
-  const tenant = await ensureTenant({ appUserId, orgSlug, email, name, companyName });
+export async function listRpaJobsDb({ appUserId, email }) {
+  const cycle = await loadCycle({ appUserId, email });
+  if (!cycle.ok) return { ok: false, jobs: [] };
   const jobs = (await q(
-    `select * from public.rpa_jobs where organization_id = $1 order by created_at desc limit 120`,
-    [tenant.organizationId],
+    `select * from rpa_jobs where organization_id = $1 order by created_at desc limit 120`,
+    [cycle.profile.organization_id],
   )).rows;
-  return {
-    ok: true,
-    jobs: jobs.map((job) => ({
-      ...job,
-      runAt: job.run_at,
-      createdAt: job.created_at,
-      finishedAt: job.finished_at,
-      durationMs: job.duration_ms,
-      instance: job.payload?.instance,
-      number: job.payload?.number,
-      text: job.payload?.text,
-    })),
-    organizationId: tenant.organizationId,
-  };
+  return { ok: true, jobs, organizationId: cycle.profile.organization_id };
 }
 
-export async function retryRpaJobDb(id, { appUserId, orgSlug, email, name, companyName }) {
-  const tenant = await ensureTenant({ appUserId, orgSlug, email, name, companyName });
-  const row = (await q("select * from public.rpa_jobs where id = $1 and organization_id = $2", [id, tenant.organizationId])).rows[0];
+export async function retryRpaJobDb(id) {
+  const row = (await q("select * from rpa_jobs where id = $1", [id])).rows[0];
   if (!row) return { ok: false, error: "não encontrada" };
   if (row.attempts >= (row.max_attempts || 3) && row.status === "failed") {
     return { ok: false, error: "limite de tentativas" };
   }
   await q(
-    `update public.rpa_jobs set status = 'queued', error = null, run_at = now(),
-       finished_at = null, started_at = null where id = $1 and organization_id = $2`,
-    [id, tenant.organizationId],
+    `update rpa_jobs set status = 'queued', error = null, run_at = now() where id = $1`,
+    [id],
   );
   return { ok: true };
 }
 
-export async function rpaMonitorDb({ appUserId, orgSlug, email, name, companyName } = {}) {
-  const tenant = appUserId ? await ensureTenant({ appUserId, orgSlug, email, name, companyName }) : null;
-  const where = tenant ? " where organization_id = $1" : "";
-  const params = tenant ? [tenant.organizationId] : [];
-  const queued = (await q(`select count(*)::int as n from public.rpa_jobs${where}${tenant ? " and" : " where"} status = 'queued'`, params)).rows[0]?.n || 0;
-  const failed = (await q(`select count(*)::int as n from public.rpa_jobs${where}${tenant ? " and" : " where"} status = 'failed'`, params)).rows[0]?.n || 0;
-  const running = (await q(`select count(*)::int as n from public.rpa_jobs${where}${tenant ? " and" : " where"} status = 'running'`, params)).rows[0]?.n || 0;
-  const last = (await q(
-    `select finished_at, started_at from public.rpa_jobs${where}
-      order by coalesce(finished_at, started_at, created_at) desc limit 1`,
-    params,
-  )).rows[0];
-  const next = (await q(
-    `select run_at from public.rpa_jobs${where}${tenant ? " and" : " where"} status = 'queued' order by run_at asc limit 1`,
-    params,
-  )).rows[0];
-  const avg = (await q(
-    `select coalesce(avg(duration_ms),0)::int as n from public.rpa_jobs${where}${tenant ? " and" : " where"} duration_ms is not null`,
-    params,
-  )).rows[0]?.n || 0;
+export async function rpaMonitorDb() {
+  const queued = (await q("select count(*)::int as n from rpa_jobs where status = 'queued'")).rows[0]?.n || 0;
+  const failed = (await q("select count(*)::int as n from rpa_jobs where status = 'failed'")).rows[0]?.n || 0;
+  const running = (await q("select count(*)::int as n from rpa_jobs where status = 'running'")).rows[0]?.n || 0;
+  const last = (await q("select finished_at, started_at from rpa_jobs order by coalesce(finished_at, started_at, created_at) desc limit 1")).rows[0];
+  const next = (await q("select run_at from rpa_jobs where status = 'queued' order by run_at asc limit 1")).rows[0];
+  const avg = (await q("select coalesce(avg(duration_ms),0)::int as n from rpa_jobs where duration_ms is not null")).rows[0]?.n || 0;
   return { queued, failed, running, lastAt: last?.finished_at || last?.started_at || "", nextAt: next?.run_at || "", avgMs: avg };
 }

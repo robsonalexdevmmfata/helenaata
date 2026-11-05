@@ -1,24 +1,13 @@
 import type { QuoteRequest, SaasPlanId, User } from "@/lib/types";
-import {
-  getDB,
-  listAccounts,
-  nowISO,
-  patchUserEverywhere,
-  provisionCustomerAccount,
-  syncDevTeamForAccount,
-  uid,
-  update,
-} from "@/lib/store";
+import { getDB, listAccounts, nowISO, patchUserEverywhere, provisionCustomerAccount, syncDevTeamForAccount, uid, update } from "@/lib/store";
 import { planAllowsDevTeam } from "@/lib/seed";
 import { hashPw } from "@/lib/security/secrets";
-import { api } from "@/lib/backend";
 
 export const TRIAL_DAYS = 2;
 export const TRIAL_DAILY_PROSPECTS = 30;
 /** Teto do usuário comum (Impulso e Máquina). Freemium fica em 30. */
 export const PAID_DAILY_PROSPECTS = 150;
-export const CAKTO_NOTE =
-  "Pix e cartão na Cakto. Impulso (plano 1) ou Máquina (plano 2, Time Dev). Sem plano depois do trial a conta trava.";
+export const CAKTO_NOTE = "Pix e cartão na Cakto. Impulso (plano 1) ou Máquina (plano 2, Time Dev). Sem plano depois do trial a conta trava.";
 
 export const CAKTO_CHECKOUT = {
   impulso: "https://pay.cakto.com.br/kmb4vg8_1261686",
@@ -93,28 +82,6 @@ export const SAAS_PLANS: SaasPlan[] = [
   },
 ];
 
-export async function registerCustomerWithServer(input: {
-  name: string;
-  email: string;
-  password: string;
-  company: string;
-  phone?: string;
-}): Promise<{ ok: true; user: User } | { ok: false; message: string }> {
-  try {
-    const response = await api<{ user: User }>("/api/auth/register", {
-      body: input,
-      timeoutMs: 15000,
-    });
-    return { ok: true, user: response.user };
-  } catch (error) {
-    return {
-      ok: false,
-      message:
-        error instanceof Error ? error.message : "Não foi possível criar a conta no Supabase.",
-    };
-  }
-}
-
 export function caktoCheckoutUrl(
   planId: "impulso" | "maquina",
   customer?: { name?: string; email?: string; phone?: string },
@@ -158,18 +125,15 @@ export function planOf(user?: User | null): SaasPlan | undefined {
 export function isFreemium(user?: User | null) {
   if (!user || isPlatformAdmin(user)) return false;
   if (user.lifetimeAccess) return false;
-  if (user.planId === "impulso" || user.planId === "maquina" || user.planId === "whitelabel")
-    return false;
+  if (user.planId === "impulso" || user.planId === "maquina" || user.planId === "whitelabel") return false;
   return true;
 }
 
 export function dailyLimitFor(user?: User | null) {
   if (!user || isPlatformAdmin(user)) return 10_000;
-  if (user.dailyProspectLimit != null && user.dailyProspectLimit > 0)
-    return user.dailyProspectLimit;
+  if (user.dailyProspectLimit != null && user.dailyProspectLimit > 0) return user.dailyProspectLimit;
   if (user.planId === "whitelabel") return 9999;
-  if (user.planId === "impulso" || user.planId === "maquina" || user.lifetimeAccess)
-    return PAID_DAILY_PROSPECTS;
+  if (user.planId === "impulso" || user.planId === "maquina" || user.lifetimeAccess) return PAID_DAILY_PROSPECTS;
   return TRIAL_DAILY_PROSPECTS;
 }
 
@@ -217,21 +181,14 @@ export function prospectsUsedToday(user?: User | null, now = new Date()) {
   return user.dailyProspectUsed ?? 0;
 }
 
-export function reserveProspects(
-  requested: number,
-  now = new Date(),
-): { ok: boolean; allowed: number; message: string } {
+export function reserveProspects(requested: number, now = new Date()): { ok: boolean; allowed: number; message: string } {
   const db = getDB();
   const user = db.users.find((u) => u.id === db.currentUserId);
   if (!user || isPlatformAdmin(user)) {
     return { ok: true, allowed: requested, message: "ok" };
   }
   if (mustSubscribe(user)) {
-    return {
-      ok: false,
-      allowed: 0,
-      message: "Seu trial de 2 dias acabou. Escolha um plano para continuar prospectando.",
-    };
+    return { ok: false, allowed: 0, message: "Seu trial de 2 dias acabou. Escolha um plano para continuar prospectando." };
   }
   if (user.status !== "ativo") {
     return { ok: false, allowed: 0, message: "Esta conta está bloqueada. Fale com o suporte." };
@@ -240,11 +197,7 @@ export function reserveProspects(
   const used = prospectsUsedToday(user, now);
   const remaining = Math.max(0, limit - used);
   if (remaining <= 0) {
-    return {
-      ok: false,
-      allowed: 0,
-      message: `Limite diário de ${limit} prospecções atingido. Volte amanhã ou suba de plano.`,
-    };
+    return { ok: false, allowed: 0, message: `Limite diário de ${limit} prospecções atingido. Volte amanhã ou suba de plano.` };
   }
   const allowed = Math.min(requested, remaining);
   update((d) => {
@@ -260,10 +213,9 @@ export function reserveProspects(
   return {
     ok: true,
     allowed,
-    message:
-      allowed < requested
-        ? `Restavam ${allowed} do limite diário de ${limit}. Prospecção ajustada.`
-        : "ok",
+    message: allowed < requested
+      ? `Restavam ${allowed} do limite diário de ${limit}. Prospecção ajustada.`
+      : "ok",
   };
 }
 
@@ -279,27 +231,16 @@ export function registerCustomer(input: {
   company: string;
   phone?: string;
 }): { ok: boolean; message: string; userId?: string; evolutionInstance?: string } {
-  if (import.meta.env.MODE !== "test") {
-    return { ok: false, message: "Use o cadastro conectado ao servidor Supabase." };
-  }
   const email = input.email.trim().toLowerCase();
   const username = email.split("@")[0] || "user";
-  if (
-    listAccounts().some(
-      (u) => u.email.toLowerCase() === email || u.username.toLowerCase() === username.toLowerCase(),
-    )
-  ) {
+  if (listAccounts().some((u) => u.email.toLowerCase() === email || u.username.toLowerCase() === username.toLowerCase())) {
     return { ok: false, message: "Já existe uma conta com este e-mail ou usuário." };
   }
-  if (input.password.length < 4)
-    return { ok: false, message: "A senha precisa ter pelo menos 4 caracteres." };
+  if (input.password.length < 4) return { ok: false, message: "A senha precisa ter pelo menos 4 caracteres." };
   const id = uid("u_");
   const now = nowISO();
   const orgId = uid("org_");
-  const evolutionInstance = `h${id
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, 24)}`;
+  const evolutionInstance = `h${id.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24)}`;
   const user = {
     id,
     organizationId: orgId,
@@ -326,12 +267,7 @@ export function registerCustomer(input: {
     phone: input.phone ?? "",
   };
   provisionCustomerAccount(user);
-  return {
-    ok: true,
-    message: "Conta criada. Trial de 2 dias, 30 prospecções por dia.",
-    userId: id,
-    evolutionInstance,
-  };
+  return { ok: true, message: "Conta criada. Trial de 2 dias, 30 prospecções por dia.", userId: id, evolutionInstance };
 }
 
 export async function syncPaidPlanFromCakto(user?: User | null) {
@@ -339,12 +275,14 @@ export async function syncPaidPlanFromCakto(user?: User | null) {
   if (typeof window === "undefined") return;
   if (typeof process !== "undefined" && process.env?.VITEST) return;
   try {
-    const data = await api<{ planId?: string }>("/api/billing/status");
+    const res = await fetch(`/api/billing/status?email=${encodeURIComponent(user.email)}`);
+    if (!res.ok) return;
+    const data = (await res.json()) as { planId?: string };
     if (data.planId === "impulso" || data.planId === "maquina" || data.planId === "whitelabel") {
       if (user.planId !== data.planId) assignPlan(user.id, data.planId);
     }
-  } catch (error) {
-    console.warn("[Billing] Não foi possível sincronizar o plano Cakto:", error);
+  } catch {
+    /* Cakto / servidor fora */
   }
 }
 
@@ -399,12 +337,7 @@ export function setUserActive(userId: string, active: boolean) {
   });
 }
 
-export function submitWhiteLabelQuote(input: {
-  name: string;
-  email: string;
-  company: string;
-  message: string;
-}): QuoteRequest {
+export function submitWhiteLabelQuote(input: { name: string; email: string; company: string; message: string }): QuoteRequest {
   const id = uid("qt_");
   const row: QuoteRequest = {
     id,

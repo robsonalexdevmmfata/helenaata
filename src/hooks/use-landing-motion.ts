@@ -17,6 +17,7 @@ export function useLandingMotion(rootSelector = ".lp") {
       { threshold: 0.12, rootMargin: "0px 0px -6% 0px" },
     );
 
+    root.classList.add("lp-motion-ready");
     const watchReveal = () => {
       root.querySelectorAll<HTMLElement>(".lp-reveal:not(.is-in)").forEach((el) => io.observe(el));
     };
@@ -27,6 +28,7 @@ export function useLandingMotion(rootSelector = ".lp") {
     return () => {
       io.disconnect();
       mo.disconnect();
+      root.classList.remove("lp-motion-ready");
     };
   }, [rootSelector]);
 }

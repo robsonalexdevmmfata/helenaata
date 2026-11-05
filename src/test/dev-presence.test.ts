@@ -2,13 +2,7 @@ import { describe, expect, it } from "vitest";
 import { interpret } from "@/lib/helena/orchestrator";
 import { runTool } from "@/lib/helena/engine";
 import { getDB } from "@/lib/store";
-import {
-  buildSitePreview,
-  isFoodNiche,
-  isPresenceIntent,
-  previewUrl,
-  PUBLIC_SITE_ORIGIN,
-} from "@/lib/dev/presence";
+import { isFoodNiche, isPresenceIntent, previewUrl, PUBLIC_SITE_ORIGIN } from "@/lib/dev/presence";
 
 describe("Time Desenvolvimento IA", () => {
   it("reconhece pedido de restaurante sem site e sem cardápio", () => {
@@ -23,49 +17,40 @@ describe("Time Desenvolvimento IA", () => {
     expect(replies[0]!.card).toBeDefined();
   });
 
-  it("não cria leads ou prévias fictícias quando não há resultado real do Maps", () => {
-    const before = {
-      contacts: getDB().contacts.length,
-      companies: getDB().companies.length,
-      previews: getDB().sitePreviews.length,
-    };
+  it("gera prévias com cardápio, slug e mensagem para o dono", () => {
+    const before = getDB().sitePreviews?.length ?? 0;
     const res = runTool(
       "dev.build_presence",
       { segment: "Restaurantes", city: "Campinas, SP", limit: 3 },
       { actor: "Helena", actorType: "helena", requestedBy: "admin" },
     );
-    expect(res.ok).toBe(false);
-    expect(res.message).toMatch(/busca real do Maps para gerar prévias não é executada em testes/i);
+    expect(res.ok).toBe(true);
     const db = getDB();
-    expect(db.contacts).toHaveLength(before.contacts);
-    expect(db.companies).toHaveLength(before.companies);
-    expect(db.sitePreviews).toHaveLength(before.previews);
-  });
-
-  it("prévia não inventa avaliações, fotos, cardápio ou serviços", () => {
-    const prev = buildSitePreview({
-      organizationId: "org_t",
-      companyId: "c_real",
-      contactId: "p_real",
-      place: {
-        name: "Escritório Real",
-        city: "Bauru, SP",
-        address: "Rua A, 10",
-        phone: "+55 14 99999-1111",
-        contactName: "Contato público",
-      },
-      segment: "Advogados",
-      slug: "escritorio-real",
-    });
-
-    expect(prev.rating).toBe(0);
-    expect(prev.reviewCount).toBe(0);
-    expect(prev.reviews).toEqual([]);
-    expect(prev.photos).toEqual([]);
-    expect(prev.menu).toBeUndefined();
-    expect(prev.services).toBeUndefined();
-    expect(prev.previewPath).toBe("/v/escritorio-real");
+    expect(db.sitePreviews.length).toBe(before + 3);
+    expect(db.teams.some((t) => t.id === "t_dev")).toBe(true);
+    expect(db.agents.filter((a) => a.teamId === "t_dev")).toHaveLength(3);
+    const prev = db.sitePreviews[0]!;
+    expect(prev.menu?.length).toBeGreaterThan(0);
+    expect(prev.previewPath).toMatch(/^\/v\//);
+    const conv = db.conversations.find((c) => c.contactId === prev.contactId);
+    expect(conv?.messages[0]?.text).toMatch(/prévia|proprietár/i);
+    expect(conv?.messages[0]?.text).toContain(previewUrl(prev.slug));
     expect(previewUrl(prev.slug)).toMatch(/^https:\/\/helenaata\.vercel\.app\/v\//);
     expect(PUBLIC_SITE_ORIGIN).toBe("https://helenaata.vercel.app");
+    expect(db.contacts.find((c) => c.id === prev.contactId)?.tags).toEqual(
+      expect.arrayContaining(["#sem-site", "#sem-cardapio"]),
+    );
+  });
+
+  it("nicho sem comida gera site de serviços, não cardápio", () => {
+    const res = runTool(
+      "dev.build_presence",
+      { segment: "Advogados", city: "Bauru, SP", limit: 1 },
+      { actor: "Helena", actorType: "helena", requestedBy: "admin" },
+    );
+    expect(res.ok).toBe(true);
+    const prev = getDB().sitePreviews.find((p) => p.segment === "Advogados");
+    expect(prev?.menu).toBeUndefined();
+    expect(prev?.services?.length).toBeGreaterThan(0);
   });
 });

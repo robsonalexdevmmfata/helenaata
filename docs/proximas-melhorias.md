@@ -19,10 +19,8 @@
 | Benchmark de agentes | Implementado | execuções reais em IA → Agentes |
 | Replay de missão | Implementado | `helena.replay` + Mission Control |
 | Command API HTTP / marketplace / eval lab / e-sign | Não | falta Postgres + auth de sistema; não fingir |
-| Always-on (aba fechada) | Parcial | Worker Render 15s + `rpa_jobs` Postgres; missões ficam no snapshot Supabase |
-| Watchdog | Implementado | `always-on.ts` — fila parada, missão sem evento, WA offline |
 
-SQL: `database/004_intelligence_3.sql` e `database/migrations/006_supabase_workspace_state.sql` no Supabase da Info Tech. O workspace é carregado e persistido no Supabase; o ciclo também mantém sua sincronização às tabelas normalizadas. Impulso R$ 70 / Máquina R$ 140 / cota 30→150 inalterados.
+SQL: `database/004_intelligence_3.sql` no Supabase da Info Tech. O app continua no store + dual-write do ciclo já existente. Impulso R$ 70 / Máquina R$ 140 / cota 30→150 inalterados.
 
 ---
 
@@ -41,7 +39,6 @@ Não altera preços Impulso (R$ 70) / Máquina (R$ 140), limites comerciais nem 
 - Varredura Maps, diagnóstico com score 0–100 e evidência
 - Prévia personalizada e link público (Time Dev no plano Máquina)
 - WhatsApp com antiban e opt-out
-- Workspace persistente no Supabase via snapshot JSONB, sem armazenamento operacional no navegador
 - Ciclo persistente no Supabase (`encontrado` → `diagnosticado` → `preview` → `link_enviado` → `respondeu` / `reuniao`)
 - Fila `rpa_jobs` + worker no Render para disparo com o browser fechado (envio WhatsApp)
 - Expediente RPA ainda **começa quando alguém dispara** (`rpa.run_shift`)
@@ -100,7 +97,7 @@ Tabela `proposals` já existe no Supabase. Falta o fluxo.
 
 ## 5. Relatório diário
 
-Resumo para o dono, números só do Supabase/Postgres.
+Resumo para o dono, números só do Postgres (não teatro do localStorage).
 
 - Leads encontrados, diagnósticos, prévias, mensagens, respostas, reuniões
 - Falhas e tarefas pendentes

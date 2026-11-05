@@ -1,6 +1,6 @@
 import type { DB, User } from "@/lib/types";
 
-/** Hash legado para fixtures e importação; autenticação de produção usa scrypt no servidor. */
+/** Não é bcrypt. Impede leitura casual da senha no localStorage. */
 export function hashPw(plain: string, userId: string) {
   const s = `helena.pw.v1:${userId}:${plain}`;
   let h = 2166136261;

@@ -14,7 +14,7 @@ export function alwaysOnTruth() {
       "tickRpaJobs local: radar, follow-up e diagnóstico só com o app aberto — até o worker cobrir o kind.",
       "Closer automática no número compartilhado (tick no layout).",
     ],
-    note: "Always-on de verdade é o Render + Postgres. A aba não é o motor. Missões e dados do workspace ficam no Supabase.",
+    note: "Always-on de verdade é o Render + Postgres. A aba não é o motor. Missão no localStorage não sobrevive sozinha a outro dispositivo.",
   };
 }
 

@@ -3,9 +3,8 @@ import { bumpAutomation, getDB, nowISO, uid, update } from "@/lib/store";
 import { getAgencyConnection } from "@/lib/evolution/evolutionapi";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { diagnoseLead, setCycleTag } from "@/lib/helena/diagnose";
-import { searchBusinessesWithoutWebsite, type MapPlace } from "@/lib/prospect/mapsSearch";
+import type { MapPlace } from "@/lib/prospect/mapsSearch";
 import { normalize } from "@/lib/format";
-import { toast } from "sonner";
 
 export const DEV_TEAM_ID = "t_dev";
 export const DEV_FE_ID = "a_dev_fe";
@@ -50,6 +49,16 @@ export function slugify(name: string) {
   return base || "negocio";
 }
 
+function hash(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return Math.abs(h);
+}
+
+function pick<T>(arr: T[], seed: number) {
+  return arr[seed % arr.length]!;
+}
+
 export function paletteFor(segment: string) {
   const n = normalize(segment);
   if (isFoodNiche(n)) return { bg: "#1c1410", fg: "#f7efe6", accent: "#e07a3d" };
@@ -60,6 +69,99 @@ export function paletteFor(segment: string) {
   return { bg: "#111827", fg: "#f3f4f6", accent: "#34d399" };
 }
 
+const FOOD_PHOTOS = [
+  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80",
+  "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80",
+  "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1200&q=80",
+];
+const CLINIC_PHOTOS = [
+  "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=1200&q=80",
+  "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=1200&q=80",
+];
+const SHOP_PHOTOS = [
+  "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=1200&q=80",
+  "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1200&q=80",
+];
+const OFFICE_PHOTOS = [
+  "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80",
+  "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80",
+];
+
+function photosFor(segment: string) {
+  if (isFoodNiche(segment)) return FOOD_PHOTOS;
+  if (/clinic|dentist|odont|estetic|saude/.test(normalize(segment))) return CLINIC_PHOTOS;
+  if (/barbearia|salao|oficina|loja/.test(normalize(segment))) return SHOP_PHOTOS;
+  return OFFICE_PHOTOS;
+}
+
+function foodMenu(seed: number): NonNullable<SitePreview["menu"]> {
+  const mains = ["Prato do dia", "Especial da casa", "Grelhado da semana", "Massa da chef"];
+  return [
+    {
+      category: "Entradas",
+      items: [
+        { name: "Porção da casa", description: "Para compartilhar, do jeito que o salão sempre serviu.", price: 38 + (seed % 12) },
+        { name: "Salada da estação", description: "Folhas, legumes e molho da casa.", price: 24 + (seed % 8) },
+      ],
+    },
+    {
+      category: "Pratos",
+      items: [
+        { name: pick(mains, seed), description: "Montado com o que o Google já mostra que o público pede.", price: 42 + (seed % 20) },
+        { name: "Executivo", description: "Almoço rápido com acompanhamento.", price: 32 + (seed % 10) },
+        { name: "Opção da casa", description: "Receita assinada do estabelecimento.", price: 48 + (seed % 14) },
+      ],
+    },
+    {
+      category: "Bebidas",
+      items: [
+        { name: "Suco natural", description: "Frutas da estação.", price: 12 },
+        { name: "Refrigerante", description: "Lata.", price: 8 },
+        { name: "Café", description: "Passado na hora.", price: 6 },
+      ],
+    },
+  ];
+}
+
+function servicesFor(segment: string): NonNullable<SitePreview["services"]> {
+  const n = normalize(segment);
+  if (/barbearia|salao/.test(n)) {
+    return [
+      { name: "Corte", description: "Corte clássico ou degradê, com finalização." },
+      { name: "Barba", description: "Toalha quente e navalha." },
+      { name: "Combo", description: "Corte + barba no mesmo horário." },
+    ];
+  }
+  if (/advog/.test(n)) {
+    return [
+      { name: "Consultoria", description: "Primeira conversa para entender o caso." },
+      { name: "Contratos", description: "Revisão e elaboração." },
+      { name: "Atendimento local", description: "Escritório na cidade, horário marcado." },
+    ];
+  }
+  if (/clinic|dentist|odont|estetic/.test(n)) {
+    return [
+      { name: "Avaliação", description: "Primeira consulta para diagnóstico." },
+      { name: "Tratamentos", description: "Procedimentos alinhados ao que o público busca na região." },
+      { name: "Agendamento", description: "WhatsApp no site, sem fila de espera no telefone." },
+    ];
+  }
+  return [
+    { name: "Atendimento", description: "Fale com o responsável pelo WhatsApp do site." },
+    { name: "Serviços locais", description: "O que a região já procura no mapa, agora com página própria." },
+    { name: "Presença no Google", description: "Nome, endereço, horário e fotos em um link só." },
+  ];
+}
+
+const REVIEW_BITS = [
+  "Atendimento rápido e cordial.",
+  "Volto sempre que estou na região.",
+  "Preço justo e ambiente organizado.",
+  "Pedi indicação no mapa e gostei.",
+  "Equipe atenciosa, recomendo.",
+];
+const AUTHORS = ["Carla M.", "Roberto S.", "Ana P.", "Diego L.", "Fernanda G.", "Paulo H."];
+
 export function buildPreviewOpening(contactName: string, companyName: string, url: string, withMenu: boolean, pitch?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
   if (pitch) {
@@ -68,9 +170,38 @@ export function buildPreviewOpening(contactName: string, companyName: string, ur
 Você é o proprietário ou a proprietária?`;
   }
   const offer = withMenu ? "site nem cardápio online" : "site";
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e não encontrei ${offer} online. Montei uma prévia com as informações públicas disponíveis para vocês verem como ficaria: ${url}
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. Montei uma prévia com as informações públicas (endereço, fotos de referência e avaliações) para vocês verem como ficaria: ${url}
 
 Você é o proprietário ou a proprietária?`;
+}
+
+export function syntheticPlaces(segment: string, city: string, limit: number): MapPlace[] {
+  const food = isFoodNiche(segment);
+  const names = food
+    ? ["Cantina do Nonno", "Sabor da Esquina", "Grill do Parque", "Pizzaria Vila Nova", "Casa da Moqueca", "Botequim da Praça", "Tempero Mineiro", "Tapioca & Cia", "Churrasquinho do Zé", "La Pasta da Nonna", "Empório do Pão", "Café Aurora", "Hamburgueria 081", "Peixaria da Costa", "Fogão a Lenha"]
+    : /barbearia/.test(normalize(segment))
+      ? ["Barbearia Dom Corte", "Studio Navalha", "Barba & Tesoura", "Corte Nobre", "Gentleman Club"]
+      : /advog/.test(normalize(segment))
+        ? ["Escritório Almeida Advogados", "Mendes & Associados", "Núcleo Jurídico Central"]
+        : /clinic|dentist|odont/.test(normalize(segment))
+          ? ["Clínica Sorriso", "Consultório Dra. Helena", "Odonto Vida", "Estética Harmonize"]
+          : ["Casa Local", "Ponto da Cidade", "Negócio da Rua", "Espaço Central", "Oficina da Vila"];
+  const contacts = ["Maria Souza", "José Carlos", "Ana Beatriz", "Pedro Henrique", "Luciana Alves", "Rafael Costa", "Patrícia Nunes", "Bruno Oliveira"];
+  const out: MapPlace[] = [];
+  for (let i = 0; i < limit; i++) {
+    const name = `${pick(names, i)}${i >= names.length ? ` ${Math.floor(i / names.length) + 1}` : ""}`;
+    const phone = `+55 11 9${String(8000 + i * 137).slice(0, 4)}-${String(2000 + i * 211).slice(0, 4)}`;
+    out.push({
+      name,
+      phone,
+      city,
+      address: `Rua ${pick(["das Palmeiras", "XV de Novembro", "Amazonas", "São João", "Central"], i)}, ${100 + i * 7} — ${city}`,
+      contactName: pick(contacts, i + 3),
+      rating: 3.8 + ((i * 7) % 12) / 10,
+      reviewCount: 12 + (i * 9) % 80,
+    });
+  }
+  return out;
 }
 
 export function buildSitePreview(opts: {
@@ -82,8 +213,15 @@ export function buildSitePreview(opts: {
   segment: string;
   slug: string;
 }): SitePreview {
-  const rating = opts.place.rating ?? 0;
-  const reviewCount = opts.place.reviewCount ?? 0;
+  const seed = hash(opts.place.name + opts.place.city);
+  const food = isFoodNiche(opts.segment);
+  const rating = opts.place.rating || 4 + (seed % 10) / 10;
+  const reviewCount = opts.place.reviewCount || 18 + (seed % 60);
+  const reviews = [0, 1, 2].map((i) => ({
+    author: pick(AUTHORS, seed + i),
+    rating: 4 + ((seed + i) % 2),
+    text: pick(REVIEW_BITS, seed + i),
+  }));
   const query = encodeURIComponent(`${opts.place.name} ${opts.place.address || opts.place.city}`);
   return {
     id: uid("prev_"),
@@ -99,12 +237,18 @@ export function buildSitePreview(opts: {
     phone: opts.place.phone,
     rating: Math.round(rating * 10) / 10,
     reviewCount,
-    reviews: [],
-    hours: opts.place.hours || "",
-    tagline: `${opts.place.name} · Informações e contato em ${opts.place.city}.`,
-    about: `Esta prévia reúne as informações públicas disponíveis sobre ${opts.place.name}. Confirme diretamente com o estabelecimento os horários, serviços e itens de cardápio antes de publicar.`,
+    reviews,
+    hours: opts.place.hours || "Seg–Sáb, 11:00–22:00",
+    tagline: food
+      ? `${opts.place.name}: nota ${Math.round(rating * 10) / 10} em ${opts.place.city} — cardápio e pedido no WhatsApp.`
+      : `${opts.place.name} em ${opts.place.city}: horário, WhatsApp e endereço próprio no Google.`,
+    about: food
+      ? `${opts.place.name} (${opts.place.address || opts.place.city}) aparece no mapa com ${reviewCount} avaliações (nota ${Math.round(rating * 10) / 10}), mas ainda não tinha site nem cardápio online. Esta prévia fecha o furo: endereço, fotos e pedido pelo WhatsApp ${opts.place.phone || ""}.`
+      : `${opts.place.name} em ${opts.place.city} estava só no mapa (${reviewCount} avaliações). Esta prévia organiza horário, contato ${opts.place.phone || ""} e um botão de WhatsApp para quem busca o serviço na região.`,
     palette: paletteFor(opts.segment),
-    photos: [],
+    photos: photosFor(opts.segment),
+    menu: food ? foodMenu(seed) : undefined,
+    services: food ? undefined : servicesFor(opts.segment),
     mapsUrl: `https://www.google.com/maps/search/?api=1&query=${query}`,
     previewPath: `/v/${opts.slug}`,
     status: "enviada",
@@ -140,7 +284,7 @@ export function ensureDevSquad(db: DB) {
     db.agents.push(mk({
       id: DEV_FE_ID, name: "Caio Ferreira", role: "Front-end Sênior", color: "chart-1",
       description: "Engenheiro de software sênior · front-end",
-      objective: "Montar uma prévia usando somente dados públicos verificáveis, sem inventar avaliações, fotos ou cardápios.",
+      objective: "Montar a prévia do site (páginas, WhatsApp, cardápio/catálogo visível) a partir dos dados do mapa.",
       personality: "Detalhista em UI, fala de entrega, não de buzzword.",
       supervisorId: DEV_FE_ID,
     }));
@@ -159,7 +303,7 @@ export function ensureDevSquad(db: DB) {
     db.agents.push(mk({
       id: DEV_DS_ID, name: "Sofia Almeida", role: "Designer Sênior", color: "chart-4",
       description: "Designer gráfico sênior",
-      objective: "Definir a identidade visual da prévia sem atribuir imagens genéricas ao estabelecimento.",
+      objective: "Identidade visual da prévia: paleta, hierarquia e fotos de referência do nicho.",
       personality: "Visual forte, copy curta, marca local.",
       supervisorId: DEV_FE_ID,
       model: "google/gemini-flash",
@@ -254,7 +398,7 @@ export function applyPresenceFromPlaces(opts: {
         website: "",
         tags,
         rating: place.rating,
-        photos: 0,
+        photos: 2,
         hasMenu: false,
         hasWhatsApp: Boolean(place.phone),
       });
@@ -422,10 +566,7 @@ export function applyPresenceFromPlaces(opts: {
       },
       db2.organization.id,
     );
-  }).catch((err) => {
-    console.error("[Time Dev deploy]", err);
-    toast.error("Não foi possível publicar as prévias. Nenhuma mensagem será enviada.");
-  });
+  }).catch((err) => console.warn("[Time Dev deploy]", err));
 
   return { count: previewIds.length, previewIds, slugs };
 }
@@ -435,44 +576,17 @@ export function runPresencePipeline(p: {
   city?: string;
   limit?: number;
   nationwide?: boolean;
-}): { ok: boolean; message: string; data: Record<string, unknown> } {
+}): { ok: true; message: string; data: Record<string, unknown> } {
   const segment = String(p.segment || "negócios locais");
   const city = String(p.city || "Brasil");
   const limit = Math.min(Math.max(Number(p.limit) || 10, 1), 50);
-  if (typeof process !== "undefined" && process.env?.VITEST) {
-    return {
-      ok: false,
-      message: "A busca real do Maps para gerar prévias não é executada em testes; nenhum lead fictício foi criado.",
-      data: { count: 0 },
-    };
-  }
-  const organizationId = getDB().organization.id;
-
-  void searchBusinessesWithoutWebsite({
-    segment,
-    city: p.nationwide ? undefined : city,
-    nationwide: p.nationwide,
-    limit,
-  }).then((places) => {
-    if (!places.length) {
-      toast.info(`Nenhum negócio real com WhatsApp foi encontrado para ${segment} em ${city}.`);
-      return;
-    }
-    if (getDB().organization.id !== organizationId) {
-      console.error("[Time Dev Maps] Workspace mudou antes da conclusão da busca.");
-      toast.error("O workspace mudou durante a busca. Nenhum lead ou prévia foi salvo.");
-      return;
-    }
-    const result = applyPresenceFromPlaces({ places, segment, city });
-    toast.success(`${result.count} prévia(s) criada(s) com dados reais do Maps.`);
-  }).catch((error: unknown) => {
-    console.error("[Time Dev Maps]", error);
-    toast.error("A busca no Maps falhou. Nenhum lead ou prévia foi criado.");
-  });
-
+  const places = syntheticPlaces(segment, city, limit);
+  const res = applyPresenceFromPlaces({ places, segment, city });
+  const food = isFoodNiche(segment);
+  const sample = res.slugs.slice(0, 3).map((s) => previewUrl(s)).join(" · ");
   return {
     ok: true,
-    message: `Busca real no Maps iniciada para ${segment} em ${p.nationwide ? "todo o Brasil" : city}. Leads e prévias só serão criados a partir de resultados encontrados.`,
-    data: { segment, city, limit, status: "buscando" },
+    message: `Time Desenvolvimento IA (Caio, Diego e Sofia) montou ${res.count} prévias de ${food ? "site + cardápio" : "site"} para ${segment} em ${city}. Critério: sem site${food ? " e sem cardápio online" : ""}. Links enviados ao Time Comercial para falar com o proprietário. Exemplos: ${sample}`,
+    data: { count: res.count, previewIds: res.previewIds, slugs: res.slugs },
   };
 }

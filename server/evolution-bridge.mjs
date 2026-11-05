@@ -3,7 +3,7 @@
  * - Se EVOLUTION_URL apontar para um host real (VPS), o proxy encaminha.
  * - Sem VPS: o mesmo Render responde no formato da Evolution usando Baileys.
  */
-import { getStatus, connect, sendText, logout } from "./whatsapp.mjs";
+import { getStatus, connect, sendText } from "./whatsapp.mjs";
 
 export function remoteEvolutionUrl() {
   const raw = String(process.env.EVOLUTION_URL || process.env.VITE_EVOLUTION_URL || "").trim();
@@ -74,11 +74,6 @@ export async function handleEvolutionLocal(pathname, method, body, send, res) {
       instance: { instanceName: connectMatch[1], state: stateFromBaileys(s.status) },
       qrcode: s.qrCode ? { base64: s.qrCode } : undefined,
     }), true;
-  }
-
-  const logoutMatch = pathname.match(/^\/instance\/logout\/([^/]+)$/);
-  if (logoutMatch && method === "DELETE") {
-    return send(res, 200, await logout()), true;
   }
 
   if (pathname.startsWith("/webhook/") && (method === "GET" || method === "POST")) {

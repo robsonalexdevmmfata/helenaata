@@ -13,6 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { themeBootScript } from "@/lib/theme";
 import { installConsoleShield } from "@/lib/security/shield";
 
 function NotFoundComponent() {
@@ -47,9 +48,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Esta página não carregou
-        </h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Esta página não carregou</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Algo deu errado. Tente novamente ou volte ao início.
         </p>
@@ -81,23 +80,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "HELENA AI · Sistema Operacional Empresarial com IA" },
-      {
-        name: "description",
-        content: "CRM, atendimento, prospecção e agentes de IA coordenados pela Helena.",
-      },
+      { name: "description", content: "CRM, atendimento, prospecção e agentes de IA coordenados pela Helena." },
       { property: "og:title", content: "HELENA AI" },
-      {
-        property: "og:description",
-        content: "CRM, atendimento, prospecção e agentes de IA coordenados pela Helena.",
-      },
+      { property: "og:description", content: "CRM, atendimento, prospecção e agentes de IA coordenados pela Helena." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "referrer", content: "no-referrer" },
-      {
-        httpEquiv: "Content-Security-Policy",
-        content:
-          "default-src 'self'; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://helenaata.onrender.com https://helenaata.vercel.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-      },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -123,6 +110,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <HeadContent />
       </head>
       <body>
@@ -135,9 +123,6 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  useEffect(() => {
-    installConsoleShield();
-  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

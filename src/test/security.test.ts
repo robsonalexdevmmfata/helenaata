@@ -15,7 +15,7 @@ describe("blindagem", () => {
     expect(getEvolutionConfig().apiKey).toBe("");
   });
 
-  it("snapshot sanitizado não guarda senha em claro", () => {
+  it("localStorage sanitizado não guarda senha em claro", () => {
     const u = sanitizeUser({
       id: "u_x",
       organizationId: "o",
@@ -39,10 +39,7 @@ describe("blindagem", () => {
   });
 
   it("redige token em objeto de log", () => {
-    const out = redactValue({ authorization: "Bearer abcdefghijklmnop", phone: "ok" }) as Record<
-      string,
-      string
-    >;
+    const out = redactValue({ authorization: "Bearer abcdefghijklmnop", phone: "ok" }) as Record<string, string>;
     expect(out.authorization).toBe("[redacted]");
     expect(out.phone).toBe("ok");
   });

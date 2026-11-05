@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   AlertTriangle, CheckCircle2, Copy, ExternalLink, Globe, KeyRound,
-  MessageCircle, Plus, QrCode, RefreshCw, Settings2, Smartphone, Trash2,
+  MessageCircle, Plus, QrCode, RefreshCw, Settings2, Smartphone,
   Webhook, Wifi, WifiOff, Zap, ClipboardList, Info,
 } from "lucide-react";
 import { PageHeader, StatCard } from "@/components/app/kit";
@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import {
   getEvolutionConfigUI, saveEvolutionConfigUI,
   testEvolutionConnection, evolutionSetWebhook, evolutionGetWebhook,
-  evolutionConnectQr, evolutionLogoutInstance, getEvolutionStatus,
+  evolutionConnectQr, getEvolutionStatus,
   type EvolutionConfig,
 } from "@/lib/evolution/evolutionapi";
 import { useEvolutionPairing } from "@/hooks/use-evolution-pairing";
@@ -81,17 +81,13 @@ function EvolutionPanel() {
     setConnectionStatus(result);
     setTesting(false);
     if (result.connected) {
-      const instanceName = cfg.instance;
       // Sincroniza o número no store se encontrado
       if (result.number) {
         update((d) => {
-          const conn = d.connections.find((c) => !c.deletedAt && (/info tech/i.test(c.name) || c.id === "wa_agency"))
-            ?? d.connections.find((c) => !c.deletedAt);
+          const conn = d.connections.find((c) => /info tech/i.test(c.name) || c.id === "wa_agency") ?? d.connections[0];
           if (conn) {
             conn.status = "online";
             conn.name = "agência info tech";
-            conn.instanceName = instanceName;
-            delete conn.deletedAt;
             conn.phone = result.number!.replace(/\D/g, "").replace(/^55/, "+55 ");
             conn.lastSyncAt = nowISO();
           } else {
@@ -100,7 +96,6 @@ function EvolutionPanel() {
               organizationId: d.organization.id,
               name: "agência info tech",
               phone: result.number!,
-              instanceName,
               type: "cloud_api",
               status: "online",
               queue: 0,
@@ -212,7 +207,7 @@ function EvolutionPanel() {
           <Button
             className="gap-2"
             onClick={handleTest}
-            disabled={testing}
+            disabled={testing || !cfg.apiKey}
           >
             {testing
               ? <><RefreshCw className="size-3.5 animate-spin" /> Testando...</>
@@ -307,7 +302,7 @@ function EvolutionPanel() {
               variant="ghost"
               className="h-6 text-xs gap-1"
               onClick={() => copyText(
-                `curl -X POST "/api/evolution/message/sendText/${cfg.instance}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"number":"5518981011186","text":"Olá! Teste da Helena AI."}'`,
+                `curl -X POST "${cfg.baseUrl}/message/sendText/${cfg.instance}" \\\n  -H "apikey: ${cfg.apiKey || "SUA_API_KEY"}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"number":"5518981011186","text":"Olá! Teste da Helena AI."}'`,
                 "Comando curl"
               )}
             >
@@ -315,9 +310,10 @@ function EvolutionPanel() {
             </Button>
           </div>
           <pre className="rounded-lg bg-muted/50 border p-3 text-[11px] font-mono text-muted-foreground overflow-x-auto whitespace-pre leading-relaxed">
-{`curl -X POST "/api/evolution/message/sendText/${cfg.instance}" \\
+{`curl -X POST "${cfg.baseUrl}/message/sendText/${cfg.instance}" \\
+  -H "apikey: ${cfg.apiKey ? "••••••••" : "SUA_API_KEY"}" \\
   -H "Content-Type: application/json" \\
-  -d '{"number":"...","text":"..."}'`}
+  -d '{"number":"5518981011186","text":"Olá! Teste da Helena AI."}'`}
           </pre>
         </div>
       </section>
@@ -396,7 +392,7 @@ function CustomerWhatsAppConnect() {
     try {
       const created = await provisionEvolutionInstance(user, { instanceName: instance });
       if (!created.ok) {
-        setStatus(created.error || "Não deu para criar a instância.");
+        setStatus("error" in created && created.error ? created.error : "Não deu para criar a instância.");
         setBusy(false);
         return;
       }
@@ -404,8 +400,6 @@ function CustomerWhatsAppConnect() {
         const existing = d.connections.find((c) => c.id === `wa_${instance}`) ?? d.connections[0];
         if (existing) {
           existing.name = agentName.trim() || instance;
-          existing.instanceName = created.instance;
-          delete existing.deletedAt;
           existing.status = "conectando";
           existing.lastSyncAt = nowISO();
         } else {
@@ -414,7 +408,6 @@ function CustomerWhatsAppConnect() {
             organizationId: d.organization.id,
             name: agentName.trim() || instance,
             phone: "aguardando QR",
-            instanceName: created.instance,
             type: "cloud_api",
             status: "conectando",
             queue: 0,
@@ -518,14 +511,10 @@ function WhatsAppPage() {
   const [newInstance, setNewInstance] = useState("");
   const [instanceTouched, setInstanceTouched] = useState(false);
   const [newPhone, setNewPhone] = useState("");
-  const [deleteConnectionId, setDeleteConnectionId] = useState("");
-  const [deletingConnectionId, setDeletingConnectionId] = useState("");
 
-  const connections = db.connections.filter((connection) => !connection.deletedAt);
-  const connectionToDelete = connections.find((connection) => connection.id === deleteConnectionId);
-  const online     = connections.filter((c) => c.status === "online").length;
-  const totalSent  = connections.reduce((s, c) => s + c.sentToday, 0);
-  const totalQueue = connections.reduce((s, c) => s + c.queue, 0);
+  const online     = db.connections.filter((c) => c.status === "online").length;
+  const totalSent  = db.connections.reduce((s, c) => s + c.sentToday, 0);
+  const totalQueue = db.connections.reduce((s, c) => s + c.queue, 0);
 
   const handleCreate = () => {
     if (!newName.trim() && !newInstance.trim()) {
@@ -536,17 +525,14 @@ function WhatsAppPage() {
     const instance = instanceNameFromLabel(newInstance || newName, currentUser(db)?.id);
     const id = uid("wa_");
     const me = currentUser(getDB());
-    let instanceName = getEvolutionConfigUI().instance;
     if (me && instance) {
       void provisionEvolutionInstance(me, { instanceName: instance });
-      instanceName = getEvolutionConfigUI().instance;
     }
     update((d) => {
       d.connections.push({
         id, organizationId: d.organization.id,
         name: newName.trim() || instance,
         phone: newPhone,
-        instanceName,
         type: "cloud_api",
         status: "conectando",
         queue: 0, sentToday: 0, dailyLimit: 1000,
@@ -563,33 +549,9 @@ function WhatsAppPage() {
     toast.success("Número desconectado");
   };
 
-  const handleDeleteConnection = async () => {
-    const connection = connectionToDelete;
-    if (!connection) return;
-    setDeletingConnectionId(connection.id);
-    const result = await evolutionLogoutInstance(connection.instanceName);
-    if (!result.ok) {
-      toast.error(`Não foi possível desconectar o número: ${result.error || "erro desconhecido"}`);
-      setDeletingConnectionId("");
-      return;
-    }
-    update((d) => {
-      const current = d.connections.find((entry) => entry.id === connection.id);
-      if (!current) return;
-      current.status = "offline";
-      current.deletedAt = nowISO();
-    });
-    setDeleteConnectionId("");
-    setDeletingConnectionId("");
-    toast.success("Número removido do painel e desconectado do WhatsApp.");
-  };
-
   const handleSync = async (id: string) => {
-    const connection = db.connections.find((entry) => entry.id === id && !entry.deletedAt);
-    if (!connection) return;
     update((d) => { const c = d.connections.find((x) => x.id === id); if (c) c.status = "conectando"; });
-    const config = getEvolutionConfigUI();
-    const result = await testEvolutionConnection({ ...config, instance: connection.instanceName || config.instance });
+    const result = await testEvolutionConnection();
     update((d) => {
       const c = d.connections.find((x) => x.id === id);
       if (c) {
@@ -625,7 +587,7 @@ function WhatsAppPage() {
 
       <Tabs defaultValue="numeros">
         <TabsList>
-          <TabsTrigger value="numeros">Números ({connections.length})</TabsTrigger>
+          <TabsTrigger value="numeros">Números ({db.connections.length})</TabsTrigger>
           {admin && (
             <TabsTrigger value="config" className="gap-1.5">
               <Settings2 className="size-3.5" /> Configuração Evolution API
@@ -635,7 +597,7 @@ function WhatsAppPage() {
 
         {/* ── ABA NÚMEROS ────────────────────────────────────────────────── */}
         <TabsContent value="numeros" className="mt-4 space-y-4">
-          {connections.length === 0 && (
+          {db.connections.length === 0 && (
             <div className="rounded-xl border border-dashed p-10 text-center space-y-3">
               <Smartphone className="size-10 text-muted-foreground mx-auto" />
               <div>
@@ -651,7 +613,7 @@ function WhatsAppPage() {
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {connections.map((conn) => {
+            {db.connections.map((conn) => {
               const sc = STATUS_CONFIG[conn.status] ?? STATUS_CONFIG.offline;
               const dailyPct = conn.dailyLimit > 0
                 ? Math.min(100, Math.round((conn.sentToday / conn.dailyLimit) * 100))
@@ -732,15 +694,6 @@ function WhatsAppPage() {
                         Desconectar
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 px-3 text-xs text-destructive hover:text-destructive"
-                      aria-label={`Excluir ${conn.name}`}
-                      onClick={() => setDeleteConnectionId(conn.id)}
-                    >
-                      <Trash2 className="mr-1 size-3.5" /> Excluir
-                    </Button>
                   </div>
                 </div>
               );
@@ -805,40 +758,6 @@ function WhatsAppPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNewOpen(false)}>Cancelar</Button>
             <Button onClick={handleCreate}>Adicionar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(connectionToDelete)}
-        onOpenChange={(open) => {
-          if (!open && !deletingConnectionId) setDeleteConnectionId("");
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Excluir número do WhatsApp?</DialogTitle>
-            <DialogDescription>
-              {connectionToDelete
-                ? `${connectionToDelete.name} (${connectionToDelete.phone}) será desconectado da Evolution e removido do painel. Para usá-lo novamente, será necessário conectar e ler um novo QR Code.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConnectionId("")}
-              disabled={Boolean(deletingConnectionId)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void handleDeleteConnection()}
-              disabled={!connectionToDelete || Boolean(deletingConnectionId)}
-            >
-              {deletingConnectionId ? "Desconectando..." : "Excluir e desconectar"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,8 +1,8 @@
-// Helena's client-side conversational orchestrator.
+// Helena Orchestrator (frontend mock).
 // Flow: message -> intent -> context -> plan -> tool selection -> risk check ->
 // approval when needed -> execution -> monitoring -> result.
-// Intent detection combines rules and configured LLM tool calls; business data
-// is persisted through the authenticated workspace API.
+// Intent detection is rule-based here; swap interpret() for an LLM call with
+// tool calling when the real backend exists. The execution path stays the same.
 import type { Agent, DB, HelenaCard } from "@/lib/types";
 import { createUiStore, currentUser, getDB } from "@/lib/store";
 import { brl, greeting, normalize } from "@/lib/format";

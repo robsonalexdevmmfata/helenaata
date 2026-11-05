@@ -18,7 +18,7 @@ services:
         value: "22"
       # Em produção "*" bloqueia tudo. Liste os endereços do site separados por vírgula.
       - key: CORS_ORIGIN
-        value: "https://helenaata.vercel.app,https://helenaata.onrender.com"
+        value: "https://helenaata.vercel.app,https://helenaata.onrender.com,http://localhost:8081"
       - key: WHATSAPP_AUTH_DIR
         value: /opt/render/project/src/data/whatsapp-auth
       - key: HELENA_AUTO_REPLY
@@ -55,6 +55,10 @@ services:
         sync: false
       - key: CAKTO_WEBHOOK_SECRET
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_POOLER_REGION
+        value: us-east-1
     disk:
       name: helena-data
       mountPath: /opt/render/project/src/data

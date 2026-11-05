@@ -1,4 +1,5 @@
-// Domain types mirror the PostgreSQL schema. Every business record carries organizationId.
+// Domain types. Mirrors database/schema.sql so the mock layer can be swapped
+// for a real PostgreSQL-backed API later. Every business record carries organizationId.
 
 export type ID = string;
 export type Role = "owner" | "admin" | "manager" | "agent" | "viewer";
@@ -996,6 +997,7 @@ export interface DB {
   version: number;
   organization: Organization;
   currentUserId: ID;
+  clientPreferences?: Record<string, unknown>;
   users: User[];
   invites: Invite[];
   companies: Company[];
@@ -1051,5 +1053,4 @@ export interface DB {
   dailyReports: DailyReport[];
   retentionDays: number;
   organizationSettings?: { retentionDays: number; mfaEnabled: boolean; ipWhitelist: string[] };
-  clientPreferences?: Record<string, unknown>;
 }

@@ -8,7 +8,6 @@ import { useDB } from "@/lib/store";
 import { userAction } from "@/lib/helena/engine";
 import { helenaUi, sendToHelena } from "@/lib/helena/orchestrator";
 import { agentCouncil, companyBriefing, crisisState, loadBalanceHint, missionProgress, promiseConflicts } from "@/lib/helena/command";
-import { alwaysOnTruth, watchdogScan } from "@/lib/helena/always-on";
 import { pageHead } from "@/lib/head";
 import { toast } from "sonner";
 
@@ -48,30 +47,6 @@ function CommandPage() {
           </div>
         }
       />
-
-      {(() => {
-        const on = alwaysOnTruth();
-        const wd = watchdogScan(db);
-        return (
-          <div className="rounded-2xl border bg-card p-4">
-            <div className="text-xs uppercase tracking-[0.16em] text-helena">Always on — o que é verdade</div>
-            <p className="mt-1 text-sm text-muted-foreground">{on.note}</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
-              <div>
-                <div className="font-medium">Com o navegador fechado</div>
-                <ul className="mt-1 space-y-1 text-muted-foreground">{on.withBrowserClosed.map((t) => <li key={t}>• {t}</li>)}</ul>
-              </div>
-              <div>
-                <div className="font-medium">Ainda no painel</div>
-                <ul className="mt-1 space-y-1 text-muted-foreground">{on.needsPanel.map((t) => <li key={t}>• {t}</li>)}</ul>
-              </div>
-            </div>
-            {wd.length > 0 && (
-              <ul className="mt-3 text-sm text-destructive">{wd.map((a) => <li key={a.code}>{a.detail}</li>)}</ul>
-            )}
-          </div>
-        );
-      })()}
 
       {crisis.active && (
         <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4">

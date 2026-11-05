@@ -1,33 +1,54 @@
 import { useSyncExternalStore } from "react";
 import type { DB } from "./types";
-import {
-  applyDevTeamGate,
-  createCustomerSeed,
-  createSeed,
-  defaultSalesFlow,
-  liveMapsAutomations,
-  ensureSaasUsers,
-  PLATFORM_ORG,
-} from "./seed";
+import { applyDevTeamGate, createCustomerSeed, createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers, PLATFORM_ORG } from "./seed";
 import type { User } from "./types";
 import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "./catalog";
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
 import { AGENCY_WHATSAPP } from "./evolution/evolutionapi";
 import { hashPw, sanitizeDb, sanitizeUser } from "@/lib/security/secrets";
-import { api } from "@/lib/backend";
-import { toast } from "sonner";
+
+// Mock data layer. All reads/writes go through this store so it can be swapped
+// for HTTP calls to a real PostgreSQL-backed API without touching the screens.
+const KEY = "helena-db-v2";
+const ACCOUNTS_KEY = "helena-accounts-v1";
+const SESSION_KEY = "helena-session";
 
 let seedCache: DB | null = null;
 const seed = () => (seedCache ??= createSeed());
 
 let state: DB | null = null;
+let persistKey = KEY;
 const listeners = new Set<() => void>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let cloudRevision = 0;
-let cloudPersistenceEnabled = false;
-let pendingSnapshot: DB | null = null;
-let savePromise: Promise<void> | null = null;
-const testAccounts = new Map<string, User>();
+
+function wsKey(orgId: string) {
+  return `helena-ws-${orgId}`;
+}
+
+function readJson<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full */
+  }
+}
+
+function bootSessionUserId() {
+  const parsed = readJson<{ userId?: string }>(SESSION_KEY);
+  return parsed?.userId || "";
+}
 
 function isPlatformUser(user?: User | null) {
   if (!user) return false;
@@ -36,78 +57,100 @@ function isPlatformUser(user?: User | null) {
 }
 
 export function listAccounts(): User[] {
-  if (import.meta.env.MODE !== "test") return state?.users ?? [];
-  const accounts = new Map<string, User>();
-  for (const user of [...seed().users, ...(state?.users ?? []), ...testAccounts.values()]) {
-    accounts.set(user.id, user);
+  const stored = readJson<{ users: User[] }>(ACCOUNTS_KEY);
+  const fromDisk = stored?.users ?? [];
+  const fromState = state?.users ?? [];
+  const fromPlatform = persistKey === KEY ? fromState : (readJson<DB>(KEY)?.users ?? []);
+  const map = new Map<string, User>();
+  for (const u of [...fromPlatform, ...fromDisk, ...fromState, ...seed().users]) {
+    if (u?.id) map.set(u.id, u);
   }
-  return [...accounts.values()];
+  return [...map.values()];
+}
+
+function saveAccounts(users: User[]) {
+  const map = new Map<string, User>();
+  for (const u of [...(readJson<{ users: User[] }>(ACCOUNTS_KEY)?.users ?? []), ...users]) {
+    if (u?.id) map.set(u.id, u);
+  }
+  writeJson(ACCOUNTS_KEY, { users: [...map.values()] });
 }
 
 export function upsertAccount(user: User) {
-  if (!state) return;
-  update((db) => {
-    const index = db.users.findIndex((entry) => entry.id === user.id);
-    if (index >= 0) db.users[index] = sanitizeUser({ ...db.users[index], ...user });
-    else db.users.push(sanitizeUser(user));
-  });
+  const users = listAccounts();
+  const i = users.findIndex((u) => u.id === user.id);
+  if (i >= 0) users[i] = { ...users[i], ...user };
+  else users.push(user);
+  saveAccounts(users);
+}
+
+function parseDb(raw: DB | null): DB | null {
+  if (!raw || typeof raw.version !== "number" || raw.version < 1 || raw.version > 12) return null;
+  return hydrate(raw);
+}
+
+function loadPlatform(): DB {
+  persistKey = KEY;
+  const parsed = parseDb(readJson<DB>(KEY));
+  if (parsed) {
+    writeJson(KEY, parsed);
+    saveAccounts(parsed.users);
+    return parsed;
+  }
+  const db = seed();
+  saveAccounts(db.users);
+  return db;
+}
+
+function loadCustomerWorkspace(user: User): DB {
+  persistKey = wsKey(user.organizationId);
+  const parsed = parseDb(readJson<DB>(persistKey));
+  if (parsed) {
+    parsed.currentUserId = user.id;
+    if (!parsed.users.some((u) => u.id === user.id)) parsed.users.unshift({ ...user, role: "owner" });
+    return parsed;
+  }
+  return createCustomerSeed(user);
+}
+
+/** Troca o banco ativo: admin vê a operação Info Tech; cliente vê workspace vazio até gerar dado real. */
+export function activateWorkspaceForUser(userId: string) {
+  const user = listAccounts().find((u) => u.id === userId);
+  if (!user) return;
+  if (isPlatformUser(user)) {
+    state = loadPlatform();
+    state.currentUserId = userId;
+  } else {
+    if (!user.organizationId || user.organizationId === PLATFORM_ORG) {
+      user.organizationId = user.id === "u_demo" ? "org_demo" : `org_${user.id.replace(/^u_/, "")}`;
+      upsertAccount(user);
+    }
+    state = loadCustomerWorkspace(user);
+    state.currentUserId = userId;
+    applyDevTeamGate(state, user.planId, user.kind);
+  }
+  persistNow();
+  listeners.forEach((l) => l());
 }
 
 function load(): DB {
-  if (import.meta.env.MODE === "test") return seed();
-  throw new Error("Workspace não carregado do Supabase. Faça login novamente.");
-}
-
-export async function activateWorkspaceForUser(user: User) {
-  const { snapshot, revision, accounts } = await api<{
-    snapshot: DB | null;
-    revision: number;
-    accounts: User[];
-  }>("/api/workspace");
-  if (snapshot && snapshot.organization?.id !== user.organizationId) {
-    throw new Error("O workspace recebido não pertence à conta autenticada.");
-  }
-  state = snapshot ?? createCustomerSeed(user);
-  state.currentUserId = user.id;
-  if (isPlatformUser(user)) {
-    state.users = [sanitizeUser(user), ...accounts.map(sanitizeUser)];
-  } else {
-    const userIndex = state.users.findIndex((entry) => entry.id === user.id);
-    if (userIndex >= 0) state.users[userIndex] = sanitizeUser(user);
-    else state.users.unshift(sanitizeUser(user));
-    applyDevTeamGate(state, user.planId, user.kind);
-  }
-  const hydratedSnapshot = JSON.stringify(state);
-  state = sanitizeDb(state);
-  cloudRevision = revision;
-  cloudPersistenceEnabled = true;
-  pendingSnapshot = null;
-  if (!snapshot) {
-    try {
-      const saved = await api<{ revision: number }>("/api/workspace", {
-        method: "PUT",
-        body: { snapshot: state, revision: cloudRevision },
-      });
-      cloudRevision = saved.revision;
-    } catch (error) {
-      cloudPersistenceEnabled = false;
-      state = null;
-      throw error;
+  if (typeof window === "undefined") return seed();
+  const uid = bootSessionUserId();
+  if (uid) {
+    persistKey = KEY;
+    state = loadPlatform();
+    const user = listAccounts().find((u) => u.id === uid);
+    if (user && !isPlatformUser(user)) {
+      activateWorkspaceForUser(uid);
+      return state!;
     }
-  } else if (JSON.stringify(state) !== hydratedSnapshot) {
-    persistNow();
+    if (state) state.currentUserId = uid;
+    return state;
   }
-  listeners.forEach((listener) => listener());
+  return loadPlatform();
 }
 
-export function deactivateWorkspace() {
-  cloudPersistenceEnabled = false;
-  pendingSnapshot = null;
-  state = null;
-  listeners.forEach((listener) => listener());
-}
-
-/** Completa campos de schema nas bases de teste e nos snapshots legados. */
+/** Completa campos novos em bases persistidas no localStorage. */
 function hydrate(db: DB): DB {
   if (!Array.isArray(db.calendarEvents)) db.calendarEvents = [];
   if (!Array.isArray(db.meetings)) db.meetings = [];
@@ -132,13 +175,9 @@ function hydrate(db: DB): DB {
     t.metrics = { leads: 0, meetings: 0, conversions: 0 };
     if (t.id === "t_com" && !t.agentIds.includes("a_valentina")) t.agentIds.push("a_valentina");
   });
-  const platformOrg =
-    db.organization?.id === PLATFORM_ORG ||
-    db.users?.some((u) => u.id === "u1" && u.kind === "platform");
+  const platformOrg = db.organization?.id === PLATFORM_ORG || db.users?.some((u) => u.id === "u1" && u.kind === "platform");
   if (platformOrg) {
-    db.connections = (db.connections ?? []).filter(
-      (c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name),
-    );
+    db.connections = (db.connections ?? []).filter((c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name));
     if (!db.connections.length) {
       db.connections = [
         {
@@ -195,16 +234,9 @@ function hydrate(db: DB): DB {
     db.companies = (db.companies ?? []).filter((c) => !demo(c.id, "c"));
     const keepContact = new Set(db.contacts.map((c) => c.id));
     const keepCompany = new Set(db.companies.map((c) => c.id));
-    db.deals = (db.deals ?? []).filter(
-      (d) =>
-        !demo(d.id, "d") &&
-        keepContact.has(d.contactId) &&
-        (!d.companyId || keepCompany.has(d.companyId)),
-    );
+    db.deals = (db.deals ?? []).filter((d) => !demo(d.id, "d") && keepContact.has(d.contactId) && (!d.companyId || keepCompany.has(d.companyId)));
     db.tasks = (db.tasks ?? []).filter((t) => !/^tk\d+$/.test(t.id));
-    db.conversations = (db.conversations ?? []).filter(
-      (c) => !/^cv\d+$/.test(c.id) && keepContact.has(c.contactId),
-    );
+    db.conversations = (db.conversations ?? []).filter((c) => !/^cv\d+$/.test(c.id) && keepContact.has(c.contactId));
     db.activities = (db.activities ?? []).filter((a) => keepContact.has(a.contactId));
     db.lists = (db.lists ?? []).filter((l) => !demo(l.id, "l"));
     db.campaigns = (db.campaigns ?? []).filter((c) => !demo(c.id, "cp"));
@@ -215,64 +247,13 @@ function hydrate(db: DB): DB {
     db.lgpdRequests = [];
     db.webhookLogs = [];
     db.executions = (db.executions ?? []).filter((e) => !/^ex\d+$/.test(e.id));
-    db.calendarEvents = (db.calendarEvents ?? []).filter(
-      (e) => !/^ev\d+$/.test(e.id) && keepContact.has(e.leadId),
-    );
+    db.calendarEvents = (db.calendarEvents ?? []).filter((e) => !/^ev\d+$/.test(e.id) && keepContact.has(e.leadId));
     db.memories = [
-      {
-        id: "mem_produtos",
-        organizationId: db.organization.id,
-        type: "permanente",
-        title: "Produtos e serviços",
-        content:
-          "Info Tech Ltda: sites institucionais (a partir de R$ 4.900), landing pages (R$ 1.900), gestão de tráfego (R$ 1.800/mês), automação de WhatsApp (R$ 3.500).",
-        source: "Robson Alex",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "mem_icp",
-        organizationId: db.organization.id,
-        type: "permanente",
-        title: "ICP principal",
-        content:
-          "Empresas B2B no Brasil sem site (ou site fraco) e com WhatsApp ativo. Nicho definido na varredura.",
-        source: "Robson Alex",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "mem_tom",
-        organizationId: db.organization.id,
-        type: "permanente",
-        title: "Tom de comunicação",
-        content:
-          "Cordial, direto e consultivo. Sem gírias. Abordagem no WhatsApp com a personalidade do Robson Alex.",
-        source: "Robson Alex",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "mem_horario",
-        organizationId: db.organization.id,
-        type: "permanente",
-        title: "Horário comercial",
-        content: "Prospecção Seg–Sex, 09:00–18:00 (America/Sao_Paulo). Não disparar aos domingos.",
-        source: "Robson Alex",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "mem_desconto",
-        organizationId: db.organization.id,
-        type: "permanente",
-        title: "Política de desconto",
-        content:
-          "Desconto máximo de 10% sem aprovação do Robson. Acima disso, encaminhar para o CEO.",
-        source: "Robson Alex",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
+      { id: "mem_produtos", organizationId: db.organization.id, type: "permanente", title: "Produtos e serviços", content: "Info Tech Ltda: sites institucionais (a partir de R$ 4.900), landing pages (R$ 1.900), gestão de tráfego (R$ 1.800/mês), automação de WhatsApp (R$ 3.500).", source: "Robson Alex", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "mem_icp", organizationId: db.organization.id, type: "permanente", title: "ICP principal", content: "Empresas B2B no Brasil sem site (ou site fraco) e com WhatsApp ativo. Nicho definido na varredura.", source: "Robson Alex", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "mem_tom", organizationId: db.organization.id, type: "permanente", title: "Tom de comunicação", content: "Cordial, direto e consultivo. Sem gírias. Abordagem no WhatsApp com a personalidade do Robson Alex.", source: "Robson Alex", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "mem_horario", organizationId: db.organization.id, type: "permanente", title: "Horário comercial", content: "Prospecção Seg–Sex, 09:00–18:00 (America/Sao_Paulo). Não disparar aos domingos.", source: "Robson Alex", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "mem_desconto", organizationId: db.organization.id, type: "permanente", title: "Política de desconto", content: "Desconto máximo de 10% sem aprovação do Robson. Acima disso, encaminhar para o CEO.", source: "Robson Alex", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ];
     db.automations = liveMapsAutomations(db.organization.id);
     db.agents?.forEach((a) => {
@@ -286,25 +267,20 @@ function hydrate(db: DB): DB {
     db.serviceOffers = liveServiceOffers(db.organization.id);
     applyCommercialAgentPrompts(db.agents ?? []);
     const team = db.teams?.find((t) => t.id === "t_com");
-    if (team)
-      team.objective =
-        "Máquina de vendas: SDR por vertical, BANT em quem responde, Closer fecha reunião.";
+    if (team) team.objective = "Máquina de vendas: SDR por vertical, BANT em quem responde, Closer fecha reunião.";
     const sdr1 = db.agents?.find((a) => a.id === "a_sdr1");
     if (sdr1) sdr1.objective = "Vender reunião para saúde e beleza sem site.";
     const sdr2 = db.agents?.find((a) => a.id === "a_sdr2");
     if (sdr2) sdr2.objective = "Vender reunião para comércio e serviço local sem site.";
     const prod = db.memories?.find((m) => m.id === "mem_produtos");
     if (prod) {
-      prod.content =
-        "Tabela viva em Prospecção → Orçamentos. No WhatsApp só citar valor se o cliente perguntar.";
+      prod.content = "Tabela viva em Prospecção → Orçamentos. No WhatsApp só citar valor se o cliente perguntar.";
       prod.updatedAt = new Date().toISOString();
     }
     db.version = 8;
   }
   if ((db.version ?? 0) < 9) {
-    db.operations = (db.operations ?? []).filter(
-      (o) => o.id === "op_live_maps" || !/^op\d+$/.test(o.id),
-    );
+    db.operations = (db.operations ?? []).filter((o) => o.id === "op_live_maps" || !/^op\d+$/.test(o.id));
     db.approvals = (db.approvals ?? []).filter((a) => !/^ap\d+$/.test(a.id));
     db.version = 9;
   }
@@ -312,8 +288,7 @@ function hydrate(db: DB): DB {
     applyHumanTeam(db.agents ?? []);
     const team = db.teams?.find((t) => t.id === "t_com");
     if (team) {
-      team.objective =
-        "Marina e Camila abrem, Rafael qualifica, André e Valentina fecham reunião. Sem perseguir o mesmo número.";
+      team.objective = "Marina e Camila abrem, Rafael qualifica, André e Valentina fecham reunião. Sem perseguir o mesmo número.";
     }
     db.version = 10;
   }
@@ -349,15 +324,6 @@ function hydrate(db: DB): DB {
     ensureSaasUsers(db);
     db.version = 12;
   }
-  if ((db.version ?? 0) < 13) {
-    if (db.salesFlow?.noReplyHours === 48) db.salesFlow.noReplyHours = 24;
-    const menuOffer = liveServiceOffers(db.organization.id).find(
-      (offer) => offer.id === "svc_menu_online",
-    );
-    if (menuOffer && !db.serviceOffers.some((offer) => offer.id === menuOffer.id))
-      db.serviceOffers.push(menuOffer);
-    db.version = 13;
-  }
   if (db.automations?.some((a) => /facebook/i.test(a.name) || /^au\d+$/.test(a.id))) {
     db.automations = liveMapsAutomations(db.organization.id);
   }
@@ -373,14 +339,15 @@ function hydrate(db: DB): DB {
 }
 
 export function provisionCustomerAccount(user: User) {
-  if (import.meta.env.MODE === "test") {
-    testAccounts.set(user.id, sanitizeUser(user));
-    update((db) => {
-      if (!db.users.some((entry) => entry.id === user.id)) db.users.push(sanitizeUser(user));
-    });
-    return;
+  upsertAccount(user);
+  const platform = parseDb(readJson<DB>(KEY)) ?? seed();
+  if (!platform.users.some((u) => u.id === user.id)) platform.users.push(user);
+  else platform.users = platform.users.map((u) => (u.id === user.id ? { ...u, ...user } : u));
+  writeJson(KEY, platform);
+  if (persistKey === KEY && state && !state.users.some((u) => u.id === user.id)) {
+    state = { ...state, users: [...state.users, user] };
   }
-  if (state?.organization.id === user.organizationId) upsertAccount(user);
+  writeJson(wsKey(user.organizationId), createCustomerSeed(user));
 }
 
 export function patchUserEverywhere(userId: string, fn: (u: User) => void) {
@@ -388,12 +355,42 @@ export function patchUserEverywhere(userId: string, fn: (u: User) => void) {
     const u = d.users.find((x) => x.id === userId);
     if (u) fn(u);
   });
+  const accounts = listAccounts();
+  const acc = accounts.find((x) => x.id === userId);
+  if (acc) {
+    fn(acc);
+    saveAccounts(accounts);
+  }
+  const touch = (db: DB | null, key: string) => {
+    if (!db) return;
+    const u = db.users.find((x) => x.id === userId);
+    if (!u) return;
+    fn(u);
+    writeJson(key, db);
+  };
+  if (persistKey !== KEY) touch(parseDb(readJson<DB>(KEY)), KEY);
+  if (acc?.kind === "customer" && acc.organizationId) {
+    const key = wsKey(acc.organizationId);
+    if (key !== persistKey) touch(parseDb(readJson<DB>(key)), key);
+  }
 }
 
 export function syncDevTeamForAccount(userId: string) {
-  const account = listAccounts().find((u) => u.id === userId);
-  if (!account || isPlatformUser(account) || !state) return;
-  update((db) => applyDevTeamGate(db, account.planId, account.kind));
+  const acc = listAccounts().find((u) => u.id === userId);
+  if (!acc || isPlatformUser(acc)) return;
+  if (state && state.users.some((u) => u.id === userId)) {
+    applyDevTeamGate(state, acc.planId, acc.kind);
+    persistNow();
+    listeners.forEach((l) => l());
+  }
+  const key = wsKey(acc.organizationId);
+  if (key !== persistKey) {
+    const ws = parseDb(readJson<DB>(key));
+    if (ws) {
+      applyDevTeamGate(ws, acc.planId, acc.kind);
+      writeJson(key, ws);
+    }
+  }
 }
 
 export function getDB(): DB {
@@ -402,54 +399,14 @@ export function getDB(): DB {
 }
 
 function persistNow() {
-  if (!cloudPersistenceEnabled || !state) return;
-  pendingSnapshot = sanitizeDb(state);
-  if (savePromise) return;
-  savePromise = (async () => {
-    while (pendingSnapshot && cloudPersistenceEnabled) {
-      const snapshot = pendingSnapshot;
-      pendingSnapshot = null;
-      try {
-        const result = await api<{ revision: number }>("/api/workspace", {
-          method: "PUT",
-          body: { snapshot, revision: cloudRevision },
-        });
-        cloudRevision = result.revision;
-      } catch (error) {
-        pendingSnapshot ??= snapshot;
-        if (error instanceof Error && "status" in error && error.status === 409) {
-          cloudPersistenceEnabled = false;
-          toast.error(
-            "Este workspace foi alterado em outro dispositivo. Recarregue a página antes de continuar.",
-          );
-        } else {
-          toast.error(
-            `Não foi possível salvar no Supabase: ${error instanceof Error ? error.message : "erro desconhecido"}.`,
-          );
-        }
-        break;
-      }
-    }
-  })().finally(() => {
-    savePromise = null;
-  });
+  if (typeof window === "undefined" || !state) return;
+  writeJson(persistKey, sanitizeDb(state));
 }
 
 function persist() {
-  if (!cloudPersistenceEnabled) return;
+  if (typeof window === "undefined") return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => persistNow(), 250);
-}
-
-export async function flushWorkspace() {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  persistNow();
-  if (savePromise) await savePromise;
-  if (pendingSnapshot)
-    throw new Error("Há alterações do workspace que ainda não foram salvas no Supabase.");
 }
 
 export function update(fn: (draft: DB) => void) {
@@ -461,12 +418,11 @@ export function update(fn: (draft: DB) => void) {
 }
 
 export function getWorkspacePreference<T>(key: string, fallback: T): T {
-  const value = state?.clientPreferences?.[key];
+  const value = getDB().clientPreferences?.[key];
   return value === undefined ? fallback : (value as T);
 }
 
 export function saveWorkspacePreference<T>(key: string, value: T): T {
-  if (!state) return value;
   update((db) => {
     db.clientPreferences ??= {};
     db.clientPreferences[key] = value;
@@ -475,20 +431,14 @@ export function saveWorkspacePreference<T>(key: string, value: T): T {
 }
 
 export function resetDB() {
-  if (import.meta.env.MODE === "test") {
-    testAccounts.clear();
-    cloudPersistenceEnabled = false;
+  const user = state ? currentUser(state) : undefined;
+  if (user && !isPlatformUser(user)) {
+    state = createCustomerSeed(user);
+  } else {
+    persistKey = KEY;
     state = createSeed();
-    listeners.forEach((listener) => listener());
-    return;
+    saveAccounts(state.users);
   }
-  const previous = state;
-  if (!previous) return;
-  const user = currentUser(previous);
-  if (!user) return;
-  state = createCustomerSeed(user);
-  state.users = previous.users.map(sanitizeUser);
-  state.currentUserId = user.id;
   persist();
   listeners.forEach((l) => l());
 }
@@ -499,7 +449,7 @@ function subscribe(l: () => void) {
 }
 
 export function useDB(): DB {
-  return useSyncExternalStore(subscribe, getDB, load);
+  return useSyncExternalStore(subscribe, getDB, seed);
 }
 
 export function uid(prefix = "") {

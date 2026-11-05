@@ -97,7 +97,7 @@ export async function dispatchProspectMessages(
 
     if (res.ok) {
       result.sent++;
-      /* auditoria só em Execution */
+      console.log(`[Dispatcher] ✅ ${i + 1}/${contacts.length} → ${contact.name} (${cleanPhone})`);
 
       update((d) => {
         d.executions.unshift({
@@ -135,7 +135,7 @@ export async function dispatchProspectMessages(
     } else {
       result.failed++;
       result.errors.push(`${contact.name}: ${res.error}`);
-      /* falha em result.errors */
+      console.warn(`[Dispatcher] ❌ Falha → ${contact.name}: ${res.error}`);
 
       // Registra falha na auditoria
       update((d) => {

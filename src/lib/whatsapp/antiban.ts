@@ -36,7 +36,6 @@ export function evaluateOutbound(opts: {
   conv?: Conversation;
   contact?: Contact | null;
   now?: Date;
-  minWaitHours?: number;
 }): { ok: true } | { ok: false; waitMs?: number; message: string } {
   const now = opts.now ?? new Date();
   const user = opts.db.users.find((u) => u.id === opts.db.currentUserId);
@@ -52,7 +51,7 @@ export function evaluateOutbound(opts: {
     sharedConnectionId: "",
     teamUserIds: [],
     onlyAfterProspecting: true,
-    noReplyHours: 24,
+    noReplyHours: 48,
     readNoReplyHours: 24,
     maxCloserAttempts: 1,
     closerAgentId: "",
@@ -83,7 +82,7 @@ export function evaluateOutbound(opts: {
     const waitMs = MIN_GAP_MS - gap;
     return { ok: false, waitMs, message: `Antiban: espere ${Math.ceil(waitMs / 1000)}s entre um WhatsApp e outro.` };
   }
-  if (opts.conv && shouldHoldOutbound(opts.conv, now, opts.minWaitHours ?? 48)) {
+  if (opts.conv && shouldHoldOutbound(opts.conv, now, 48)) {
     return { ok: false, message: "Este número já foi abordado. Esperando resposta para não insistir." };
   }
   return { ok: true };

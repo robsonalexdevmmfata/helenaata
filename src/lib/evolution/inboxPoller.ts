@@ -7,25 +7,32 @@ import {
   getAgencyConnection,
   jidToPhone,
   parseEvolutionWebhook,
-  parseEvolutionDeliveryStatus,
   waTimestampISO,
 } from "./evolutionapi";
 import { processEvolutionWebhook } from "./webhookHandler";
 import { getDB, nowISO, uid, update } from "@/lib/store";
 import { sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
 
-const seenMessageIds = new Set<string>();
-let inboxBootstrapped = false;
+const SEEN_KEY = "helena_evo_seen_ids";
+const BOOT_KEY = "helena_evo_bootstrapped";
 
 function seenIds(): Set<string> {
-  return new Set(seenMessageIds);
+  try {
+    const raw = localStorage.getItem(SEEN_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
 }
 
 function remember(id: string) {
-  seenMessageIds.add(id);
-  while (seenMessageIds.size > 800) {
-    const oldest = seenMessageIds.values().next().value;
-    if (oldest) seenMessageIds.delete(oldest);
+  const set = seenIds();
+  set.add(id);
+  const list = [...set].slice(-800);
+  try {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -57,7 +64,6 @@ function upsertFromEvolution(opts: {
   messageId: string;
   at: string;
   unread?: number;
-  deliveryStatus?: "sent" | "delivered" | "read" | "failed";
 }) {
   const db = getDB();
   const user = db.users.find((u) => u.id === db.currentUserId);
@@ -74,9 +80,7 @@ function upsertFromEvolution(opts: {
 
   let contact = pk
     ? db.contacts.find((c) => phoneKey(c.phone) === pk)
-    : db.contacts.find((c) =>
-        db.conversations.some((x) => x.contactId === c.id && x.remoteJid === opts.remoteJid),
-      );
+    : db.contacts.find((c) => db.conversations.some((x) => x.contactId === c.id && x.remoteJid === opts.remoteJid));
 
   const contactId = contact?.id ?? uid("p_evo_");
   if (!contact) {
@@ -106,10 +110,9 @@ function upsertFromEvolution(opts: {
     });
   }
 
-  let conv =
-    getDB().conversations.find((c) => c.remoteJid === opts.remoteJid) ??
-    getDB().conversations.find((c) => c.contactId === contactId && c.channel === "whatsapp") ??
-    (pk
+  let conv = getDB().conversations.find((c) => c.remoteJid === opts.remoteJid)
+    ?? getDB().conversations.find((c) => c.contactId === contactId && c.channel === "whatsapp")
+    ?? (pk
       ? getDB().conversations.find((c) => {
           const ct = getDB().contacts.find((x) => x.id === c.contactId);
           return c.channel === "whatsapp" && ct && phoneKey(ct.phone) === pk;
@@ -133,26 +136,17 @@ function upsertFromEvolution(opts: {
         sentiment: "neutro",
         lastMessageAt: opts.at,
         flow: /Robson Alex|Info Tech/i.test(opts.text)
-          ? {
-              origin: "prospeccao" as const,
-              state: "abordado" as const,
-              lastOutboundAt: opts.at,
-              closerAttempts: 0,
-            }
+          ? { origin: "prospeccao" as const, state: "abordado" as const, lastOutboundAt: opts.at, closerAttempts: 0 }
           : undefined,
         messages: opts.text
-          ? [
-              {
-                id: msgId,
-                from: opts.fromMe ? "agent" : "contact",
-                authorName: opts.fromMe ? (sdr?.name ?? "Helena") : name,
-                text: opts.text,
-                at: opts.at,
-                kind: "text",
-                externalId: opts.messageId || undefined,
-                deliveryStatus: opts.deliveryStatus,
-              },
-            ]
+          ? [{
+              id: msgId,
+              from: opts.fromMe ? "agent" : "contact",
+              authorName: opts.fromMe ? (sdr?.name ?? "Helena") : name,
+              text: opts.text,
+              at: opts.at,
+              kind: "text",
+            }]
           : [],
       });
     });
@@ -163,17 +157,9 @@ function upsertFromEvolution(opts: {
     const c = d.conversations.find((x) => x.id === conv!.id);
     if (!c) return;
     c.remoteJid = opts.remoteJid;
-    if (!c.lastMessageAt || +new Date(opts.at) >= +new Date(c.lastMessageAt))
-      c.lastMessageAt = opts.at;
+    if (!c.lastMessageAt || +new Date(opts.at) >= +new Date(c.lastMessageAt)) c.lastMessageAt = opts.at;
     if (!opts.fromMe) c.unread = opts.unread ?? c.unread;
-    if (
-      opts.text &&
-      !c.messages.some(
-        (m) =>
-          m.id === msgId ||
-          (m.text === opts.text && Math.abs(+new Date(m.at) - +new Date(opts.at)) < 2000),
-      )
-    ) {
+    if (opts.text && !c.messages.some((m) => m.id === msgId || (m.text === opts.text && Math.abs(+new Date(m.at) - +new Date(opts.at)) < 2000))) {
       c.messages.push({
         id: msgId,
         from: opts.fromMe ? (c.handlerType === "human" ? "human" : "agent") : "contact",
@@ -181,39 +167,16 @@ function upsertFromEvolution(opts: {
         text: opts.text,
         at: opts.at,
         kind: "text",
-        externalId: opts.messageId || undefined,
-        deliveryStatus: opts.deliveryStatus,
       });
       c.messages.sort((a, b) => +new Date(a.at) - +new Date(b.at));
     }
-    if (opts.fromMe && opts.deliveryStatus) {
-      const message = c.messages.find((m) => m.id === msgId || m.externalId === opts.messageId);
-      if (message) message.deliveryStatus = opts.deliveryStatus;
-      if (
-        opts.deliveryStatus === "read" &&
-        c.flow &&
-        (!c.flow.lastOutboundAt ||
-          new Date(opts.at).getTime() >= new Date(c.flow.lastOutboundAt).getTime())
-      ) {
-        c.flow.readAt = opts.at;
-        if (c.flow.state === "abordado") c.flow.state = "visualizou";
-      }
-    }
     if (opts.fromMe && /Robson Alex|Info Tech/i.test(opts.text) && !c.flow) {
-      c.flow = {
-        origin: "prospeccao",
-        state: "abordado",
-        lastOutboundAt: opts.at,
-        closerAttempts: 0,
-      };
+      c.flow = { origin: "prospeccao", state: "abordado", lastOutboundAt: opts.at, closerAttempts: 0 };
     } else if (c.flow && opts.fromMe && opts.text) {
       c.flow.lastOutboundAt = opts.at;
     } else if (c.flow && !opts.fromMe && opts.text) {
       c.flow.repliedAt = opts.at;
-      c.flow.state =
-        c.flow.state === "closer" || c.flow.state === "reuniao_agendada"
-          ? c.flow.state
-          : "respondeu";
+      c.flow.state = c.flow.state === "closer" || c.flow.state === "reuniao_agendada" ? c.flow.state : "respondeu";
     }
     const ct = d.contacts.find((x) => x.id === contactId);
     if (ct) {
@@ -242,12 +205,10 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
         return {
           id: `evo_${id}`,
           from: (key.fromMe ? "agent" : "contact") as "agent" | "contact",
-          authorName: key.fromMe ? (sdr?.name ?? "Helena") : raw?.pushName || "Contato",
+          authorName: key.fromMe ? (sdr?.name ?? "Helena") : (raw?.pushName || "Contato"),
           text,
           at: waTimestampISO(raw?.messageTimestamp),
           kind: "text" as const,
-          externalId: id,
-          deliveryStatus: parseEvolutionDeliveryStatus(raw),
         };
       })
       .filter(Boolean) as typeof c.messages;
@@ -255,14 +216,6 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
       if (!existing.has(m.id)) {
         c.messages.push(m);
         existing.add(m.id);
-      }
-      if (
-        m.deliveryStatus === "read" &&
-        c.flow &&
-        new Date(m.at).getTime() >= new Date(c.flow.lastOutboundAt).getTime()
-      ) {
-        c.flow.readAt = m.at;
-        if (c.flow.state === "abordado") c.flow.state = "visualizou";
       }
     }
     c.messages.sort((a, b) => +new Date(a.at) - +new Date(b.at));
@@ -283,17 +236,11 @@ export async function pollEvolutionInbox(): Promise<number> {
     const own = getAgencyConnection(db);
     if (!own || own.status !== "online" || !String(own.phone || "").replace(/\D/g, "")) return 0;
   }
-  const chatsRes = await evolutionFindChats().catch(() => ({
-    ok: false as const,
-    chats: [] as any[],
-  }));
-  const contactsRes = await evolutionFindContacts().catch(() => ({
-    ok: false as const,
-    contacts: [] as any[],
-  }));
+  const chatsRes = await evolutionFindChats().catch(() => ({ ok: false as const, chats: [] as any[] }));
+  const contactsRes = await evolutionFindContacts().catch(() => ({ ok: false as const, contacts: [] as any[] }));
   if (!chatsRes.ok && !contactsRes.ok) return 0;
 
-  const boot = inboxBootstrapped;
+  const boot = typeof window !== "undefined" && localStorage.getItem(BOOT_KEY) === "1";
   const known = seenIds();
   let ingested = 0;
 
@@ -329,7 +276,6 @@ export async function pollEvolutionInbox(): Promise<number> {
         messageId: id || `hist_${jid}`,
         at: waTimestampISO(raw?.messageTimestamp),
         unread: 0,
-        deliveryStatus: parseEvolutionDeliveryStatus(raw),
       });
       if (id) remember(id);
     }
@@ -353,7 +299,6 @@ export async function pollEvolutionInbox(): Promise<number> {
       messageId: id || `chat_${jid}`,
       at: waTimestampISO(last?.messageTimestamp),
       unread: Number(chat?.unreadCount ?? 0),
-      deliveryStatus: parseEvolutionDeliveryStatus(last),
     });
     if (!id || fromMe || !text) {
       if (id) remember(id);
@@ -388,7 +333,9 @@ export async function pollEvolutionInbox(): Promise<number> {
     }
   }
 
-  if (!boot) inboxBootstrapped = true;
+  if (!boot && typeof window !== "undefined") {
+    localStorage.setItem(BOOT_KEY, "1");
+  }
   return ingested;
 }
 
@@ -401,7 +348,7 @@ export function startEvolutionInboxPoller(intervalMs = 8000) {
     try {
       await pollEvolutionInbox();
     } catch (err) {
-      /* poller */
+      console.warn("[Inbox poller]", err);
     } finally {
       busy = false;
     }

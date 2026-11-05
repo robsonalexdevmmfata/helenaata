@@ -14,7 +14,7 @@ Objetivo: um ciclo verificável e repetível — encontrar → diagnosticar com 
 - Onboarding `/comecar`, landing, `/status`
 - Publish Vercel (`server/dev-publish.mjs`) — token só em env, nunca no Git
 - Schema já no Supabase: `database/supabase-helena-rpa.sql`
-- Conta Info Tech (platform) também usa persistência Supabase; não há exceção local para dados operacionais
+- Conta Info Tech (platform) pode continuar no mock local para demo interna
 
 ---
 
@@ -23,20 +23,19 @@ Objetivo: um ciclo verificável e repetível — encontrar → diagnosticar com 
 - Postgres Supabase (`DATABASE_URL` / service role **só no servidor**).
 - Front nunca leva service key. Public key só se RLS estiver correta.
 - Worker no Render consome `rpa_jobs` e retoma o ciclo com o browser fechado.
-- `src/lib/store.ts` é somente um cache reativo em memória; snapshots, prévias, cobranças e fila RPA persistem no Supabase.
-- Não usar `localStorage` como fonte de verdade nem manter fallback para workspace, prévias, cobranças ou fila RPA em arquivo ou memória no servidor.
+- Dual-write no começo (store + Supabase) só se necessário para não quebrar a UI; corte o localStorage do **cliente** quando o ciclo 1 passar no aceite.
 - Toda mutação de negócio continua passando por `runTool()`.
 
 ---
 
 ## Etapa 1 — Persistência (fonte oficial)
 
-**Status e próximos incrementos**
+**Fazer**
 
-- Autenticação server-side e snapshots por organização em `workspace_snapshots` estão implementados.
-- Contas ficam em `app_accounts`; prévias, eventos de cobrança e tarefas do worker usam tabelas Supabase.
-- O worker Render consome a fila persistida `rpa_jobs`; não existe fallback em fila local.
-- A normalização gradual para tabelas relacionais continua planejada; o snapshot JSONB é a persistência oficial do workspace nesta etapa.
+- Cliente HTTP no servidor (`server/helena-db.mjs`) com service role / `DATABASE_URL`.
+- Mapear: organizations, profiles, companies, contacts, lead_diagnoses, commercial_memory, conversations, messages, rpa_jobs, executions, approvals, wa_connections, deals, proposals, dev_jobs.
+- `rpa.run_shift`, `messages.send`, `prospect.scan_maps`, `calendar.*`, `dev.build_presence` gravam no Postgres além do mock.
+- Job `queued` no Supabase; Render faz tick (já existe fila local — passar a ler `rpa_jobs`).
 
 **Aceite**
 

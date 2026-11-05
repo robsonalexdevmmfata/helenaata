@@ -14,8 +14,6 @@ const READ_TOOLS = new Set([
   "helena.crisis",
   "helena.health",
   "helena.replay",
-  "helena.watchdog",
-  "helena.verify_outcome",
   "lgpd.log_access",
 ]);
 

@@ -1,14 +1,10 @@
-import { api, BackendError } from "./backend";
-import {
-  activateWorkspaceForUser,
-  deactivateWorkspace,
-  flushWorkspace,
-  listAccounts,
-  update,
-} from "./store";
+// Login: tenta a conta local (admin, demo e cadastros). Se o servidor estiver no ar,
+// o admin ainda pega token. Sem servidor, o site segue em modo demonstração.
+import { authenticateBackend, BackendError, clearBackendToken } from "./backend";
+import { activateWorkspaceForUser, getDB, listAccounts, update, upsertAccount } from "./store";
 import { passwordMatches } from "@/lib/security/secrets";
-import type { User } from "./types";
-import { toast } from "sonner";
+
+const SESSION_KEY = "helena-session";
 
 export const DEMO_USERNAME = "admin";
 export const DEMO_PASSWORD = "320809eu";
@@ -16,43 +12,39 @@ export const ADMIN_EMAIL = "robsonalexdev@gmail.com";
 export const CUSTOMER_USERNAME = "demo";
 export const CUSTOMER_PASSWORD = "123456";
 
-let activeUserId = "";
-let restorePromise: Promise<boolean> | null = null;
-
-export async function startSession(user: User | string) {
-  if (typeof user === "string") {
-    if (import.meta.env.MODE !== "test") {
-      throw new Error("A sessão precisa ser autenticada pelo servidor.");
-    }
-    activeUserId = user;
-    update((db) => {
-      db.currentUserId = user;
-      const current = db.users.find((entry) => entry.id === user);
-      if (current) current.lastSeen = new Date().toISOString();
-    });
-    return;
+export function readSessionUserId() {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { userId?: string };
+    return parsed.userId || "";
+  } catch {
+    return "";
   }
-  await activateWorkspaceForUser(user);
-  activeUserId = user.id;
-  update((db) => {
-    db.currentUserId = user.id;
-    const current = db.users.find((entry) => entry.id === user.id);
-    if (current) current.lastSeen = new Date().toISOString();
+}
+
+export function startSession(userId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify({ userId, at: new Date().toISOString() }));
+  activateWorkspaceForUser(userId);
+  update((d) => {
+    d.currentUserId = userId;
+    const u = d.users.find((x) => x.id === userId);
+    if (u) u.lastSeen = new Date().toISOString();
   });
   void import("@/lib/persist/cycle").then(({ pullCycleIntoStore }) => pullCycleIntoStore());
 }
 
 export function findLocalUser(username: string, password: string) {
-  if (import.meta.env.MODE !== "test") return undefined;
   const key = username.trim().toLowerCase();
   const users = listAccounts();
-  return users.find((user) => {
-    if (user.status === "inativo") return false;
-    const matchesLogin = user.username.toLowerCase() === key || user.email.toLowerCase() === key;
-    if (!matchesLogin) return false;
-    if (passwordMatches(user, password)) return true;
-    if (user.id === "u1" && password === DEMO_PASSWORD) return true;
-    return user.id === "u_demo" && password === CUSTOMER_PASSWORD;
+  return users.find((u) => {
+    if (u.status === "inativo") return false;
+    const matchId = u.username.toLowerCase() === key || u.email.toLowerCase() === key;
+    if (!matchId) return false;
+    if (u.id === "u1" && !u.passwordHash && !u.password) return password === DEMO_PASSWORD;
+    return passwordMatches(u, password);
   });
 }
 
@@ -60,27 +52,22 @@ export function checkCredentials(username: string, password: string) {
   return Boolean(findLocalUser(username, password));
 }
 
-/** Login local existe apenas para os testes unitários; a aplicação autentica no servidor. */
+/** Login só de demonstração / contas locais. */
 export function login(username: string, password: string) {
   const user = findLocalUser(username, password);
   if (!user) return false;
-  void startSession(user.id);
+  startSession(user.id);
   return true;
 }
 
+/** Autentica o administrador ou cliente no servidor; credenciais não vêm do cache local. */
 export async function loginWithServer(username: string, password: string) {
   try {
-    const response = await api<{ user: User }>("/api/auth/login", {
-      body: { username, password },
-      timeoutMs: 10000,
-    });
-    await startSession(response.user);
-    void import("@/lib/saas").then(({ syncPaidPlanFromCakto }) =>
-      syncPaidPlanFromCakto(response.user),
-    );
-    void import("@/lib/evolution/provision").then(({ provisionEvolutionInstance }) =>
-      provisionEvolutionInstance(response.user, { remote: false }),
-    );
+    const user = await authenticateBackend(username, password);
+    upsertAccount(user);
+    startSession(user.id);
+    void import("@/lib/saas").then(({ syncPaidPlanFromCakto }) => syncPaidPlanFromCakto(user));
+    void import("@/lib/evolution/provision").then(({ provisionEvolutionInstance }) => provisionEvolutionInstance(user, { remote: false }));
     return true;
   } catch (error) {
     if (error instanceof BackendError && error.status === 401) return false;
@@ -88,43 +75,21 @@ export async function loginWithServer(username: string, password: string) {
   }
 }
 
-export async function restoreSession() {
-  if (activeUserId) return true;
-  if (restorePromise) return restorePromise;
-  restorePromise = (async () => {
-    try {
-      const response = await api<{ user: User }>("/api/auth/me", { timeoutMs: 10000 });
-      await startSession(response.user);
-      return true;
-    } catch (error) {
-      if (!(error instanceof BackendError) || error.status !== 401) {
-        toast.error(
-          `Não foi possível restaurar a sessão: ${error instanceof Error ? error.message : "erro desconhecido"}.`,
-        );
-      }
-      return false;
-    } finally {
-      restorePromise = null;
-    }
-  })();
-  return restorePromise;
+export function logout() {
+  if (typeof window !== "undefined") window.localStorage.removeItem(SESSION_KEY);
+  clearBackendToken();
 }
 
-export async function logout() {
-  try {
-    await flushWorkspace();
-  } catch (error) {
-    toast.error(
-      `Workspace não sincronizado antes de sair: ${error instanceof Error ? error.message : "erro desconhecido"}.`,
-    );
-  }
-  activeUserId = "";
-  deactivateWorkspace();
-  try {
-    await api("/api/auth/logout", { method: "POST" });
-  } catch (error) {
-    toast.error(
-      `Não foi possível encerrar a sessão no servidor: ${error instanceof Error ? error.message : "erro desconhecido"}.`,
-    );
-  }
+export function isAuthenticated() {
+  if (typeof window === "undefined") return false;
+  return Boolean(window.localStorage.getItem(SESSION_KEY));
+}
+
+export function syncSessionUser() {
+  const id = readSessionUserId();
+  if (!id) return;
+  const db = getDB();
+  if (db.currentUserId === id && db.users.some((u) => u.id === id)) return;
+  if (!listAccounts().some((u) => u.id === id)) return;
+  activateWorkspaceForUser(id);
 }

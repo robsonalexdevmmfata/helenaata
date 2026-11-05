@@ -14,58 +14,27 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, credentials: "include", signal: controller.signal });
+    return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
-export type PublishResult = {
-  ok?: boolean;
-  vercelUrl?: string;
-  githubUrl?: string;
-  error?: string;
-};
+export type PublishResult = { ok?: boolean; vercelUrl?: string; githubUrl?: string; error?: string };
 
 /** Cria repo público no GitHub e faz deploy na Vercel (tokens só no servidor). */
-export async function publishSitePreviews(
-  previews: SitePreview[],
-): Promise<Record<string, PublishResult>> {
+export async function publishSitePreviews(previews: SitePreview[]): Promise<Record<string, PublishResult>> {
   const out: Record<string, PublishResult> = {};
   if (!previews.length) return out;
   if (typeof process !== "undefined" && process.env?.VITEST) return out;
 
   const body = JSON.stringify({ previews });
-  let persisted = false;
-  let persistenceError = "Não foi possível salvar as prévias no Supabase.";
   for (const base of previewApiBases()) {
-    try {
-      const response = await fetchJson(
-        `${base}/api/previews`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-        },
-        45_000,
-      );
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result?.error || `HTTP ${response.status}`);
-      if (
-        !Array.isArray(result?.slugs) ||
-        !previews.every((preview) => result.slugs.includes(preview.slug))
-      ) {
-        throw new Error("O servidor não confirmou a persistência de todas as prévias.");
-      }
-      persisted = true;
-      break;
-    } catch (error) {
-      persistenceError = error instanceof Error ? error.message : String(error);
-    }
-  }
-  if (!persisted) {
-    for (const preview of previews) out[preview.slug] = { ok: false, error: persistenceError };
-    return out;
+    void fetchJson(`${base}/api/previews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    }, 45_000).catch(() => { /* fallback /v/slug */ });
   }
 
   for (const preview of previews.slice(0, 12)) {
@@ -73,22 +42,17 @@ export async function publishSitePreviews(
       let data: PublishResult = { ok: false, error: "Servidor de publish indisponível." };
       for (const base of previewApiBases()) {
         try {
-          const res = await fetchJson(
-            `${base}/api/dev/publish-client`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ preview }),
-            },
-            90_000,
-          );
+          const res = await fetchJson(`${base}/api/dev/publish-client`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ preview }),
+          }, 90_000);
           const json = (await res.json().catch(() => ({}))) as PublishResult;
           if (res.ok && json.ok) {
             data = json;
             break;
           }
-          data =
-            json.ok === false ? json : { ok: false, error: json.error || `HTTP ${res.status}` };
+          data = json.ok === false ? json : { ok: false, error: json.error || `HTTP ${res.status}` };
         } catch {
           /* tenta o próximo host (Render / relativo) */
         }
@@ -120,11 +84,7 @@ export async function fetchPublishedPreview(slug: string): Promise<SitePreview |
   const path = `/api/previews/${encodeURIComponent(slug)}`;
   for (const base of previewApiBases()) {
     try {
-      const res = await fetchJson(
-        `${base}${path}`,
-        { headers: { Accept: "application/json" } },
-        45_000,
-      );
+      const res = await fetchJson(`${base}${path}`, { headers: { Accept: "application/json" } }, 45_000);
       if (!res.ok) continue;
       const data = await res.json();
       if (data?.preview) return data.preview as SitePreview;
