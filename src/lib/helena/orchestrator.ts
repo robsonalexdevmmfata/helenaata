@@ -62,6 +62,7 @@ export async function sendToHelena(text: string) {
   const triggerNorm = normalize(briefingCfg.triggerPhrase || "olá helena, cheguei");
   const exitNorm = normalize(briefingCfg.exitTriggerPhrase || "helena, encerrando por hoje");
 
+  try {
   // Intercept arrival: "olá helena cheguei", "bom dia", "boa tarde" — música de fundo + briefing falado
   if (isHelenaArrivalGreeting(clean, briefingCfg.triggerPhrase) || nClean === triggerNorm) {
     pushHelenaMessage(clean, undefined, "user");
@@ -237,6 +238,15 @@ export async function sendToHelena(text: string) {
     await sleep(800);
     helenaUi.set({ state: "ocioso" });
   }
+  } catch (err) {
+    console.warn("[Helena]", err);
+    pushHelenaMessage(
+      err instanceof Error
+        ? `Travou no meio do plano: ${err.message}. Tenta de novo em uma frase (ex.: “gere 30 leads de clínicas no Brasil”).`
+        : "Não consegui concluir esse pedido. Tenta de novo com nicho e quantidade.",
+    );
+    helenaUi.set({ state: "ocioso" });
+  }
 }
 
 function prepSdr(n: string) {
@@ -273,19 +283,21 @@ function planOperation(opts: { intro: string; title: string; objective: string; 
   };
 
   const list = db.lists.find((l) => l.id === opts.listId) ?? db.lists[0];
+  const listName = list?.name || "Lista nova (Maps / WhatsApp)";
+  const listId = list?.id || opts.listId || "l_new";
   const names = db.agents.filter((a) => opts.agentIds.includes(a.id)).map((a) => a.name);
   const approvalId = requestApproval({
     title: opts.title,
     description: opts.objective,
     details: [
       { label: "Contatos", value: String(opts.total) },
-      { label: "Lista", value: list.name },
-      { label: "Canal", value: conn.name },
-      { label: "Agentes", value: names.join(", ") },
+      { label: "Lista", value: listName },
+      { label: "Canal", value: conn.name || "WhatsApp" },
+      { label: "Agentes", value: names.join(", ") || "Time Comercial" },
       { label: "Limite", value: `${opts.total} mensagens` },
     ],
     tool: "operations.start",
-    params: { title: opts.title, objective: opts.objective, total: opts.total, agentIds: opts.agentIds, listId: list.id, connectionId: conn.id },
+    params: { title: opts.title, objective: opts.objective, total: opts.total, agentIds: opts.agentIds, listId, connectionId: conn.id },
     risk: "alto",
     requestedBy: "Helena",
   });
@@ -299,7 +311,7 @@ function planOperation(opts: { intro: string; title: string; objective: string; 
         steps: [
           { label: "Carregar ICP", done: true },
           { label: `Selecionar ${names.filter((n) => n.startsWith("SDR")).join(" e ") || "agentes"}`, done: true },
-          { label: `Preparar lista ${list.name}`, done: true },
+          { label: `Preparar lista ${listName}`, done: true },
           { label: "Iniciar prospecção", done: false },
           { label: "Monitorar respostas", done: false },
           { label: "Qualificar oportunidades", done: false },
@@ -623,24 +635,43 @@ export function interpret(text: string): Reply[] {
   }
 
   // Prospecting / activate commercial or marketing team
-  if (/prospect|potenciais clientes|novos clientes|consiga reunioes|conseguir reunioes|ativ\w*.*(comercial|marketing|time|sdr|agentes)/.test(n)) {
+  if (/prospect|ptrospec|leads?|potenciais clientes|novos clientes|consiga reunioes|conseguir reunioes|ativ\w*.*(comercial|marketing|time|sdr|agentes)/.test(n)) {
     const listId = /clinic|consultori|dentist/.test(n) ? "l2" : /imobili/.test(n) ? "l4" : "l1";
     const list = db.lists.find((l) => l.id === listId) ?? db.lists[0];
-    const total = Number(n.match(/(\d{1,4})/)?.[1] ?? 50);
+    const total = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 50), 150);
+    const listName = list?.name || "Prospecção WhatsApp";
+    const segment = list?.segment || "negócios locais sem site";
+    // Conta nova sem lista: varre Maps em vez de plano sobre lista vazia.
+    if (!list) {
+      return [
+        perform(
+          "prospect.scan_maps",
+          { segment, city: "Brasil", nationwide: true, state: "TODOS", limit: total },
+          `Gerar ${total} leads · Time Comercial`,
+          [
+            { label: "Meta", value: `${total} leads` },
+            { label: "Nicho", value: segment },
+            { label: "Escopo", value: "Brasil (Maps + WhatsApp válido)" },
+            { label: "Time", value: /marketing/.test(n) ? "Comercial (marketing = execução comercial)" : "Comercial" },
+          ],
+          `Vou orquestrar o Time Comercial para gerar até ${total} leads com WhatsApp válido. A varredura Maps começou; Marina e Camila assumem a abordagem. Confirme se quer um nicho específico (ex.: clínicas, barbearias).`,
+        ),
+      ];
+    }
     const teamMention = /marketing/.test(n) ? "Comercial e Marketing" : "Comercial";
     const agentCount = comercial?.agentIds?.length ?? 3;
     const orgName = /info\s*tech/i.test(text) ? "Info Tech Ltda" : db.organization.name;
     return planOperation({
       intro: `${greeting()}. Eu orquestro; o Time Comercial executa as abordagens.\n\nTime ${teamMention}: ${agentCount} agentes prontos para a ${orgName}. Script inicial: Robson Alex, reunião de 10 minutos. Objeções de preço/tempo ficam com SDR/Closer (Groq). Horário fechado entra na Agenda compartilhada.`,
-      title: `Prospecção ${list.name}`,
-      objective: `Helena delega ${total} abordagens da lista ${list.name} aos SDRs da ${orgName} e gera reuniões na Agenda.`,
+      title: `Prospecção ${listName}`,
+      objective: `Helena delega ${total} abordagens da lista ${listName} aos SDRs da ${orgName} e gera reuniões na Agenda.`,
       total,
       listId: list.id,
       agentIds: [...sdrs.map((a) => a.id), "a_qual", "a_closer"],
       suggestions: [
-        `Helena ativa o Supervisor Comercial e delega a ${sdrs.map((a) => a.name).join(" e ")}`,
-        `utilizar a lista ${list.name} e o disparo Evolution API /message/sendText`,
-        `priorizar ${list.segment.toLowerCase()}`,
+        `Helena ativa o Supervisor Comercial e delega a ${sdrs.map((a) => a.name).join(" e ") || "os SDRs"}`,
+        `utilizar a lista ${listName} e o disparo Evolution API /message/sendText`,
+        `priorizar ${segment.toLowerCase()}`,
         `iniciar com ${total} contatos no script Robson Alex`,
         "contornar objeções de preço/tempo com Groq",
         "gravar reunião na Agenda com agendarReuniao ao fechar horário",
