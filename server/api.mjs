@@ -397,8 +397,8 @@ export async function handleApi(req, res) {
     }
 
     if (p.startsWith("/api/evolution/") || p === "/api/evolution") {
-      // A chave global da Evolution fica no servidor: só quem está logado usa este repasse.
-      if (!readToken(sessionToken(req))) return send(res, 401, { error: "Faça login." }), true;
+      // Chave global só no servidor. Login libera o repasse; a apikey do browser é ignorada.
+      if (!verifyToken(bearer(req))) return send(res, 401, { error: "Faça login." }), true;
       const rest = p.slice("/api/evolution".length) || "/";
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
       const payload = hasBody ? await readJson(req) : {};
