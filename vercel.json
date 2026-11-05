@@ -6,12 +6,21 @@
   "outputDirectory": ".output/public",
   "functions": {
     "api/auth/*.js": {
+      "memory": 1024,
+      "maxDuration": 30,
       "includeFiles": "api/_lib/**"
     }
   },
   "rewrites": [
     { "source": "/health", "destination": "https://helenaata.onrender.com/health" },
-    { "source": "/api/:path*", "destination": "https://helenaata.onrender.com/api/:path*" },
+    { "source": "/api/whatsapp/:path*", "destination": "https://helenaata.onrender.com/api/whatsapp/:path*" },
+    { "source": "/api/helena/:path*", "destination": "https://helenaata.onrender.com/api/helena/:path*" },
+    { "source": "/api/evolution/:path*", "destination": "https://helenaata.onrender.com/api/evolution/:path*" },
+    { "source": "/api/evolution", "destination": "https://helenaata.onrender.com/api/evolution" },
+    { "source": "/api/billing/:path*", "destination": "https://helenaata.onrender.com/api/billing/:path*" },
+    { "source": "/api/ai/:path*", "destination": "https://helenaata.onrender.com/api/ai/:path*" },
+    { "source": "/api/previews/:path*", "destination": "https://helenaata.onrender.com/api/previews/:path*" },
+    { "source": "/api/maps/:path*", "destination": "https://helenaata.onrender.com/api/maps/:path*" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }
