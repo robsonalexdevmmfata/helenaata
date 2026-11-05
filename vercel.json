@@ -4,6 +4,11 @@
   "installCommand": "npm ci --no-audit --no-fund",
   "buildCommand": "npm run build:vercel",
   "outputDirectory": ".output/public",
+  "functions": {
+    "api/auth/*.js": {
+      "includeFiles": "api/_lib/**"
+    }
+  },
   "rewrites": [
     { "source": "/health", "destination": "https://helenaata.onrender.com/health" },
     { "source": "/api/:path*", "destination": "https://helenaata.onrender.com/api/:path*" },

@@ -63,13 +63,21 @@ async function main() {
   if (!project?.id) throw new Error("Projeto Vercel não encontrado");
   log(`vercel project=${project.name} (id oculto)`);
 
-  await upsertVercel(project.id, "VITE_API_URL", "https://helenaata.onrender.com");
+  // Cadastro/login rodam nas functions /api/auth na Vercel (mesmo domínio do site).
+  // VITE_API_URL vazio = fetch relativo; o restante de /api continua no rewrite do Render.
+  await upsertVercel(project.id, "VITE_API_URL", "");
   await upsertVercel(project.id, "VITE_PUBLIC_SITE_URL", "https://helenaata.vercel.app");
   await upsertVercel(project.id, "VITE_EVOLUTION_URL", "https://evolutionapi.hostless.app");
   await upsertVercel(project.id, "VITE_EVOLUTION_INSTANCE", "helena");
+  await upsertVercel(project.id, "SUPABASE_POOLER_REGION", env.SUPABASE_POOLER_REGION || "us-east-1");
+  if (env.DATABASE_URL) await upsertVercel(project.id, "DATABASE_URL", env.DATABASE_URL);
+  else log("vercel skip DATABASE_URL vazio");
+  if (env.SESSION_SECRET) await upsertVercel(project.id, "SESSION_SECRET", env.SESSION_SECRET);
+  if (env.ADMIN_PASSWORD) await upsertVercel(project.id, "ADMIN_PASSWORD", env.ADMIN_PASSWORD);
+  if (env.ADMIN_USER) await upsertVercel(project.id, "ADMIN_USER", env.ADMIN_USER);
 
   if (!env.RENDER_API_KEY) {
-    log("render: RENDER_API_KEY ausente — defina EVOLUTION_URL, EVOLUTION_KEY, GITHUB_TOKEN, VERCEL_TOKEN, VERCEL_TEAM_ID no painel");
+    log("render: RENDER_API_KEY ausente — WhatsApp/Evolution seguem no Render; cadastro já usa a Vercel");
     return;
   }
   const svcRes = await fetch("https://api.render.com/v1/services?limit=50", {
@@ -94,6 +102,8 @@ async function main() {
     VERCEL_TEAM_ID: env.VERCEL_TEAM_ID || "",
     VITE_PUBLIC_SITE_URL: "https://helenaata.vercel.app",
     VITE_EVOLUTION_URL: "https://evolutionapi.hostless.app",
+    DATABASE_URL: env.DATABASE_URL || "",
+    SUPABASE_POOLER_REGION: env.SUPABASE_POOLER_REGION || "us-east-1",
   };
   for (const [key, value] of Object.entries(vars)) {
     if (!value) {
