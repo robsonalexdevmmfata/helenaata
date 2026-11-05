@@ -167,10 +167,10 @@ export const whatsappApi = {
   autoReply: (enabled: boolean) => api<{ autoReply: boolean }>("/api/whatsapp/auto-reply", { body: { enabled } }),
 };
 
-/** Chat de IA pelo servidor (chave guardada no servidor). Retorna null se indisponível. */
+/** Chat de IA pelo servidor (chave Groq no Vercel/Render). Retorna null se indisponível. */
 export async function serverChatCompletion(body: Record<string, unknown>): Promise<any | null> {
-  if (!getBackendToken()) return null;
   try {
+    // Não exige token: /api/ai/chat na Vercel usa GROQ_API_KEY do ambiente.
     return await api<any>("/api/ai/chat", { body, timeoutMs: 35000 });
   } catch {
     return null;

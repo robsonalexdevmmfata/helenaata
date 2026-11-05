@@ -82,6 +82,11 @@ async function main() {
     log("vercel skip EVOLUTION_KEY vazio");
   }
   await upsertVercel(project.id, "EVOLUTION_INSTANCE", env.EVOLUTION_INSTANCE || "helena");
+  if (env.GROQ_API_KEY) await upsertVercel(project.id, "GROQ_API_KEY", env.GROQ_API_KEY);
+  else log("vercel skip GROQ_API_KEY vazio");
+  if (env.VITE_GROQ_MODEL || env.GROQ_MODEL) {
+    await upsertVercel(project.id, "VITE_GROQ_MODEL", env.VITE_GROQ_MODEL || env.GROQ_MODEL);
+  }
 
   if (!env.RENDER_API_KEY) {
     log("render: RENDER_API_KEY ausente — WhatsApp/Evolution seguem no Render; cadastro já usa a Vercel");

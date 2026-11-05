@@ -155,53 +155,54 @@ export async function sendToHelena(text: string) {
     await sleep(350);
 
     const user = currentUser(getDB());
+    const requestedBy = user?.name || "Gestor";
     const allowDev = canUseDevTeam(user);
     for (const tc of groqRes.toolCalls) {
       if (allowDev && (tc.name === "dev_build_presence" || (tc.name === "prospect_scan_maps" && isPresenceIntent(clean)))) {
-        const res = runTool("dev.build_presence", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("dev.build_presence", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Time Desenvolvimento IA · prévia", detail: res.message }
         );
       } else if (tc.name === "prospect_scan_maps" || tc.name === "dev_build_presence") {
-        const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || `Executei a varredura no Google Maps para ${tc.arguments.segment || "empresas"} em ${tc.arguments.city || "São Paulo"}. Encontrei empresas sem site e injetei no CRM com a tag #sem-site. O SDR já iniciou a abordagem!`,
           { type: "result", ok: res.ok, title: "Varredura Google Maps (#sem-site)", detail: res.message }
         );
       } else if (tc.name === "calendar_create_event" || tc.name === "calendar_agendar_reuniao") {
-        const res = runTool("calendar.agendar_reuniao", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("calendar.agendar_reuniao", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || "Reunião gravada na Agenda compartilhada e vinculada ao lead.",
           { type: "result", ok: res.ok, title: "Agenda compartilhada", detail: res.message }
         );
       } else if (tc.name === "leads_diagnose") {
-        const res = runTool("leads.diagnose", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("leads.diagnose", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Diagnóstico do lead", detail: res.message }
         );
       } else if (tc.name === "sales_handle_objection") {
-        const res = runTool("sales.handle_objection", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("sales.handle_objection", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Matriz de Objeções (Sales Brain)", detail: res.message }
         );
       } else if (tc.name === "sales_generate_checkout_pix") {
-        const res = runTool("sales.generate_checkout_pix", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("sales.generate_checkout_pix", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Checkout Pix / Fechamento", detail: res.message }
         );
       } else if (tc.name === "sales_rescue_cold_leads") {
-        const res = runTool("sales.rescue_cold_leads", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool("sales.rescue_cold_leads", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Resgate de Leads Frios (>48h)", detail: res.message }
         );
       } else if (tc.name === "helena_briefing" || tc.name === "helena_council" || tc.name === "helena_crisis") {
         const tool = tc.name.replace("_", ".") as "helena.briefing" | "helena.council" | "helena.crisis";
-        const res = runTool(tool, tc.arguments, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+        const res = runTool(tool, tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(groqRes.text || res.message, { type: "result", ok: res.ok, title: "Comando Helena", detail: res.message });
       } else if (tc.name === "missions_plan") {
         interpret(clean).forEach((r) => pushHelenaMessage(r.text, r.card));
@@ -257,7 +258,7 @@ function perform(tool: string, params: Record<string, unknown>, title: string, d
     return { text: `Posso fazer isso. Como é uma ação de risco ${risk === "alto" ? "alto" : "médio"}, preciso da sua aprovação antes de executar.`, card: { type: "approval", approvalId } };
   }
   const user = currentUser(db);
-  const res = runTool(tool, params, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+  const res = runTool(tool, params, { actor: "Helena", actorType: "helena", requestedBy: user?.name || "Gestor" });
   return res.ok
     ? { text: okText, card: { type: "result", ok: true, title, detail: res.message } }
     : { text: `Não consegui concluir porque ${res.message}. Nada foi alterado.`, card: { type: "result", ok: false, title, detail: res.message } };
@@ -311,13 +312,14 @@ function planOperation(opts: { intro: string; title: string; objective: string; 
 export function interpret(text: string): Reply[] {
   const db = getDB();
   const user = currentUser(db);
-  const first = user.name.split(" ")[0];
+  const actorName = user?.name || "Gestor";
+  const first = actorName.split(" ")[0] || "Gestor";
   const n = prepSdr(normalize(text));
   const summary = computeSummary(db);
   const comercial = db.teams.find((t) => t.name === "Comercial")!;
   const sdrs = db.agents.filter((a) => a.role === "SDR" && a.status !== "erro");
 
-  if (!db.rolePermissions[user.role]?.includes("helena.use")) {
+  if (user && !db.rolePermissions[user.role]?.includes("helena.use")) {
     return [{ text: "Seu perfil não tem permissão para usar a Helena. Fale com um administrador." }];
   }
 
@@ -725,7 +727,7 @@ export function interpret(text: string): Reply[] {
   // Hot leads
   if (/quente|melhores oportunidades|leads? bons/.test(n)) {
     const hot = db.deals.filter((d) => d.status === "aberto" && d.probability >= 50).sort((a, b) => b.value - a.value);
-    runTool("crm.search_contacts", { query: "quente" }, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+    runTool("crm.search_contacts", { query: "quente" }, { actor: "Helena", actorType: "helena", requestedBy: actorName });
     return [{
       text: `Encontrei ${hot.length} leads quentes (probabilidade ≥ 50%), somando ${brl(hot.reduce((s, d) => s + d.value, 0))} em oportunidades.`,
       card: { type: "list", title: "Leads quentes", items: hot.slice(0, 8).map((d) => ({ label: d.title, sub: `${brl(d.value)} · ${d.probability}% · ${db.contacts.find((c) => c.id === d.contactId)?.name}`, href: `/crm/contatos/${d.contactId}` })) },
@@ -735,7 +737,7 @@ export function interpret(text: string): Reply[] {
   // Negative conversations
   if (/negativ|reclama|insatisfeit/.test(n)) {
     const neg = db.conversations.filter((c) => c.sentiment === "negativo");
-    runTool("messages.search", { query: "" }, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+    runTool("messages.search", { query: "" }, { actor: "Helena", actorType: "helena", requestedBy: actorName });
     return [{ text: `Encontrei ${neg.length} conversas com sentimento negativo.`, card: { type: "list", title: "Conversas negativas", items: neg.map((c) => ({ label: db.contacts.find((x) => x.id === c.contactId)?.name ?? "", sub: c.messages[c.messages.length - 1]?.text, href: `/atendimento/inbox?c=${c.id}` })) } }];
   }
 
@@ -761,7 +763,7 @@ export function interpret(text: string): Reply[] {
 
   // Analytics
   if (/como esta|vendas|desempenho|resultado|relatorio|quantas|quantos|metricas|faturamento|caira?m|comercial/.test(n)) {
-    runTool("analytics.query", {}, { actor: "Helena", actorType: "helena", requestedBy: user.name });
+    runTool("analytics.query", {}, { actor: "Helena", actorType: "helena", requestedBy: actorName });
     const s = summary;
     const b = liveBoard(db);
     const why = /cair|caira|queda/.test(n) ? `\n\nPrincipais causas: ${s.staleDeals} oportunidades sem follow-up há mais de 48h.` : "";
@@ -807,7 +809,8 @@ const s1 = (n: number) => String(n);
 
 export function createAgentFromProposal(messageId: string, card: Extract<HelenaCard, { type: "agent_proposal" }>) {
   const user = currentUser(getDB());
-  const res = runTool("agents.create", { ...card.proposal, description: card.proposal.objective }, { actor: "Helena", actorType: "helena", requestedBy: user.name, approvedBy: user.name });
+  const actorName = user?.name || "Gestor";
+  const res = runTool("agents.create", { ...card.proposal, description: card.proposal.objective }, { actor: "Helena", actorType: "helena", requestedBy: actorName, approvedBy: actorName });
   if (res.ok) {
     updateHelenaCard(messageId, { ...card, createdAgentId: String(res.data?.id) });
     pushHelenaMessage(`Criei o agente ${card.proposal.name}. Ele está aguardando e já pode ser ativado em IA → Agentes ou pedindo para mim.`);

@@ -207,8 +207,8 @@ function AppLayout() {
           });
         });
       } else if (me.evolutionInstance) {
-        // Garante a instância na Hostless depois do trial/plano liberado.
-        void provisionEvolutionInstance(me);
+        // Só reforça o nome local; create/QR fica em /comecar e Integrações → WhatsApp.
+        void provisionEvolutionInstance(me, { remote: false });
       }
     }
     const paywall = window.setInterval(() => {

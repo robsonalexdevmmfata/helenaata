@@ -478,11 +478,12 @@ export function ownerName(db: DB, id?: string) {
 }
 
 export function currentUser(db: DB) {
-  return db.users.find((u) => u.id === db.currentUserId)!;
+  return db.users.find((u) => u.id === db.currentUserId) ?? db.users[0];
 }
 
 export function can(db: DB, permission: string) {
   const user = currentUser(db);
+  if (!user) return false;
   return db.rolePermissions[user.role]?.includes(permission) ?? false;
 }
 

@@ -109,6 +109,11 @@ export async function callFreeLLMOrchestrator(
 ) {
   const config = getFreeLLMConfig();
   if (!config.enabled) return null;
+  // Em produção (Vercel) o FreeLLM local não existe — não spammar localhost:8000.
+  if (typeof window !== "undefined" && /localhost|127\.0\.0\.1/i.test(config.endpoint)) {
+    const host = window.location.hostname;
+    if (host && host !== "localhost" && host !== "127.0.0.1") return null;
+  }
 
   const url = `${config.endpoint.replace(/\/$/, "")}/chat/completions`;
   const modelName = config.defaultModel.replace("freellm/", "");

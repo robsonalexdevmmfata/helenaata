@@ -13,6 +13,10 @@
     "api/evo.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/ai/chat.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
   },
   "rewrites": [
@@ -20,7 +24,6 @@
     { "source": "/api/whatsapp/:path*", "destination": "https://helenaata.onrender.com/api/whatsapp/:path*" },
     { "source": "/api/helena/:path*", "destination": "https://helenaata.onrender.com/api/helena/:path*" },
     { "source": "/api/billing/:path*", "destination": "https://helenaata.onrender.com/api/billing/:path*" },
-    { "source": "/api/ai/:path*", "destination": "https://helenaata.onrender.com/api/ai/:path*" },
     { "source": "/api/previews/:path*", "destination": "https://helenaata.onrender.com/api/previews/:path*" },
     { "source": "/api/maps/:path*", "destination": "https://helenaata.onrender.com/api/maps/:path*" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }

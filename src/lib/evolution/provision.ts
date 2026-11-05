@@ -2,7 +2,9 @@ import type { User } from "@/lib/types";
 import { currentUser, getDB, patchUserEverywhere } from "@/lib/store";
 import { isPlatformAdmin } from "@/lib/saas";
 import {
+  evolutionConnectQr,
   getEvolutionConfigUI,
+  getEvolutionStatus,
   qrImageFromEvolution,
   saveEvolutionConfigUI,
   type EvolutionConfig,
@@ -60,28 +62,48 @@ export interface ProvisionResult {
   qr?: string;
 }
 
+function authHeaders() {
+  const token =
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("helena-backend-token") || ""
+      : "";
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 export async function evolutionCreateInstance(
   instance: string,
   cfg?: EvolutionConfig,
 ): Promise<ProvisionResult> {
   const config = cfg ?? getEvolutionConfigUI();
+  const bound = { ...config, instance };
+
+  // Já existe? Não chama /create de novo (evita 403 no console).
+  const status = await getEvolutionStatus(bound);
+  if (status.ok) {
+    if (status.connected) return { ok: true, instance, existed: true, qr: "" };
+    const pair = await evolutionConnectQr(bound, 5);
+    return {
+      ok: true,
+      instance,
+      existed: true,
+      qr: pair.qr || "",
+      error: pair.ok ? undefined : pair.error,
+    };
+  }
+
   const url =
     typeof window !== "undefined"
       ? `/api/evo?p=${encodeURIComponent("/instance/create")}`
       : `${config.baseUrl.replace(/\/$/, "")}/instance/create`;
   let res: Response;
   try {
-    const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("helena-backend-token") || ""
-        : "";
     res = await fetch(url, {
       method: "POST",
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: authHeaders(),
       body: JSON.stringify({
         instanceName: instance,
         qrcode: true,
@@ -99,12 +121,17 @@ export async function evolutionCreateInstance(
       "",
   );
   if (res.status === 401) {
-    return { ok: false, instance, error: "A Evolution recusou a chave (EVOLUTION_KEY no Render)." };
+    return { ok: false, instance, error: "A Evolution recusou a chave (EVOLUTION_KEY)." };
   }
   // Evolution v2 responde 403 "already in use" quando a instância já existe.
-  const exists = res.status === 409 || (res.status === 403 && /use|exist/i.test(message));
+  const exists = res.status === 409 || (res.status === 403 && /use|exist|já|already/i.test(message));
   if (res.ok || exists) {
-    return { ok: true, instance, existed: exists, qr: qrImageFromEvolution(data) };
+    let qr = qrImageFromEvolution(data);
+    if (!qr && exists) {
+      const pair = await evolutionConnectQr(bound, 5);
+      qr = pair.qr || "";
+    }
+    return { ok: true, instance, existed: exists, qr };
   }
   return { ok: false, instance, error: message || `HTTP ${res.status}` };
 }
