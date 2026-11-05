@@ -1,13 +1,8 @@
 /**
- * Repasse Evolution → Hostless.
- * A EVOLUTION_KEY fica só na Vercel/Render. O browser chama /api/evolution/*.
- * Quando o Render tiver EVOLUTION_URL+KEY, o rewrite pode voltar pra lá;
- * até lá este proxy mantém o chip vendável.
+ * Proxy único Helena → Hostless Evolution.
+ * Uso: /api/evo?p=/instance/create
+ * EVOLUTION_KEY só no ambiente (Vercel).
  */
-
-const HOSTLESS = () =>
-  String(process.env.EVOLUTION_URL || "https://evolutionapi.hostless.app").replace(/\/$/, "");
-const KEY = () => String(process.env.EVOLUTION_KEY || "").trim();
 
 function send(res, status, data) {
   res.statusCode = status;
@@ -23,13 +18,18 @@ export default async function handler(req, res) {
     return;
   }
 
-  const key = KEY();
+  const key = String(process.env.EVOLUTION_KEY || "").trim();
   if (!key) return send(res, 500, { error: "EVOLUTION_KEY ausente no ambiente." });
 
-  const parts = [].concat(req.query?.path || []);
-  const rest = parts.length ? `/${parts.map(encodeURIComponent).join("/")}` : "";
-  const search = req.url?.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-  const target = `${HOSTLESS()}${rest}${search}`;
+  const host = String(process.env.EVOLUTION_URL || "https://evolutionapi.hostless.app").replace(/\/$/, "");
+  let path = "/";
+  try {
+    const u = new URL(req.url || "/", "http://localhost");
+    path = u.searchParams.get("p") || "/";
+    if (!path.startsWith("/")) path = `/${path}`;
+  } catch {
+    path = "/";
+  }
 
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   let body;
@@ -40,12 +40,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const upstream = await fetch(target, {
+    const upstream = await fetch(`${host}${path}`, {
       method: req.method,
-      headers: {
-        apikey: key,
-        "Content-Type": "application/json",
-      },
+      headers: { apikey: key, "Content-Type": "application/json" },
       body,
       signal: AbortSignal.timeout(25_000),
     });

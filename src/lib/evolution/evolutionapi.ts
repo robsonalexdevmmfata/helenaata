@@ -104,7 +104,8 @@ function headers(_cfg: EvolutionConfig) {
 
 function evoUrl(path: string, cfg: EvolutionConfig) {
   const clean = path.startsWith("/") ? path : `/${path}`;
-  if (typeof window !== "undefined") return `/api/evolution${clean}`;
+  // No browser: proxy /api/evo na Vercel → Hostless (chave só no servidor).
+  if (typeof window !== "undefined") return `/api/evo?p=${encodeURIComponent(clean)}`;
   return `${cfg.baseUrl.replace(/\/$/, "")}${clean}`;
 }
 

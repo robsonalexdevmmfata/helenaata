@@ -67,7 +67,7 @@ export async function evolutionCreateInstance(
   const config = cfg ?? getEvolutionConfigUI();
   const url =
     typeof window !== "undefined"
-      ? "/api/evolution/instance/create"
+      ? `/api/evo?p=${encodeURIComponent("/instance/create")}`
       : `${config.baseUrl.replace(/\/$/, "")}/instance/create`;
   let res: Response;
   try {

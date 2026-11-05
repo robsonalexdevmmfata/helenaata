@@ -10,7 +10,7 @@
       "maxDuration": 30,
       "includeFiles": "api/_lib/**"
     },
-    "api/evolution/[...path].js": {
+    "api/evo.js": {
       "memory": 1024,
       "maxDuration": 30
     }
