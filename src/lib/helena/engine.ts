@@ -1135,7 +1135,7 @@ const handlers: Record<string, Handler> = {
             title: `Criação de Site · ${compName}`,
             contactId,
             companyId: compId,
-            value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 547,
+            value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 100,
             probability: stage.probability,
             expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
             ownerId: ownerSdr.id,

@@ -33,10 +33,13 @@ export function liveServiceOffers(organizationId: string): ServiceOffer[] {
   return [
     offer(organizationId, "svc_landing", "Presença Digital & Web", "Landing Page de Alta Conversão",
       "Focada em tráfego pago (Google Ads / Meta Ads), carregamento rápido, botão de WhatsApp flutuante e design responsivo.",
-      297, "unico", { priceNote: "ou 3x de R$ 99", pitch: "Página única que transforma clique em conversa no WhatsApp." }),
+      100, "mensal", { priceNote: "mensalidade · front publicado na Vercel", pitch: "Página única que transforma clique em conversa no WhatsApp." }),
     offer(organizationId, "svc_site", "Presença Digital & Web", "Site Institucional Profissional",
-      "Até 5 páginas (Home, Sobre, Serviços, Blog/Portfólio, Contato) + SEO local para Google Maps e buscas da região.",
-      547, "unico", { priceNote: "ou 3x de R$ 189", pitch: "Site completo para aparecer na região e passar credibilidade." }),
+      "Front-end público na Vercel (Home, Sobre, Serviços, Contato) + SEO local. Link de visualização para o dono aprovar.",
+      100, "mensal", { priceNote: "R$ 100/mês · front na Vercel", pitch: "Site completo para aparecer na região e passar credibilidade — R$ 100/mês." }),
+    offer(organizationId, "svc_cardapio", "Presença Digital & Web", "Cardápio Online (restaurantes)",
+      "Cardápio digital sem site próprio: categorias, itens, preços e botão WhatsApp. Front estático na Vercel.",
+      100, "mensal", { priceNote: "R$ 100/mês · link público Vercel", pitch: "Cardápio online pra quem some no Maps — R$ 100/mês." }),
     offer(organizationId, "svc_portal", "Presença Digital & Web", "Portal / Blog de Conteúdo",
       "Plataforma de tráfego orgânico, SEO avançado, painel de artigos e monetização por anúncios.",
       897, "unico", { priceNote: "ou 3x de R$ 299" }),
@@ -121,14 +124,17 @@ export function clientAskedPrice(text: string) {
 
 /** Cotação curta de entrada. Só chamar depois de clientAskedPrice. */
 export function quoteEntryPrices(offers: ServiceOffer[]) {
-  const landing = offers.find((o) => o.id === "svc_landing" && o.active);
   const site = offers.find((o) => o.id === "svc_site" && o.active);
-  if (!landing && !site) return "Te passo o valor certinho do que fizer sentido pro seu caso. Prefere landing ou site completo?";
+  const cardapio = offers.find((o) => o.id === "svc_cardapio" && o.active);
+  const landing = offers.find((o) => o.id === "svc_landing" && o.active);
+  if (!site && !cardapio && !landing) {
+    return "Te passo o valor certinho do que fizer sentido pro seu caso. Site e cardápio ficam em R$ 100/mês.";
+  }
   const bits = [
-    landing ? `landing ${formatOfferPrice(landing)}` : "",
-    site ? `site institucional ${formatOfferPrice(site)}` : "",
+    site ? `site ${formatOfferPrice(site)}` : "site R$ 100/mês",
+    cardapio ? `cardápio online ${formatOfferPrice(cardapio)}` : "cardápio online R$ 100/mês",
   ].filter(Boolean);
-  return `Pra não te enrolar: ${bits.join(" e ")}. Sem compromisso. Se quiser, em 10 minutos te mostro o que entra em cada um.`;
+  return `Pra não te enrolar: ${bits.join(" e ")}. O Time Dev sobe o front na Vercel com link público pra você ver. Sem compromisso.`;
 }
 
 export function buildCatalogOpening(contactName?: string, companyName?: string, _offers: ServiceOffer[] = []) {
@@ -166,11 +172,11 @@ Dor → oferta do catálogo → um cliente novo paga o projeto → parcelamento 
 
   a_supcom: `Você é o Marcos Rivera, diretor comercial da Info Tech. Qualidade acima de volume. Marina cuida de saúde; Camila de serviço local; Rafael qualifica; André e Valentina fecham reunião. Proíba preço sem pergunta. Meta: reunião na Agenda, não mensagem extra no mesmo número.`,
 
-  a_dev_fe: `Você é o Caio Ferreira, engenheiro de software sênior de front-end da Info Tech. Monta a prévia do site (home, sobre, cardápio ou serviços, WhatsApp) com dados públicos do mapa. Não inventa preço comercial. Nunca diga que é uma IA.`,
+  a_dev_fe: `Você é o Caio Ferreira, engenheiro de software sênior de front-end da Info Tech. Monta só o front (HTML/CSS) do site ou cardápio com dados públicos do mapa e publica link na Vercel. Site e cardápio oficiais: R$ 100/mês. Não inventa outros preços. Nunca diga que é uma IA.`,
 
-  a_dev_be: `Você é o Diego Nakamura, engenheiro de software sênior de back-end da Info Tech. Estrutura cardápio/catálogo, slug estável e o link de visualização que o Time Comercial envia no WhatsApp. Nunca diga que é uma IA.`,
+  a_dev_be: `Você é o Diego Nakamura, engenheiro de software sênior de back-end da Info Tech. Estrutura cardápio/catálogo, slug estável e o deploy estático na Vercel (front only) cujo link o Time Comercial manda no WhatsApp. Site/cardápio: R$ 100/mês. Nunca diga que é uma IA.`,
 
-  a_dev_ds: `Você é a Sofia Almeida, designer gráfico sênior da Info Tech. Define paleta, hierarquia visual e fotos de referência do nicho para a prévia parecer um negócio local de verdade. Nunca diga que é uma IA.`,
+  a_dev_ds: `Você é a Sofia Almeida, designer gráfico sênior da Info Tech. Define paleta, hierarquia visual e fotos de referência do nicho para a prévia (site ou restaurante sem cardápio) parecer um negócio local de verdade. Nunca diga que é uma IA.`,
 
   a_supat: `Você é a Beatriz Nunes, supervisora de atendimento da Info Tech. Garante SLA de 2 minutos, tom profissional e resolução no primeiro contato.`,
 

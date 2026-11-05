@@ -3,12 +3,14 @@ import { buildCatalogOpening, formatCatalogForAgents, formatOfferPrice, liveServ
 import { createSeed } from "@/lib/seed";
 
 describe("catálogo de orçamentos", () => {
-  it("inclui landing, site e ofertas de IA com preço editável", () => {
+  it("inclui site e cardápio a R$ 100/mês e ofertas de IA", () => {
     const offers = liveServiceOffers("org");
-    expect(offers.find((o) => o.id === "svc_landing")?.price).toBe(297);
-    expect(offers.find((o) => o.id === "svc_site")?.price).toBe(547);
+    expect(offers.find((o) => o.id === "svc_site")?.price).toBe(100);
+    expect(offers.find((o) => o.id === "svc_site")?.billing).toBe("mensal");
+    expect(offers.find((o) => o.id === "svc_cardapio")?.price).toBe(100);
+    expect(offers.find((o) => o.id === "svc_landing")?.price).toBe(100);
     expect(offers.some((o) => /Lead Hunter/i.test(o.name))).toBe(true);
-    expect(formatOfferPrice(offers.find((o) => o.id === "svc_atendente")!)).toMatch(/mês/);
+    expect(formatOfferPrice(offers.find((o) => o.id === "svc_site")!)).toMatch(/mês/);
   });
 
   it("abertura pergunta se é proprietário e seed traz prompts de SDR", () => {
@@ -18,7 +20,7 @@ describe("catálogo de orçamentos", () => {
     const opening = buildCatalogOpening("Maria", "Clínica Sol", db.serviceOffers);
     expect(opening).toMatch(/Robson Alex/);
     expect(opening).toMatch(/proprietári/i);
-    expect(opening).not.toMatch(/R\$|297|547/);
+    expect(opening).not.toMatch(/R\$|297|547|100/);
     expect(db.agents.find((a) => a.id === "a_sdr1")?.prompt).toMatch(/proprietári/i);
     expect(db.agents.find((a) => a.id === "a_sdr2")?.prompt).toMatch(/Camila Alves/);
     expect(db.agents.find((a) => a.id === "a_sdr1")?.name).toBe("Marina Costa");

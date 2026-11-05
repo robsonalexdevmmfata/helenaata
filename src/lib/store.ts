@@ -324,6 +324,32 @@ function hydrate(db: DB): DB {
     ensureSaasUsers(db);
     db.version = 12;
   }
+  if ((db.version ?? 0) < 13) {
+    // Site + cardápio oficiais: R$ 100/mês · front público na Vercel.
+    const live = liveServiceOffers(db.organization.id);
+    if (!db.serviceOffers?.length) {
+      db.serviceOffers = live;
+    } else {
+      const byId = new Map(db.serviceOffers.map((o) => [o.id, o]));
+      for (const o of live) {
+        const cur = byId.get(o.id);
+        if (!cur) {
+          db.serviceOffers.push(o);
+          continue;
+        }
+        if (o.id === "svc_site" || o.id === "svc_cardapio" || o.id === "svc_landing") {
+          cur.price = o.price;
+          cur.billing = o.billing;
+          cur.priceNote = o.priceNote;
+          cur.description = o.description;
+          cur.pitch = o.pitch;
+          cur.name = o.name;
+          cur.updatedAt = o.updatedAt;
+        }
+      }
+    }
+    db.version = 13;
+  }
   if (db.automations?.some((a) => /facebook/i.test(a.name) || /^au\d+$/.test(a.id))) {
     db.automations = liveMapsAutomations(db.organization.id);
   }

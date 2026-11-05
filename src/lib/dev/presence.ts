@@ -170,7 +170,7 @@ export function buildPreviewOpening(contactName: string, companyName: string, ur
 Você é o proprietário ou a proprietária?`;
   }
   const offer = withMenu ? "site nem cardápio online" : "site";
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. Montei uma prévia com as informações públicas (endereço, fotos de referência e avaliações) para vocês verem como ficaria: ${url}
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. O time montou uma prévia só de front (link público na Vercel) com as informações do mapa para vocês verem: ${url}
 
 Você é o proprietário ou a proprietária?`;
 }
@@ -429,7 +429,9 @@ export function applyPresenceFromPlaces(opts: {
           title: `${food ? "Site + cardápio" : "Site"} · ${place.name}`,
           contactId,
           companyId: compId,
-          value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 547,
+          value: d.serviceOffers?.find((o) => o.id === (food ? "svc_cardapio" : "svc_site"))?.price
+            ?? d.serviceOffers?.find((o) => o.id === "svc_site")?.price
+            ?? 100,
           probability: stage.probability,
           expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
           ownerId: owner.id,

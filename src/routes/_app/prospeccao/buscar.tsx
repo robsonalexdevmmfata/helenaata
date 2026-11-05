@@ -89,40 +89,6 @@ function CacarLeadsPage() {
     setLogs((prev) => [`${time} ${text}`, ...prev.slice(0, 40)]);
   };
 
-  // Disparar Varredura Real
-  const handleStartSearch = async () => {
-    setIsSearching(true);
-    addLog(`[INFO] Buscando no mapa aberto (OpenStreetMap)${noWhatsAppAi ? " · filtro sem IA no WhatsApp (heurística de site)" : " · só SEM site"}...`);
-    const nationwide = estado === "TODOS" && !cidades.trim();
-    addLog(`[INFO] Nicho "${nicho}" · ${nationwide ? "Brasil inteiro" : `${cidades || "cidades da UF"}/${estado}`} · meta=${quantidade}`);
-
-    try {
-      const places = await searchBusinessesWithoutWebsite({
-        segment: `${nicho} ${palavrasChave}`,
-        city: cidades.trim() || "Brasil",
-        state: estado,
-        nationwide,
-        limit: quantidade,
-        noWhatsAppAi,
-      });
-      const newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter((l) =>
-        noWhatsAppAi ? Boolean(l.likelyNoWaAi) : !l.hasWebsite,
-      );
-      setLeads(newLeads);
-      const withWa = newLeads.filter((l) => l.isCellPhone).length;
-      addLog(`[OK] ${newLeads.length} empresas · ${withWa} com WhatsApp celular · ${newLeads.filter((l) => l.likelyNoWaAi).length} sem sinal de IA.`);
-      toast.success(
-        newLeads.length
-          ? `${newLeads.length} leads (${withWa} com WhatsApp)${noWhatsAppAi ? " · filtro sem IA" : " · sem site"}`
-          : "Nenhuma empresa encontrada com esse critério",
-      );
-    } catch (err) {
-      addLog(`[ERRO] Falha na varredura: ${err instanceof Error ? err.message : "rede"}`);
-      toast.error("Não foi possível consultar o mapa. Tente de novo em instantes.");
-    }
-    setIsSearching(false);
-  };
-
   const toPlace = (lead: HunterLead) => ({
     name: lead.name,
     phone: lead.phone,
@@ -133,6 +99,77 @@ function CacarLeadsPage() {
     likelyNoWaAi: lead.likelyNoWaAi,
     waAiReason: lead.waAiReason,
   });
+
+  // Varredura → tabela → Pipeline → SDRs no WhatsApp (mesmo ciclo da Helena)
+  const handleStartSearch = async () => {
+    setIsSearching(true);
+    setSelectedIds({});
+    addLog(`[INFO] Raspar Maps (OpenStreetMap)${noWhatsAppAi ? " · filtro sem IA" : " · só SEM site"}...`);
+    const nationwide = estado === "TODOS" && !cidades.trim();
+    // Nicho limpo no OSM — palavras-chave longas quebram a query.
+    addLog(`[INFO] Nicho "${nicho}" · ${nationwide ? "Brasil inteiro" : `${cidades || "cidades da UF"}/${estado}`} · meta=${quantidade}`);
+
+    try {
+      let places = await searchBusinessesWithoutWebsite({
+        segment: nicho,
+        city: cidades.trim() || "Brasil",
+        state: estado,
+        nationwide,
+        limit: Math.min(quantidade, 40),
+        noWhatsAppAi,
+      });
+      if (!places.length) {
+        addLog("[INFO] Zero no primeiro passe — reforçando SP + interior no mesmo nicho...");
+        places = await searchBusinessesWithoutWebsite({
+          segment: nicho,
+          city: "São Paulo, Campinas, Araçatuba, Andradina",
+          state: "SP",
+          nationwide: false,
+          limit: Math.min(quantidade, 40),
+          noWhatsAppAi,
+        });
+      }
+      let newLeads = placesToHunterLeads(places, nicho, estado === "TODOS" ? "BR" : estado).filter((l) =>
+        noWhatsAppAi ? Boolean(l.likelyNoWaAi) : !l.hasWebsite,
+      );
+      // Preferir celular, mas não esvaziar a tabela se o mapa só trouxe fixo.
+      const cellFirst = newLeads.filter((l) => l.isCellPhone);
+      if (cellFirst.length) newLeads = cellFirst;
+
+      setLeads(newLeads);
+      const withWa = newLeads.filter((l) => l.isCellPhone).length;
+      addLog(`[OK] ${newLeads.length} na tabela · ${withWa} WhatsApp celular`);
+
+      const ready = newLeads.filter((l) => isValidBrazilWhatsApp(l.phone)).slice(0, Math.min(quantidade, 30));
+      if (ready.length) {
+        addLog(`[CRM] Injetando ${ready.length} no Pipeline (Novo lead) e ativando SDRs...`);
+        setDispatching(true);
+        const res = await dispatchLeadsToAgents(ready.map(toPlace), nicho);
+        setDispatching(false);
+        addLog(`[WA] Pipeline+Inbox · enviados ${res.sent} · falhas ${res.failed} · pulados ${res.skipped}`);
+        toast.success(
+          `${ready.length} no Pipeline · ${res.sent} abordagens WhatsApp. Abra CRM → Pipeline e Atendimento → Inbox.`,
+        );
+      } else if (!newLeads.length) {
+        addLog("[ONDA] Sem hit no nicho — disparando onda multi-nicho (preenche CRM mesmo assim)...");
+        setDispatching(true);
+        const res = await runWaveProspecting({ limit: Math.min(quantidade, 30), organizationId: db.organization.id });
+        setDispatching(false);
+        addLog(`[ONDA] found=${res.found} sent=${res.sent} failed=${res.failed}`);
+        toast.success(
+          res.found
+            ? `Onda: ${res.found} leads no Pipeline · ${res.sent} WhatsApp. Veja CRM e Inbox.`
+            : "Mapa sem WhatsApp celular agora. Tente outro nicho ou cidade.",
+        );
+      } else {
+        toast.message(`${newLeads.length} na tabela, sem celular válido para disparo. Ajuste o filtro.`);
+      }
+    } catch (err) {
+      addLog(`[ERRO] Falha na varredura: ${err instanceof Error ? err.message : "rede"}`);
+      toast.error("Não foi possível consultar o mapa. Tente de novo em instantes.");
+    }
+    setIsSearching(false);
+  };
 
   const handleSendToHelena = async (lead: HunterLead) => {
     if (!isValidBrazilWhatsApp(lead.phone)) {

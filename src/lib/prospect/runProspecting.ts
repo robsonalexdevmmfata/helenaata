@@ -96,7 +96,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
           title: `Site · ${place.name}`,
           contactId,
           companyId: compId,
-          value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 547,
+          value: d.serviceOffers?.find((o) => o.id === "svc_site")?.price ?? 100,
           probability: stage.probability,
           expectedClose: new Date(Date.now() + 20 * 86_400_000).toISOString(),
           ownerId: owner.id,
