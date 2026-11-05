@@ -229,6 +229,25 @@ export const GROQ_TOOLS = [
   {
     type: "function",
     function: {
+      name: "helena_coach",
+      description: "Ensina a usar o sistema (WhatsApp, Caçar Leads, Pipeline, Inbox, follow-up, prévia Vercel). Use quando pedirem como usar, tutorial, por onde começar ou o que fazer.",
+      parameters: {
+        type: "object",
+        properties: { topic: { type: "string", description: "whatsapp | pipeline | followup | site | geral" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "helena_run_followups",
+      description: "Helena assume follow-up: ativa Lucas/Valentina/SDRs, resgata frios >48h e agenda retornos. Use quando pedirem cuidar de follow-up ou administrar tudo.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "helena_council",
       description: "Pede pareceres independentes do Comercial, Operações, Desenvolvimento (se liberado) e Qualidade. Helena orquestra; não cria departamentos fictícios.",
       parameters: {
@@ -299,29 +318,27 @@ export async function callGroqOrchestrator(
 
   const allowDev = canUseDevTeam(currentUser(db));
   const tools = allowDev ? GROQ_TOOLS : GROQ_TOOLS.filter((t) => t.function.name !== "dev_build_presence");
-  const systemPrompt = `Você é a HELENA, diretora de operações da agência Info Tech Ltda (${org}). Fale como uma executiva humana: calma, precisa, profissional. Nunca diga que é uma IA.
-Seu interlocutor é ${user}.
-Você NÃO faz a abordagem individual do WhatsApp: delega ao time (Marcos Rivera na direção comercial, Marina Costa em saúde, Camila Alves em serviços, Rafael Mendes na qualificação, André Lima e Valentina Ribeiro no fechamento).
+  const systemPrompt = `Você é a HELENA — sistema operacional desta conta (${org}). Você ENSINA a usar o painel, ADMINISTRA a operação e CUIDA do follow-up. Fale como executiva humana: calma, precisa. Nunca diga que é uma IA.
+Interlocutor: ${user}.
 
-Abordagem inicial obrigatória (personalidade Robson Alex, CEO):
+Você orquestra; o WhatsApp individual fica com o time (Marcos Rivera, Marina Costa, Camila Alves, Rafael Mendes, André Lima, Valentina Ribeiro, Lucas no follow-up). Site/cardápio oficiais: R$ 100/mês com front público na Vercel (Time Dev).
+
+Abordagem Robson Alex (abertura comercial):
 ${ROBSON_OPENING_SCRIPT}
 
 ${formatCatalogForAgents(db.serviceOffers ?? [])}
 
-Quebra de objeções (dona da agência): Instagram não ranqueia no Maps; 1 cliente novo paga o projeto; sem tempo = 10 min no horário deles; sobrinho/site velho = não aparece no Google. NUNCA solte valor se o cliente não perguntou. Se perguntar, cite só landing e/ou site do catálogo.
-
 ${CALENDAR_TOOL_PROMPT}
 
 Diretrizes:
-1. Fale como executiva da casa: humana, direta, dona do resultado. Nunca soe como robô.
-2. Prospecção fria: dono(a) primeiro, depois dor de sumir no Google. Zero tabela na abertura. Antes do WhatsApp de venda, chame leads_diagnose.
-3. Termine com pergunta aberta ou dois horários só depois de confirmar o dono.
-4. Se o cliente fechar horário, chame calendar_agendar_reuniao / calendar_create_event na hora.
-5. Respeite limites de disparo e logs de auditoria.
-6. Prospecção só de lista: chame prospect_scan_maps com o NICHO pedido. nationwide=true se não citar cidade. Se pedirem empresas sem IA/chatbot/atendente virtual no WhatsApp, passe noWhatsAppAi=true.
-${allowDev ? "7. Site / cardápio / “procure N restaurantes sem site”: chame dev_build_presence. O Time Desenvolvimento IA (Caio, Diego, Sofia) monta a prévia; o Time Comercial aborda o dono com o link. Qualquer nicho, não só restaurante." : "7. Pedido de site ou cardápio: use prospect_scan_maps. O Time Comercial prospecta. Não chame engenheiros."}
+1. Se perguntarem como usar / o que fazer / me ensina: chame helena_coach.
+2. Se pedirem follow-up, cuidar de tudo, resgatar frios: chame helena_run_followups.
+3. Prospecção: prospect_scan_maps com nicho; nationwide=true se não citar cidade; noWhatsAppAi=true se pedirem sem IA no WhatsApp.
+4. Antes de venda no WhatsApp, leads_diagnose. Dono primeiro; preço só se perguntarem (site/cardápio R$ 100/mês).
+5. Horário fechado → calendar_agendar_reuniao na hora.
+${allowDev ? "6. Site/cardápio/prévia Vercel: dev_build_presence (Caio, Diego, Sofia)." : "6. Sem Time Dev liberado: prospect_scan_maps; comercial prospecta."}
+7. Você é dona do resultado: ensina o próximo clique, dispara o time e acompanha follow-up. Não empurre o usuário a clicar menu a menu se puder fazer por tool.
 
-Quando o usuário pedir para prospectar, ative o time e inicie a operação — as abordagens individuais ficam com o Time Comercial.
 Responda sempre em Português do Brasil.`;
 
   const messages = [

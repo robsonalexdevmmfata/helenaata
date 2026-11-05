@@ -1,6 +1,7 @@
 // Helena AI - Modo Briefing Executivo / Entrada Diária
 import type { DB } from "@/lib/types";
 import { brl, greeting, isToday } from "@/lib/format";
+import { autonomyBrief, nextCoachStep } from "./coach";
 
 export interface BriefingConfig {
   enabled: boolean;
@@ -141,15 +142,15 @@ export function generateBriefingScript(
 
   if (type === "encerramento") {
     const title = "Resumo Noturno de Encerramento";
-    const script = `Excelente trabalho por hoje, ${config.userTitle} ${config.userName}! Expediente de prospecção do dia finalizado. A ${db.organization.name} encerra o dia com ${brl(monthWonTotal)} acumulados no mês, correspondendo a ${pctGoal}% da nossa meta de ${brl(goal)}. Marina e Camila ficam em cadência noturna leve para não bloquear o WhatsApp. Descanse com tranquilidade — eu continuo no radar. Até amanhã!`;
+    const script = `Excelente trabalho por hoje, ${config.userTitle} ${config.userName}! A ${db.organization.name} fecha com ${brl(monthWonTotal)} no mês (${pctGoal}% de ${brl(goal)}). Eu continuo administrando: follow-up com Lucas/Valentina e cadência leve no WhatsApp. Descanse — amanhã eu te ensino o próximo passo se ainda faltar algo no sistema.`;
     return {
       title,
       script,
       highlights: [
         { label: "Status Expediente", value: "Encerrado com Sucesso" },
+        { label: "Helena", value: "Follow-up e radar ativos" },
         { label: "Faturado no Mês", value: brl(monthWonTotal) },
         { label: "Meta R$ 15.000", value: `${pctGoal}% atingida` },
-        { label: "Modo Noturno", value: "SDRs em Cadência Automática" },
       ],
     };
   }
@@ -159,18 +160,24 @@ export function generateBriefingScript(
     .replace("{titulo}", config.userTitle)
     .replace("{nome}", config.userName);
 
-  const script = `${opening} ${greet}! Seja bem-vindo ao comando da ${db.organization.name}. Na base real de hoje: ${semSiteLeads} leads sem site, ${sendsToday} disparos WhatsApp confirmados e ${meetingsToday} reuniões na Agenda. Faturamento do mês: ${brl(monthWonTotal)} de ${brl(goal)} (${pctGoal}%). ${pendingApprovals} aprovações pendentes. Me diga o nicho e a cidade — ou Brasil inteiro — que eu orquestro o Time Comercial agora.`;
+  const next = nextCoachStep(db);
+  const coachLine = next
+    ? `Eu ensino e administro o sistema inteiro (prospecção, CRM, Inbox, Dev, follow-up). Próximo passo: ${next.title} — diga “${next.sayToHelena}”.`
+    : `Eu ensino e administro o sistema inteiro. ${autonomyBrief(db)}`;
+
+  const script = `${opening} ${greet}! Comando da ${db.organization.name}: ${semSiteLeads} leads sem site, ${sendsToday} disparos WhatsApp, ${meetingsToday} reuniões, ${brl(monthWonTotal)}/${brl(goal)} (${pctGoal}%), ${pendingApprovals} aprovações. ${coachLine}`;
 
   return {
     title: "Briefing Executivo de Entrada",
     script,
     highlights: [
       { label: "Tratamento", value: `${config.userTitle} ${config.userName}` },
+      { label: "Papel da Helena", value: "Ensina · opera · follow-up" },
+      { label: "Próximo ensino", value: next?.title ?? "Conta no ponto" },
       { label: "Leads sem site", value: String(semSiteLeads) },
       { label: "Disparos hoje", value: String(sendsToday) },
       { label: "Faturado no Mês", value: `${brl(monthWonTotal)} (${pctGoal}%)` },
       { label: "Aprovações Pendentes", value: `${pendingApprovals} aguardando` },
-      { label: "Trilha Sonora", value: "Ace of Base - Happy Nation" },
     ],
   };
 }

@@ -40,6 +40,7 @@ import { diagnoseLead, setCycleTag, type CycleState } from "@/lib/helena/diagnos
 import { buildDossier, detectBuyIntent } from "@/lib/helena/intelligence";
 import { copilotAnswer, recordDecision } from "@/lib/helena/decision";
 import { agentCouncil, companyBriefing, crisisState, isCompanyStatusQuestion, isCouncilQuestion, isCrisisQuestion } from "@/lib/helena/command";
+import { coachGuideText } from "@/lib/helena/coach";
 import { agentBenchmark, autonomyBlocksTool, circuitBreaker, integrationHealth, missionReplayText, replayMission } from "@/lib/helena/reliability";
 import { createMissionFromObjective, pauseMission, startMission, tickMissions } from "@/lib/helena/mission-engine";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
@@ -1837,6 +1838,41 @@ const handlers: Record<string, Handler> = {
   "helena.briefing": () => {
     const b = companyBriefing(getDB());
     return ok(b.text, { highlights: b.highlights, crisis: b.crisis });
+  },
+  "helena.coach": (p) => {
+    const guide = coachGuideText(getDB(), String(p.topic || p.query || ""));
+    return ok(guide.text, { next: guide.next, steps: guide.steps.map((s) => ({ id: s.id, title: s.title, done: s.done, href: s.href })) });
+  },
+  "helena.run_followups": (_p, ctx) => {
+    const db = getDB();
+    update((d) => {
+      d.agents.forEach((a) => {
+        if (a.id === "a_fu" || a.id === "a_valentina" || a.role === "SDR") {
+          a.status = "trabalhando";
+          if (a.id === "a_fu") a.currentTask = "Follow-up de quem não respondeu";
+          if (a.id === "a_valentina") a.currentTask = "Reaquecer leads >48h";
+        }
+      });
+      const team = d.teams.find((t) => t.id === "t_com");
+      if (team) team.status = "ativo";
+    });
+    const rescue = runTool("sales.rescue_cold_leads", { limit: 12 }, ctx);
+    const stale = db.deals.filter((d) => d.status === "aberto" && Date.now() - new Date(d.updatedAt).getTime() > 48 * 3_600_000).slice(0, 8);
+    let scheduled = 0;
+    for (const deal of stale) {
+      const contact = db.contacts.find((c) => c.id === deal.contactId);
+      if (!contact) continue;
+      const r = runTool("rpa.followup_schedule", { contactId: contact.id, kind: "silence", fact: "Helena administrou follow-up >48h" }, ctx);
+      if (r.ok) scheduled += 1;
+    }
+    const tasks = getDB().tasks.filter((t) => !t.done && t.type === "follow-up");
+    if (tasks.length) {
+      runTool("agents.assign_task", { taskIds: tasks.map((t) => t.id), agentIds: ["a_fu", "a_sdr1", "a_sdr2"] }, ctx);
+    }
+    return ok(
+      `Assumi o follow-up: time comercial ativo, ${scheduled} retornos agendados, resgate — ${rescue.message}. Inbox e Pipeline ficam sob minha guarda.`,
+      { scheduled, rescue: rescue.message, tasks: tasks.length },
+    );
   },
   "helena.council": (p) => {
     const c = agentCouncil(getDB(), String(p.objective || ""));

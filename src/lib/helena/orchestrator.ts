@@ -201,8 +201,8 @@ export async function sendToHelena(text: string) {
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Resgate de Leads Frios (>48h)", detail: res.message }
         );
-      } else if (tc.name === "helena_briefing" || tc.name === "helena_council" || tc.name === "helena_crisis") {
-        const tool = tc.name.replace("_", ".") as "helena.briefing" | "helena.council" | "helena.crisis";
+      } else if (tc.name === "helena_briefing" || tc.name === "helena_council" || tc.name === "helena_crisis" || tc.name === "helena_coach" || tc.name === "helena_run_followups") {
+        const tool = tc.name.replace("_", ".") as "helena.briefing" | "helena.council" | "helena.crisis" | "helena.coach" | "helena.run_followups";
         const res = runTool(tool, tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(groqRes.text || res.message, { type: "result", ok: res.ok, title: "Comando Helena", detail: res.message });
       } else if (tc.name === "missions_plan") {
@@ -364,13 +364,38 @@ export function interpret(text: string): Reply[] {
     if (!mission) return [{ text: "Nenhuma missão no cadastro para reproduzir." }];
     return [perform("helena.replay", { missionId: mission.id }, `Replay ${mission.code}`, [{ label: "Missão", value: mission.code }], "Replay montado a partir de eventos e execuções gravados.")];
   }
+  // Helena ensina e administra o sistema
+  if (
+    /como (usar|funciona)|me ensina|ensin[ae]|tutorial|o que (eu )?fa[cç]o|por onde (eu )?come[cç]|onboarding|guia do sistema|administra(r)? (tudo|o sistema)|assume o (comercial|sistema)|cuida de tudo/.test(n)
+  ) {
+    const res = runTool("helena.coach", { topic: text }, { actor: "Helena", actorType: "helena", requestedBy: actorName });
+    const steps = Array.isArray((res.data as { steps?: { title: string; done: boolean; href: string }[] })?.steps)
+      ? (res.data as { steps: { title: string; done: boolean; href: string }[] }).steps
+      : [];
+    return [{
+      text: res.message,
+      card: {
+        type: "list",
+        title: "Helena · ensino e comando",
+        items: steps.map((s) => ({ label: `${s.done ? "✓ " : ""}${s.title}`, href: s.href })),
+      },
+    }];
+  }
+  if (/cuida (dos? )?follow|faz(er)? (os? )?follow|assume (os? )?follow|resgatar? leads? frios?|reativ/.test(n)) {
+    const res = runTool("helena.run_followups", {}, { actor: "Helena", actorType: "helena", requestedBy: actorName });
+    return [{
+      text: res.message,
+      card: { type: "result", ok: res.ok, title: "Helena · follow-up", detail: res.message },
+    }];
+  }
+
   if (/esta tela|nesta tela|o que estou vendo|neste modulo/.test(n)) {
     const ui = helenaUi.get();
     const ctx = screenContextLine(ui.screenPath, ui.screenLabel);
     return [{
       text: ctx
-        ? `${ctx}\nPosso falar deste módulo com os dados que seu perfil já vê. Peça um dossiê, uma missão ou a saúde das integrações.`
-        : "Ainda não identifiquei a tela. Navegue no painel e pergunte de novo.",
+        ? `${ctx}\nEu administro este módulo com os dados do seu perfil. Peça um dossiê, follow-up, missão ou “me ensina a usar”.`
+        : "Ainda não identifiquei a tela. Navegue no painel e pergunte de novo — ou diga “me ensina a usar o sistema”.",
     }];
   }
   if (/saude das integr|circuit breaker|whatsapp (esta|ta) (on|off)|fila rpa/.test(n)) {
@@ -743,28 +768,13 @@ export function interpret(text: string): Reply[] {
     return [perform("crm.assign_lead", { dealIds: deals.map((d) => d.id), ownerId: "a_closer", ownerType: "agent" }, `Encaminhar ${deals.length} leads ao Closer`, [{ label: "Leads", value: deals.map((d) => d.title).slice(0, 4).join(", ") + (deals.length > 4 ? "…" : "") }], `Encaminhei ${deals.length} leads qualificados para o Closer. O handoff foi registrado na timeline de cada cliente.`)];
   }
 
-  // Follow-up
+  // Follow-up — Helena executa (não só lista)
   if (/follow.?up|redistribu/.test(n)) {
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-    const tasks = db.tasks.filter((t) => !t.done && t.type === "follow-up" && new Date(t.dueAt) <= endOfDay);
-    const stale = db.deals.filter((d) => d.status === "aberto" && Date.now() - new Date(d.updatedAt).getTime() > 48 * 3_600_000);
-    const total = tasks.length + stale.length;
-    const replies: Reply[] = [{
-      text: `Existem ${total} oportunidades que precisam de follow-up hoje: ${tasks.length} tarefas de follow-up vencendo e ${stale.length} oportunidades paradas há mais de 48 horas.`,
-      card: { type: "list", title: "Precisam de follow-up", items: stale.slice(0, 6).map((d) => ({ label: d.title, sub: `${brl(d.value)} · ${db.contacts.find((c) => c.id === d.contactId)?.name ?? ""}`, href: `/crm/contatos/${d.contactId}` })) },
+    const res = runTool("helena.run_followups", {}, { actor: "Helena", actorType: "helena", requestedBy: actorName });
+    return [{
+      text: res.message,
+      card: { type: "result", ok: res.ok, title: "Helena · follow-up", detail: res.message },
     }];
-    if (tasks.length) {
-      const agentIds = [...sdrs.map((a) => a.id), "a_fu"];
-      const approvalId = requestApproval({
-        title: `Distribuir ${tasks.length} follow-ups`,
-        description: "Redistribuir tarefas de follow-up entre os SDRs e o agente Follow-up.",
-        details: [{ label: "Tarefas", value: String(tasks.length) }, { label: "Agentes", value: db.agents.filter((a) => agentIds.includes(a.id)).map((a) => a.name).join(", ") }],
-        tool: "agents.assign_task", params: { taskIds: tasks.map((t) => t.id), agentIds }, risk: toolRisk(db, "agents.assign_task"), requestedBy: "Helena",
-      });
-      replies.push({ text: "Posso distribuir entre os SDRs.", card: { type: "approval", approvalId } });
-    }
-    return replies;
   }
 
   // Hot leads
@@ -834,16 +844,15 @@ export function interpret(text: string): Reply[] {
   }
 
   return [{
-    text: "Ainda não tenho uma ferramenta para executar isso, então não vou fingir que fiz. Posso ajudar com:",
-    card: { type: "list", title: "Exemplos", items: [
-      { label: "Helena, procure 50 restaurantes que não tenham site nem cardápio online" },
-      { label: "Ative o time comercial e comece a prospectar" },
-      { label: "Mostre os leads quentes" },
-      { label: "Quem precisa de follow-up hoje?" },
-      { label: "Pause o SDR 02" },
-      { label: "Crie um SDR para clínicas" },
+    text: "Eu ensino o sistema e administro a operação. Ainda não mapeei esse pedido — diga de outra forma ou escolha:",
+    card: { type: "list", title: "Eu cuido de", items: [
+      { label: "Me ensina a usar o sistema" },
+      { label: "Cuida dos follow-ups" },
+      { label: "Gere 20 leads de dentistas em Campinas" },
+      { label: "Monte prévia de restaurantes sem cardápio" },
       { label: "Como está o comercial?" },
-      { label: "Quero vender 20 sites este mês. Monte uma estratégia" },
+      { label: "Quem está esperando resposta?" },
+      { label: "Assume o comercial e cuida de tudo" },
     ] },
   }];
 }

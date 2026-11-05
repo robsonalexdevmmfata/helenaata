@@ -76,11 +76,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "missions.start", label: "Iniciar missão", description: "Após aprovação, coloca a missão em execução e agenda o radar existente.", category: "Operações", defaultRisk: "alto", permission: "campaigns.send" },
   { name: "missions.pause", label: "Pausar missão", description: "Pausa uma missão em andamento. Não apaga histórico.", category: "Operações", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "helena.briefing", label: "Briefing da empresa", description: "O que aconteceu, o que está acontecendo, riscos e próxima ação — só o cadastro.", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
+  { name: "helena.coach", label: "Ensinar o sistema", description: "Helena explica como usar o painel e o próximo passo (WhatsApp, leads, pipeline, follow-up, prévia).", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
   { name: "helena.council", label: "Conselho de agentes", description: "Pareceres independentes do Comercial, Operações, Dev (se liberado) e Qualidade.", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
   { name: "helena.crisis", label: "Modo crise", description: "Avalia falhas reais (WhatsApp, RPA, kill switch) e monta plano. Sem teatro.", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
   { name: "helena.health", label: "Saúde das integrações", description: "WhatsApp, fila RPA, kill switch e circuit breaker. Sem exibir segredo.", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
   { name: "helena.benchmark", label: "Benchmark de agentes", description: "Compara execuções reais: sucesso, falha, tempo. Sem nota inventada.", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
   { name: "helena.replay", label: "Replay de missão", description: "Reproduz eventos e execuções de uma missão já registrada.", category: "Analytics", defaultRisk: "baixo", permission: "helena.use" },
+  { name: "helena.run_followups", label: "Helena cuida dos follow-ups", description: "Ativa time de follow-up, resgata frios >48h e agenda retornos. Helena administra.", category: "Operações", defaultRisk: "baixo", permission: "helena.use" },
   { name: "intelligence.record_decision", label: "Registrar decisão comercial", description: "Grava recomendação, aprovação e resultado no mesmo lead.", category: "CRM", defaultRisk: "baixo", permission: "crm.edit" },
   { name: "sales.accept_proposal", label: "Registrar aceite da proposta", description: "Marca proposta como aceita no CRM. Não é assinatura eletrônica.", category: "CRM", defaultRisk: "medio", permission: "crm.edit" },
 ];
