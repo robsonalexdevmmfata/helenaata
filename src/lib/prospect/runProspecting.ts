@@ -1,4 +1,4 @@
-import { evolutionSendText, getAgencyConnection, getEvolutionConfigUI } from "@/lib/evolution/evolutionapi";
+import { evolutionSendText, getAgencyConnection } from "@/lib/evolution/evolutionapi";
 import { dispatchProspectMessages, buildProspectMessage } from "@/lib/evolution/prospectDispatcher";
 import { buildCatalogOpening } from "@/lib/catalog";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
@@ -158,6 +158,34 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
   return createdContactIds;
 }
 
+function canDispatchWhatsApp() {
+  // Browser: /api/evo injeta a chave. Servidor: precisa EVOLUTION_KEY.
+  if (typeof window !== "undefined") return true;
+  return Boolean(typeof process !== "undefined" && process.env?.EVOLUTION_KEY);
+}
+
+function contactsForDispatch(ids: string[]) {
+  const db = getDB();
+  return ids.map((id) => {
+    const c = db.contacts.find((x) => x.id === id)!;
+    const comp = db.companies.find((x) => x.id === c.companyId);
+    const agent = db.agents.find((a) => a.id === c.ownerId);
+    return {
+      phone: c.phone,
+      name: c.name,
+      companyName: comp?.name ?? c.name,
+      contactId: c.id,
+      agentName: agent?.name ?? "SDR 01",
+    };
+  });
+}
+
+/** Niche genérico no OSM quase não traz celular — usa onda multi-nicho SP. */
+function isWeakSegment(segment: string) {
+  const n = segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return !n.trim() || /negocios locais|sem site|empresas|clientes|leads|comercios? locais$/.test(n);
+}
+
 export async function runRealProspecting(opts: {
   segment: string;
   city: string;
@@ -168,7 +196,17 @@ export async function runRealProspecting(opts: {
   operationId?: string;
   noWhatsAppAi?: boolean;
 }) {
-  const places = await searchBusinessesWithoutWebsite({
+  activateCommercialTeam();
+  // Pedido genérico ("gere N leads"): onda multi-nicho já traz WhatsApp válido + deals no pipeline.
+  if (isWeakSegment(opts.segment)) {
+    return runWaveProspecting({
+      limit: opts.limit,
+      organizationId: opts.organizationId,
+      operationId: opts.operationId,
+    });
+  }
+
+  let places = await searchBusinessesWithoutWebsite({
     segment: opts.segment,
     city: opts.city,
     state: opts.state,
@@ -176,25 +214,26 @@ export async function runRealProspecting(opts: {
     limit: opts.limit,
     noWhatsAppAi: opts.noWhatsAppAi,
   });
-  if (!places.length) return { found: 0, sent: 0, failed: 0 };
+  // Zero hit no nicho pedido → ainda assim completa o ciclo com onda SP.
+  if (!places.length) {
+    return runWaveProspecting({
+      limit: opts.limit,
+      organizationId: opts.organizationId,
+      operationId: opts.operationId,
+    });
+  }
   const ids = insertPlacesAsLeads(places, opts.segment);
-  const db = getDB();
-  const contacts = ids.map((id) => {
-    const c = db.contacts.find((x) => x.id === id)!;
-    const comp = db.companies.find((x) => x.id === c.companyId);
-    const agent = db.agents.find((a) => a.id === c.ownerId);
-    return {
-      phone: c.phone,
-      name: c.name,
-      companyName: comp?.name ?? c.name,
-      contactId: c.id,
-      agentName: agent?.name ?? "Robson Alex",
-    };
-  });
-  const cfg = getEvolutionConfigUI();
-  if (!cfg.apiKey) return { found: places.length, sent: 0, failed: 0 };
+  if (!ids.length) {
+    return runWaveProspecting({
+      limit: opts.limit,
+      organizationId: opts.organizationId,
+      operationId: opts.operationId,
+    });
+  }
+  const contacts = contactsForDispatch(ids);
+  if (!canDispatchWhatsApp()) return { found: places.length, sent: 0, failed: 0, skipped: contacts.length };
   const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
-  return { found: places.length, sent: disp.sent, failed: disp.failed };
+  return { found: places.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
 }
 
 export async function sendOpeningNow(phone: string, contactName: string, companyName: string) {
@@ -205,15 +244,17 @@ export async function sendOpeningNow(phone: string, contactName: string, company
 export async function runWaveProspecting(opts: { limit?: number; organizationId: string; operationId?: string }) {
   activateCommercialTeam();
   const target = Math.min(Math.max(opts.limit ?? 150, 1), 150);
-  const hubs = WAVE_CITIES.slice(0, 4);
-  const niches = WAVE_NICHES.slice(0, 6);
+  // Meta pequena (trial): menos cidades/nichos, para preencher Pipeline rápido.
+  const hubs = WAVE_CITIES.slice(0, target <= 30 ? 2 : 4);
+  const niches = WAVE_NICHES.slice(0, target <= 30 ? 4 : 6);
+  const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 4), 12);
   const seen = new Set<string>();
   const bag: { place: MapPlace; segment: string }[] = [];
   for (const city of hubs) {
     for (const niche of niches) {
       if (bag.length >= target) break;
       try {
-        const found = await searchBusinessesWithoutWebsite({ segment: niche, city, state: "SP", limit: 10 });
+        const found = await searchBusinessesWithoutWebsite({ segment: niche, city, state: "SP", limit: perCombo });
         for (const p of found) {
           if (!isValidBrazilWhatsApp(p.phone)) continue;
           const k = digits(p.phone);
@@ -238,21 +279,8 @@ export async function runWaveProspecting(opts: { limit?: number; organizationId:
     ids.push(...insertPlacesAsLeads(places, segment));
   }
   if (!ids.length) return { found: 0, sent: 0, failed: 0, skipped: 0 };
-  const db = getDB();
-  const contacts = ids.map((id) => {
-    const c = db.contacts.find((x) => x.id === id)!;
-    const comp = db.companies.find((x) => x.id === c.companyId);
-    const agent = db.agents.find((a) => a.id === c.ownerId);
-    return {
-      phone: c.phone,
-      name: c.name,
-      companyName: comp?.name ?? c.name,
-      contactId: c.id,
-      agentName: agent?.name ?? "SDR 01",
-    };
-  });
-  const cfg = getEvolutionConfigUI();
-  if (!cfg.apiKey) return { found: bag.length, sent: 0, failed: contacts.length, skipped: 0 };
+  const contacts = contactsForDispatch(ids);
+  if (!canDispatchWhatsApp()) return { found: bag.length, sent: 0, failed: 0, skipped: contacts.length };
   const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
   return { found: bag.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
 }
@@ -261,21 +289,8 @@ export async function dispatchLeadsToAgents(places: MapPlace[], segment: string)
   activateCommercialTeam();
   const ids = insertPlacesAsLeads(places, segment);
   if (!ids.length) return { found: places.length, sent: 0, failed: 0, skipped: places.length };
-  const db = getDB();
-  const contacts = ids.map((id) => {
-    const c = db.contacts.find((x) => x.id === id)!;
-    const comp = db.companies.find((x) => x.id === c.companyId);
-    const agent = db.agents.find((a) => a.id === c.ownerId);
-    return {
-      phone: c.phone,
-      name: c.name,
-      companyName: comp?.name ?? c.name,
-      contactId: c.id,
-      agentName: agent?.name ?? "SDR 01",
-    };
-  });
-  const cfg = getEvolutionConfigUI();
-  if (!cfg.apiKey) return { found: places.length, sent: 0, failed: contacts.length, skipped: 0 };
-  const disp = await dispatchProspectMessages(contacts, buildProspectMessage, db.organization.id);
+  const contacts = contactsForDispatch(ids);
+  if (!canDispatchWhatsApp()) return { found: places.length, sent: 0, failed: 0, skipped: contacts.length };
+  const disp = await dispatchProspectMessages(contacts, buildProspectMessage, getDB().organization.id);
   return { found: places.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
 }

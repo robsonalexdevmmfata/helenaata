@@ -1002,8 +1002,9 @@ const handlers: Record<string, Handler> = {
     const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
     if (!isTest && p.simulate !== true) {
       const limitLive = Math.min(quota.allowed, 150);
-      const wave = p.wave === true || limitLive >= 80;
-      import("@/lib/prospect/runProspecting").then(({ runRealProspecting, runWaveProspecting }) => {
+      const wave = p.wave === true || limitLive >= 80 || /negocios locais|sem site|empresas|leads/i.test(segment);
+      import("@/lib/prospect/runProspecting").then(({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
+        activateCommercialTeam();
         const job = wave
           ? runWaveProspecting({ limit: limitLive, organizationId: getDB().organization.id })
           : runRealProspecting({
@@ -1024,17 +1025,35 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `${wave ? "Onda multi-nicho SP" : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Instância helena: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? "Onda multi-nicho SP" : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
             });
           });
-        }).catch(() => {});
+          const deals = getDB().deals.filter((d) => d.source === "Prospecção").length;
+          const convs = getDB().conversations.filter((c) => c.flow?.origin === "prospeccao").length;
+          if (r.found > 0) {
+            pushHelenaMessage(
+              `Varredura concluída: ${r.found} leads com WhatsApp no CRM · ${deals} no Pipeline (Novo lead) · ${convs} conversas no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). Abra CRM → Pipeline e Atendimento → Inbox.`,
+              { type: "result", ok: true, title: "Prospecção Maps", detail: `${r.found} leads · ${r.sent} enviados` },
+            );
+          } else {
+            pushHelenaMessage(
+              "A varredura terminou sem achar WhatsApp celular válido nesse momento (mapa/OSM). Nada entrou no Pipeline. Tente de novo com nicho + cidade (ex.: “30 clínicas em Campinas”).",
+              { type: "result", ok: false, title: "Prospecção Maps", detail: "0 leads" },
+            );
+          }
+        }).catch((err) => {
+          pushHelenaMessage(
+            `A varredura falhou: ${err instanceof Error ? err.message : "erro de mapa/rede"}. Pipeline continua vazio até a próxima tentativa.`,
+            { type: "result", ok: false, title: "Prospecção Maps", detail: "falha" },
+          );
+        });
       });
       return ok(wave
-        ? `Onda comercial iniciada: até ${limitLive} WhatsApp válidos em São Paulo, Campinas, Araçatuba, Andradina e cidades próximas, vários nichos. Só número real; intervalo entre disparos. Time de vendas assume.`
-        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. ${noWhatsAppAi ? "Entram negócios com WhatsApp e sem rastros de IA/chatbot no atendimento (heurística de site + mapa)." : "Só entram leads sem site e com WhatsApp."} Time Comercial dispara pela instância helena.`);
+        ? `Onda comercial em andamento: até ${limitLive} WhatsApp válidos em SP + interior, vários nichos. Quando achar leads, entram no Pipeline (Novo lead), Inbox e disparo Evolution. Te aviso ao terminar.`
+        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Quando achar leads, entram no Pipeline, Inbox e WhatsApp. Te aviso ao terminar — ainda não é “já abordou”.`);
     }
     const limit = Math.min(quota.allowed, 150);
 

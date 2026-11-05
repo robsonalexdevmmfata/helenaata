@@ -26,6 +26,7 @@
     { "source": "/api/billing/:path*", "destination": "https://helenaata.onrender.com/api/billing/:path*" },
     { "source": "/api/previews/:path*", "destination": "https://helenaata.onrender.com/api/previews/:path*" },
     { "source": "/api/maps/:path*", "destination": "https://helenaata.onrender.com/api/maps/:path*" },
+    { "source": "/api/prospect/:path*", "destination": "https://helenaata.onrender.com/api/prospect/:path*" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

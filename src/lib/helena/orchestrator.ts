@@ -168,8 +168,8 @@ export async function sendToHelena(text: string) {
       } else if (tc.name === "prospect_scan_maps" || tc.name === "dev_build_presence") {
         const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
-          groqRes.text || `Executei a varredura no Google Maps para ${tc.arguments.segment || "empresas"} em ${tc.arguments.city || "São Paulo"}. Encontrei empresas sem site e injetei no CRM com a tag #sem-site. O SDR já iniciou a abordagem!`,
-          { type: "result", ok: res.ok, title: "Varredura Google Maps (#sem-site)", detail: res.message }
+          groqRes.text || res.message || `Varredura Maps iniciada para ${tc.arguments.segment || "negócios locais"}. Quando achar WhatsApp válido, entram no Pipeline e no Inbox — te aviso ao terminar.`,
+          { type: "result", ok: res.ok, title: "Varredura Maps", detail: res.message }
         );
       } else if (tc.name === "calendar_create_event" || tc.name === "calendar_agendar_reuniao") {
         const res = runTool("calendar.agendar_reuniao", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
@@ -466,29 +466,40 @@ export function interpret(text: string): Reply[] {
   }
 
   // Prospecção autônoma: qualquer nicho que o gestor pedir (não só dentista)
-  if (/sem.?site|google maps|maps|varr\w*|prospect|cacar lead|caçar lead|buscar cliente|buscar lead|ativar o time|sem ia|sem inteligencia|chatbot|atendente virtual|ia no whatsapp/.test(n)) {
+  if (/sem.?site|google maps|maps|varr\w*|prospect|prospecc|ptrospec|cacar lead|caçar lead|buscar cliente|buscar lead|gerar?\s+\d*\s*leads?|gere\s+\d*\s*leads?|ativar o time|ativ\w*\s+time|sem ia|sem inteligencia|chatbot|atendente virtual|ia no whatsapp/.test(n)) {
     const intent = extractProspectIntent(text);
-    const segment = intent.segment;
+    const weak = /negocios locais|sem site|empresas|clientes|^leads?$/.test(
+      intent.segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+    );
+    const segment = weak ? "Dentistas" : intent.segment;
     const nationwide = intent.nationwide;
     const city = intent.city;
     const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 10), 150);
-    const wave = limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|150 pessoas|diversos nichos/.test(n);
+    const wave = weak || limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|150 pessoas|diversos nichos/.test(n);
 
     return [
       perform(
         "prospect.scan_maps",
-        { segment, city: wave ? "São Paulo, Campinas, Araçatuba, Andradina" : city, nationwide: wave ? false : nationwide, state: wave ? "SP" : nationwide ? "TODOS" : undefined, limit: wave ? Math.max(limit, 150) : limit, wave, noWhatsAppAi: intent.noWhatsAppAi },
-        `Varredura Maps: ${segment} · ${wave ? "SP + interior" : nationwide ? "Brasil inteiro" : city}`,
+        {
+          segment: wave ? "vários nichos locais" : segment,
+          city: wave ? "São Paulo, Campinas, Araçatuba, Andradina" : city,
+          nationwide: wave ? false : nationwide,
+          state: wave ? "SP" : nationwide ? "TODOS" : undefined,
+          limit,
+          wave,
+          noWhatsAppAi: intent.noWhatsAppAi,
+        },
+        `Varredura Maps: ${wave ? "onda multi-nicho" : segment} · ${wave ? "SP + interior" : nationwide ? "Brasil inteiro" : city}`,
         [
-          { label: "Nicho", value: wave ? "Vários (saúde e serviços locais)" : segment },
+          { label: "Nicho", value: wave ? "Dentistas, clínicas, estética, advogados, restaurantes, barbearias" : segment },
           { label: "Escopo", value: wave ? "São Paulo, Campinas, Araçatuba, Andradina e próximas" : nationwide ? "Brasil inteiro" : city },
           { label: "Critério", value: intent.noWhatsAppAi ? "WhatsApp válido · sem rastros públicos de IA/chatbot no atendimento (heurística)" : "Sem site + WhatsApp celular válido · sem inventar número" },
-          { label: "Roteamento", value: "Marina / Camila → Rafael → André" },
-          { label: "WhatsApp", value: "Evolution helena · +55 18 98101-1186 · intervalo 8s" },
+          { label: "CRM", value: "Pipeline → Novo lead · Inbox · Contatos" },
+          { label: "WhatsApp", value: "Evolution (chip conectado) · intervalo 8s" },
         ],
         wave
-          ? `Onda de vendas: até 150 WhatsApp reais em São Paulo, Campinas, Araçatuba, Andradina e redor. Marina cuida de saúde; Camila de comércio e serviço. Só fala preço se perguntarem.`
-          : `Orquestrei a varredura de ${segment} (${nationwide ? "Brasil inteiro" : city}). ${intent.noWhatsAppAi ? "Filtro: WhatsApp e sem sinais de IA/atendente virtual (não dá para abrir o WhatsApp deles; usamos site + mapa)." : "Só entram leads sem site e com WhatsApp."} O Time Comercial dispara na instância helena.`
+          ? `Varredura multi-nicho em andamento (até ${limit} WhatsApp válidos em SP + interior). Quando achar, preenche Pipeline, Inbox e dispara. Te aviso ao terminar.`
+          : `Varredura de ${segment} em ${nationwide ? "Brasil" : city} iniciada. Leads → Pipeline + Inbox + WhatsApp. Te aviso ao terminar.`,
       ),
     ];
   }
@@ -641,20 +652,21 @@ export function interpret(text: string): Reply[] {
     const total = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 50), 150);
     const listName = list?.name || "Prospecção WhatsApp";
     const segment = list?.segment || "negócios locais sem site";
-    // Conta nova sem lista: varre Maps em vez de plano sobre lista vazia.
+    // Conta nova sem lista: onda multi-nicho → Pipeline + Inbox + WhatsApp.
     if (!list) {
       return [
         perform(
           "prospect.scan_maps",
-          { segment, city: "Brasil", nationwide: true, state: "TODOS", limit: total },
+          { segment: "vários nichos locais", city: "São Paulo, Campinas, Araçatuba, Andradina", nationwide: false, state: "SP", limit: total, wave: true },
           `Gerar ${total} leads · Time Comercial`,
           [
             { label: "Meta", value: `${total} leads` },
-            { label: "Nicho", value: segment },
-            { label: "Escopo", value: "Brasil (Maps + WhatsApp válido)" },
+            { label: "Nicho", value: "Dentistas, clínicas, estética, advogados, restaurantes, barbearias" },
+            { label: "Escopo", value: "SP + interior (Maps + WhatsApp válido)" },
+            { label: "CRM", value: "Pipeline → Novo lead · Inbox" },
             { label: "Time", value: /marketing/.test(n) ? "Comercial (marketing = execução comercial)" : "Comercial" },
           ],
-          `Vou orquestrar o Time Comercial para gerar até ${total} leads com WhatsApp válido. A varredura Maps começou; Marina e Camila assumem a abordagem. Confirme se quer um nicho específico (ex.: clínicas, barbearias).`,
+          `Varredura multi-nicho iniciada (até ${total}). Quando achar WhatsApp válido, entra no Pipeline, Inbox e dispara. Te aviso ao terminar.`,
         ),
       ];
     }

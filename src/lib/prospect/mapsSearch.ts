@@ -338,7 +338,9 @@ out center ${Math.max(limit * 12, 80)};
     } catch {
       data = null;
     }
-  } else {
+  }
+  // Proxy frio/CORS: tenta Overpass direto no browser também.
+  if (!data?.elements?.length) {
     for (const endpoint of OVERPASS_ENDPOINTS) {
       try {
         const res = await fetch(endpoint, {
@@ -353,7 +355,7 @@ out center ${Math.max(limit * 12, 80)};
         });
         if (!res.ok) continue;
         data = await res.json();
-        break;
+        if (Array.isArray(data?.elements) && data.elements.length) break;
       } catch {
         /* próximo mirror */
       }
@@ -411,7 +413,8 @@ out 180;
     } catch {
       data = null;
     }
-  } else {
+  }
+  if (!data?.elements?.length) {
     for (const endpoint of OVERPASS_ENDPOINTS) {
       try {
         const res = await fetch(endpoint, {
@@ -426,7 +429,7 @@ out 180;
         });
         if (!res.ok) continue;
         data = await res.json();
-        break;
+        if (Array.isArray(data?.elements) && data.elements.length) break;
       } catch {
         /* próximo */
       }
