@@ -75,6 +75,13 @@ async function main() {
   if (env.SESSION_SECRET) await upsertVercel(project.id, "SESSION_SECRET", env.SESSION_SECRET);
   if (env.ADMIN_PASSWORD) await upsertVercel(project.id, "ADMIN_PASSWORD", env.ADMIN_PASSWORD);
   if (env.ADMIN_USER) await upsertVercel(project.id, "ADMIN_USER", env.ADMIN_USER);
+  await upsertVercel(project.id, "EVOLUTION_URL", env.EVOLUTION_URL || "https://evolutionapi.hostless.app");
+  if (env.EVOLUTION_KEY || env.VITE_EVOLUTION_KEY) {
+    await upsertVercel(project.id, "EVOLUTION_KEY", env.EVOLUTION_KEY || env.VITE_EVOLUTION_KEY);
+  } else {
+    log("vercel skip EVOLUTION_KEY vazio");
+  }
+  await upsertVercel(project.id, "EVOLUTION_INSTANCE", env.EVOLUTION_INSTANCE || "helena");
 
   if (!env.RENDER_API_KEY) {
     log("render: RENDER_API_KEY ausente — WhatsApp/Evolution seguem no Render; cadastro já usa a Vercel");
