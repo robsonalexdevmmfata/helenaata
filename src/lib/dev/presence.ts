@@ -518,21 +518,23 @@ export function buildPreviewOpening(contactName: string, companyName: string, ur
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
   const link = String(url || "").trim();
   // URL sozinha na linha = WhatsApp vira link azul clicável + preview de página.
+  const product = withMenu
+    ? "um cardápio digital com pedidos no WhatsApp"
+    : "um site profissional com WhatsApp e presença no Google";
   if (pitch) {
     return `${who} ${pitch}
 
-O Time Dev (Sofia · Designer Gráfico + Caio + Diego) montou a prévia${withMenu ? " com cardápio visual" : ""} já hospedada na Vercel. Abre o link (é clicável):
+Montamos ${product} sob medida pra ${companyName} — já no ar, com a cara do seu negócio. Abre o link (é clicável):
 
 ${link}
 
-Você é o proprietário ou a proprietária?`;
+Se gostar, a gente publica oficial e você passa a receber cliente por aí. Você é o dono(a)?`;
   }
-  const offer = withMenu ? "site nem cardápio online" : "site";
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. A Sofia (Designer Gráfico) + o Time Dev montaram uma prévia bonita, já no ar na Vercel — é só clicar:
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e preparei ${product} pra vocês — visual de produto final, já hospedado. Dá um play no link:
 
 ${link}
 
-Você é o proprietário ou a proprietária?`;
+Se fizer sentido, a gente deixa oficial ainda esta semana. Você é o proprietário ou a proprietária?`;
 }
 
 export function syntheticPlaces(segment: string, city: string, limit: number): MapPlace[] {
