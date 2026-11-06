@@ -212,8 +212,17 @@ export async function runRealProspecting(opts: {
     });
   }
 
+  // Genérico → onda multi-nicho (não “vira restaurante” e gera cardápio pra chaveiro).
+  if (isWeakSegment(opts.segment)) {
+    return runWaveProspecting({
+      limit: opts.limit,
+      organizationId: opts.organizationId,
+      operationId: opts.operationId,
+    });
+  }
+
   const places = await searchBusinessesWithoutWebsite({
-    segment: isWeakSegment(opts.segment) ? "Restaurantes" : opts.segment,
+    segment: opts.segment,
     city: opts.city,
     state: opts.state,
     nationwide: opts.nationwide,

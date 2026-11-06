@@ -85,7 +85,9 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
       <main className="mx-auto max-w-4xl space-y-14 px-4 pb-28 sm:px-5 sm:pb-24">
         {gallery.length > 0 && (
           <section>
-            <h2 className="text-sm uppercase tracking-[0.16em] opacity-70">Ambiente & pratos</h2>
+            <h2 className="text-sm uppercase tracking-[0.16em] opacity-70">
+              {hasMenu ? "Ambiente & pratos" : "Ambiente & serviços"}
+            </h2>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
               {gallery.map((src, i) => (
                 <img

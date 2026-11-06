@@ -13,20 +13,62 @@ export const DEV_BE_ID = "a_dev_be";
 export const DEV_DS_ID = "a_dev_ds";
 export const DEV_AGENT_IDS = [DEV_FE_ID, DEV_BE_ID, DEV_DS_ID] as const;
 
+/** Serviços locais — NUNCA cardápio, mesmo se o lote/campanha vier como “Restaurantes”. */
+export function isServiceBusiness(text: string) {
+  const n = normalize(text);
+  return /chaveir|serralher|eletricit|encanador|desentupid|marceneir|funilar|guincho|borrachar|oficina|auto\s*pe[cç]|mecanica|dentista|odont|advog|contab|imobili|corretor|veterin|pet\s*shop|academia|personal\s*train|fotogra|arquitet|despachante|cartor|telecom|provedor|informatica|assistencia\s*tec|conserto|refriger|ar\s*cond|lavagem|lava\s*jato|estacionamento|transport|mudanc|limpeza|dedetiz|seguranc|vigilanc|escola|curso|idioma|clinica(?!\s*de\s*comida)|consultorio|estetic|barbearia|salao|cabeleireir|manicure|podolog|fisioterap|psicolog|nutricion/.test(n);
+}
+
 export function isFoodNiche(segment: string) {
   const n = normalize(segment);
-  return /restaurante|pizzaria|lanchonete|padaria|cafeteria|bar\b|hamburguer|churrasc|comida|gastronom|cardapio|sorvete|acai/.test(n);
+  if (isServiceBusiness(n)) return false;
+  return /restaurante|pizzaria|lanchonete|padaria|cafeteria|\bbar\b|hamburguer|churrasc|comida|gastronom|cardapio|sorvete|acai|pastelaria|doceria|confeitaria|marmita|food\s*truck/.test(n);
+}
+
+/** Decide cardápio vs site de serviço pelo NOME do lugar + segmento (nome vence). */
+export function resolvePreviewKind(placeName: string, segment: string) {
+  const blob = `${placeName} ${segment}`;
+  if (isServiceBusiness(placeName) || (isServiceBusiness(blob) && !isFoodNiche(placeName))) {
+    const label = inferServiceLabel(placeName) || inferServiceLabel(segment) || segment || "Serviços locais";
+    return { food: false as const, segment: label };
+  }
+  if (isFoodNiche(placeName) || isFoodNiche(segment)) {
+    return { food: true as const, segment: isFoodNiche(segment) ? segment : "Restaurantes" };
+  }
+  return { food: false as const, segment: segment || "Serviços locais" };
+}
+
+function inferServiceLabel(text: string) {
+  const n = normalize(text);
+  if (/chaveir/.test(n)) return "Chaveiros";
+  if (/oficina|mecanica|auto\s*pe/.test(n)) return "Oficinas mecânicas";
+  if (/dentista|odont/.test(n)) return "Dentistas";
+  if (/advog/.test(n)) return "Advogados";
+  if (/barbearia|salao|cabeleireir/.test(n)) return "Barbearias";
+  if (/clinic|estetic/.test(n)) return "Clínicas";
+  if (/imobili|corretor/.test(n)) return "Imobiliárias";
+  if (/pet|veterin/.test(n)) return "Pet shops";
+  if (/contab/.test(n)) return "Contadores";
+  if (/eletricit|encanador|desentupid/.test(n)) return "Serviços residenciais";
+  return "";
 }
 
 export function isPresenceIntent(text: string) {
   const n = normalize(text);
-  if (/time de desenvolv|desenvolvedores de ia|cardapio|menu online|gerar (o )?(site|landing|cardapio|previa)|montar (o )?(site|cardapio)|criar (o )?(site|cardapio)|previa (do |de )?(site|cardapio)/.test(n)) {
+  // Volume / RPA / prospecção = NÃO é “só prévia Dev”.
+  if (/\brpa\b|(1000|mil)\s*leads?|prospect|prospecc|cacar lead|caçar lead|diversos?\s*nichos?|brasil\s*(inteiro|todinho)|ativar\s+o?\s*time\s*(comercial|market|inteiro)/.test(n)) {
+    return false;
+  }
+  if (/time de desenvolv|desenvolvedores de ia|gerar (o )?(site|landing|cardapio|previa)|montar (o )?(site|cardapio)|criar (o )?(site|cardapio)|previa (do |de )?(site|cardapio)/.test(n)) {
     return true;
   }
-  if (/(procure|procurar|encontre|encontrar|busque|buscar|varra|varrer|prospect|cacar|cacar)/.test(n) && /(sem.?site|nao tenha site|nao tem site|sem (presenca|presenca) digital)/.test(n)) {
+  // “cardápio” sozinho com Maps/prospect já foi barrado acima; aqui só prévia explícita.
+  if (/menu online|cardapio online|sem cardapio/.test(n) && !/prospect|lead|varr|maps/.test(n)) {
     return true;
   }
-  if (/google maps|maps/.test(n) && /sem.?site/.test(n)) return true;
+  if (/(procure|procurar|encontre|encontrar|busque|buscar)/.test(n) && /(sem.?site|nao tenha site|nao tem site|sem (presenca|presenca) digital)/.test(n) && /previa|landing|time\s*dev/.test(n)) {
+    return true;
+  }
   return false;
 }
 
@@ -63,10 +105,11 @@ function pick<T>(arr: T[], seed: number) {
 export function paletteFor(segment: string) {
   const n = normalize(segment);
   if (isFoodNiche(n)) return { bg: "#1c1410", fg: "#f7efe6", accent: "#e07a3d" };
+  if (/chaveir|eletricit|encanador|desentupid/.test(n)) return { bg: "#0f1419", fg: "#e8eef4", accent: "#f59e0b" };
   if (/barbearia|salao|cabeleireir/.test(n)) return { bg: "#121212", fg: "#f4e9d0", accent: "#c9a227" };
   if (/advog|jurid/.test(n)) return { bg: "#0f172a", fg: "#e8eef7", accent: "#3b82f6" };
   if (/clinic|dentist|odont|estetic|medico|saude/.test(n)) return { bg: "#0b1f1c", fg: "#e8f6f2", accent: "#2dd4bf" };
-  if (/imobili|oficina/.test(n)) return { bg: "#1a1714", fg: "#f3eee6", accent: "#d97706" };
+  if (/imobili|oficina|mecanica/.test(n)) return { bg: "#1a1714", fg: "#f3eee6", accent: "#d97706" };
   return { bg: "#111827", fg: "#f3f4f6", accent: "#34d399" };
 }
 
@@ -128,22 +171,32 @@ const SHOP_PHOTOS = [
   "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=1200&q=80",
   "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1200&q=80",
 ];
+const TRADE_PHOTOS = [
+  "https://images.unsplash.com/photo-1581244277943-fe4a9c777189?w=1200&q=80",
+  "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=1200&q=80",
+  "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1200&q=80",
+  "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1200&q=80",
+];
 const OFFICE_PHOTOS = [
   "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80",
   "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80",
 ];
 
 function isSeafoodPlace(name: string, segment: string) {
+  if (isServiceBusiness(name)) return false;
   return /moqueca|peixe|marisco|camarao|camarão|seafood|frutos.?do.?mar|pescados|siri|osta|baiana/.test(
     normalize(`${name} ${segment}`),
   );
 }
 
 function photosFor(segment: string, placeName = "") {
-  if (isSeafoodPlace(placeName, segment)) return SEAFOOD_PHOTOS;
-  if (isFoodNiche(segment)) return FOOD_PHOTOS;
-  if (/clinic|dentist|odont|estetic|saude/.test(normalize(segment))) return CLINIC_PHOTOS;
-  if (/barbearia|salao|oficina|loja/.test(normalize(segment))) return SHOP_PHOTOS;
+  const kind = resolvePreviewKind(placeName, segment);
+  if (kind.food && isSeafoodPlace(placeName, segment)) return SEAFOOD_PHOTOS;
+  if (kind.food) return FOOD_PHOTOS;
+  const n = normalize(`${placeName} ${kind.segment}`);
+  if (/chaveir|eletricit|encanador|desentupid|oficina|mecanica|conserto/.test(n)) return TRADE_PHOTOS;
+  if (/clinic|dentist|odont|estetic|saude/.test(n)) return CLINIC_PHOTOS;
+  if (/barbearia|salao|loja/.test(n)) return SHOP_PHOTOS;
   return OFFICE_PHOTOS;
 }
 
@@ -230,22 +283,33 @@ function foodMenu(seed: number, placeName = "", segment = ""): NonNullable<SiteP
 /** Completa fotos e imagens de prato em prévias antigas (sem re-gerar no CRM). */
 export function enrichPreviewMedia(preview: SitePreview): SitePreview {
   const seed = hash(preview.name + preview.city);
-  const food = Boolean(preview.menu?.length) || isFoodNiche(preview.segment);
-  const pool = photosFor(preview.segment, preview.name);
-  const photos = [...(preview.photos || [])];
+  const kind = resolvePreviewKind(preview.name, preview.segment);
+  const food = kind.food;
+  const segment = kind.segment;
+  const pool = photosFor(segment, preview.name);
+  // Remove fotos de restaurante grudadas em prévia errada (ex.: chaveiro com prato).
+  let photos = [...(preview.photos || [])];
+  if (!food) {
+    const foodSet = new Set([...FOOD_PHOTOS, ...SEAFOOD_PHOTOS, ...Object.values(DISH_PHOTOS).flat()]);
+    photos = photos.filter((src) => !foodSet.has(src));
+  }
   for (const src of pool) {
     if (photos.length >= 8) break;
     if (!photos.includes(src)) photos.push(src);
   }
 
   let menu = preview.menu;
-  if (food) {
+  let services = preview.services;
+  if (!food) {
+    menu = undefined;
+    if (!services?.length) services = servicesFor(segment, preview.name);
+  } else {
     const needsRichMenu =
       !menu?.length ||
       menu.every((c) => c.items.every((it) => !it.image)) ||
-      (isSeafoodPlace(preview.name, preview.segment) && !/moqueca|camarao|camarão|peixe|siri|bobo|bobó/i.test(JSON.stringify(menu)));
+      (isSeafoodPlace(preview.name, segment) && !/moqueca|camarao|camarão|peixe|siri|bobo|bobó/i.test(JSON.stringify(menu)));
     if (needsRichMenu) {
-      menu = foodMenu(seed, preview.name, preview.segment);
+      menu = foodMenu(seed, preview.name, segment);
     } else {
       let i = 0;
       menu = menu!.map((cat) => {
@@ -256,7 +320,7 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
             ? "sobremesa"
             : /entrada|aperitivo/.test(n)
               ? "entrada"
-              : isSeafoodPlace(preview.name, preview.segment) || /peixe|mar|moqueca/.test(n)
+              : isSeafoodPlace(preview.name, segment) || /peixe|mar|moqueca/.test(n)
                 ? "seafood"
                 : "prato";
         return {
@@ -270,11 +334,37 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
     }
   }
 
-  return { ...preview, photos, ...(menu ? { menu } : {}) };
+  return {
+    ...preview,
+    segment,
+    photos,
+    ...(food ? { menu, services: undefined } : { menu: undefined, services }),
+    tagline: food
+      ? preview.tagline?.includes("cardápio")
+        ? preview.tagline
+        : `${preview.name}: nota ${preview.rating} em ${preview.city} — cardápio e pedido no WhatsApp.`
+      : preview.tagline?.includes("cardápio") || preview.tagline?.includes("pedido no WhatsApp")
+        ? `${preview.name} em ${preview.city}: horário, WhatsApp e endereço próprio no Google.`
+        : preview.tagline,
+  };
 }
 
-function servicesFor(segment: string): NonNullable<SitePreview["services"]> {
-  const n = normalize(segment);
+function servicesFor(segment: string, placeName = ""): NonNullable<SitePreview["services"]> {
+  const n = normalize(`${placeName} ${segment}`);
+  if (/chaveir/.test(n)) {
+    return [
+      { name: "Abertura de portas", description: "Residencial e comercial, com atendimento rápido." },
+      { name: "Cópias e chaves", description: "Chaves comuns, tetra e cartão quando disponível." },
+      { name: "Troca de segredo / fechadura", description: "Instalação e troca com orientação no local." },
+    ];
+  }
+  if (/oficina|mecanica|auto\s*pe/.test(n)) {
+    return [
+      { name: "Diagnóstico", description: "Avaliação rápida do problema." },
+      { name: "Reparos", description: "Serviço alinhado ao que a região busca no mapa." },
+      { name: "Orçamento no WhatsApp", description: "Fale direto com a oficina pelo site." },
+    ];
+  }
   if (/barbearia|salao/.test(n)) {
     return [
       { name: "Corte", description: "Corte clássico ou degradê, com finalização." },
@@ -378,7 +468,9 @@ export function buildSitePreview(opts: {
   slug: string;
 }): SitePreview {
   const seed = hash(opts.place.name + opts.place.city);
-  const food = isFoodNiche(opts.segment);
+  const kind = resolvePreviewKind(opts.place.name, opts.segment);
+  const food = kind.food;
+  const segment = kind.segment;
   const rating = opts.place.rating || 4 + (seed % 10) / 10;
   const reviewCount = opts.place.reviewCount || opts.place.reviews?.length || 18 + (seed % 60);
   const reviews = (opts.place.reviews?.length
@@ -388,7 +480,7 @@ export function buildSitePreview(opts: {
       rating: Math.min(5, Math.round(rating)),
       text: `${pick(REVIEW_BITS, seed + i)} (ref. avaliações no Google Maps · nota ${Math.round(rating * 10) / 10})`,
     })));
-  const pal = paletteFor(opts.segment);
+  const pal = paletteFor(segment);
   const query = encodeURIComponent(`${opts.place.name} ${opts.place.address || opts.place.city}`);
   const logoUrl = logoForPlace(opts.place, pal.accent);
   return {
@@ -399,14 +491,14 @@ export function buildSitePreview(opts: {
     contactId: opts.contactId,
     dealId: opts.dealId,
     name: opts.place.name,
-    segment: opts.segment,
+    segment,
     city: opts.place.city,
     address: opts.place.address || opts.place.city,
     phone: opts.place.phone,
     rating: Math.round(rating * 10) / 10,
     reviewCount,
     reviews,
-    hours: opts.place.hours || "Seg–Sáb, 11:00–22:00",
+    hours: opts.place.hours || (food ? "Seg–Sáb, 11:00–22:00" : "Seg–Sáb, 08:00–18:00"),
     tagline: food
       ? `${opts.place.name}: nota ${Math.round(rating * 10) / 10} em ${opts.place.city} — cardápio e pedido no WhatsApp.`
       : `${opts.place.name} em ${opts.place.city}: horário, WhatsApp e endereço próprio no Google.`,
@@ -414,10 +506,10 @@ export function buildSitePreview(opts: {
       ? `${opts.place.name} (${opts.place.address || opts.place.city}) aparece no mapa com ${reviewCount} avaliações (nota ${Math.round(rating * 10) / 10}), mas ainda não tinha site nem cardápio online. Esta prévia fecha o furo: endereço, fotos e pedido pelo WhatsApp ${opts.place.phone || ""}.`
       : `${opts.place.name} em ${opts.place.city} estava só no mapa (${reviewCount} avaliações). Esta prévia organiza horário, contato ${opts.place.phone || ""} e um botão de WhatsApp para quem busca o serviço na região.`,
     palette: pal,
-    photos: photosFor(opts.segment, opts.place.name),
+    photos: photosFor(segment, opts.place.name),
     logoUrl,
-    menu: food ? foodMenu(seed, opts.place.name, opts.segment) : undefined,
-    services: food ? undefined : servicesFor(opts.segment),
+    menu: food ? foodMenu(seed, opts.place.name, segment) : undefined,
+    services: food ? undefined : servicesFor(segment, opts.place.name),
     mapsUrl: `https://www.google.com/maps/search/?api=1&query=${query}`,
     previewPath: `/v/${opts.slug}`,
     status: "enviada",
@@ -516,12 +608,12 @@ export function applyPresenceFromPlaces(opts: {
   segment: string;
   city: string;
 }): { count: number; previewIds: string[]; slugs: string[] } {
-  const food = isFoodNiche(opts.segment);
   const previewIds: string[] = [];
   const slugs: string[] = [];
   const published: SitePreview[] = [];
   const createdContactIds: string[] = [];
   const dispatchMeta: { contactId: string; withMenu: boolean; slug: string }[] = [];
+  const anyFood = opts.places.some((p) => resolvePreviewKind(p.name, opts.segment).food);
 
   update((d) => {
     ensureDevSquad(d);
@@ -530,8 +622,8 @@ export function applyPresenceFromPlaces(opts: {
     const used = new Set(d.sitePreviews.map((p) => p.slug));
     d.agents.forEach((a) => {
       if (a.id === DEV_FE_ID) { a.status = "trabalhando"; a.currentTask = "Caio · páginas na Vercel"; a.metrics.tasks += opts.places.length; }
-      if (a.id === DEV_BE_ID) { a.status = "trabalhando"; a.currentTask = food ? "Diego · dados do cardápio + deploy" : "Diego · dados + deploy"; a.metrics.tasks += opts.places.length; }
-      if (a.id === DEV_DS_ID) { a.status = "trabalhando"; a.currentTask = food ? "Sofia · arte do cardápio digital" : "Sofia · identidade visual do site"; a.metrics.tasks += opts.places.length; }
+      if (a.id === DEV_BE_ID) { a.status = "trabalhando"; a.currentTask = anyFood ? "Diego · dados do cardápio + deploy" : "Diego · dados + deploy"; a.metrics.tasks += opts.places.length; }
+      if (a.id === DEV_DS_ID) { a.status = "trabalhando"; a.currentTask = anyFood ? "Sofia · arte do cardápio digital" : "Sofia · identidade visual do site"; a.metrics.tasks += opts.places.length; }
       if (a.teamId === "t_com" && a.role === "SDR") { a.status = "trabalhando"; a.currentTask = "Abordar dono com link da prévia"; }
     });
     const devTeam = d.teams.find((t) => t.id === DEV_TEAM_ID);
@@ -548,6 +640,9 @@ export function applyPresenceFromPlaces(opts: {
     opts.places.forEach((place, i) => {
       const owner = sdrs[i % Math.max(1, sdrs.length)] ?? d.agents.find((a) => a.role === "SDR");
       if (!owner) return;
+      const kind = resolvePreviewKind(place.name, opts.segment);
+      const food = kind.food;
+      const segment = kind.segment;
       const compId = uid("c_maps_");
       const contactId = uid("p_maps_");
       const dealId = uid("d_maps_");
@@ -559,18 +654,18 @@ export function applyPresenceFromPlaces(opts: {
         id: compId,
         organizationId: d.organization.id,
         name: place.name,
-        segment: opts.segment,
+        segment,
         city: place.city || opts.city,
         size: "1–10",
         website: "",
         ownerId: owner.id,
         createdAt: nowISO(),
       });
-      const tags = ["#sem-site", "Google Maps", opts.segment.toLowerCase(), "#previa-pronta"];
+      const tags = ["#sem-site", "Google Maps", segment.toLowerCase(), "#previa-pronta"];
       if (food) tags.push("#sem-cardapio");
       const dx = diagnoseLead({
         name: place.name,
-        segment: opts.segment,
+        segment,
         city: place.city || opts.city,
         website: "",
         tags,
@@ -628,7 +723,7 @@ export function applyPresenceFromPlaces(opts: {
         contactId,
         dealId,
         place,
-        segment: opts.segment,
+        segment,
         slug,
       });
       d.sitePreviews.unshift(preview);
@@ -679,7 +774,7 @@ export function applyPresenceFromPlaces(opts: {
       organizationId: d.organization.id,
       code,
       title: `Prévia digital · ${opts.segment}`,
-      objective: `Encontrar ${opts.places.length} ${opts.segment} sem site${food ? " e sem cardápio online" : ""}, gerar prévia e enviar o link ao comercial.`,
+      objective: `Encontrar ${opts.places.length} ${opts.segment} sem site${anyFood ? " e sem cardápio online" : ""}, gerar prévia e enviar o link ao comercial.`,
       requestedBy: "Helena",
       agentIds: [...DEV_AGENT_IDS, ...d.agents.filter((a) => a.role === "SDR").map((a) => a.id)],
       connectionId: getAgencyConnection(d)?.id,
@@ -691,7 +786,7 @@ export function applyPresenceFromPlaces(opts: {
       steps: [
         { id: "s0", label: "Varredura Maps (sem site / sem cardápio)", status: "done" },
         { id: "s1", label: "Sofia · Designer Gráfico (arte + cardápio/site)", status: "done" },
-        { id: "s2", label: food ? "Diego · cardápio e dados" : "Diego · catálogo e dados", status: "done" },
+        { id: "s2", label: anyFood ? "Diego · cardápio e dados" : "Diego · catálogo e dados", status: "done" },
         { id: "s3", label: "Caio · páginas + hospedagem Vercel", status: "done" },
         { id: "s4", label: "Link público clicável", status: "done" },
         { id: "s5", label: "Handoff ao Time Comercial (WhatsApp)", status: "done" },

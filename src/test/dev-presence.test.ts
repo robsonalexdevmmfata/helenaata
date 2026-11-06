@@ -2,13 +2,42 @@ import { describe, expect, it } from "vitest";
 import { interpret } from "@/lib/helena/orchestrator";
 import { runTool } from "@/lib/helena/engine";
 import { getDB } from "@/lib/store";
-import { enrichPreviewMedia, isFoodNiche, isPresenceIntent, previewUrl, PUBLIC_SITE_ORIGIN } from "@/lib/dev/presence";
+import { buildSitePreview, enrichPreviewMedia, isFoodNiche, isPresenceIntent, isServiceBusiness, previewUrl, PUBLIC_SITE_ORIGIN, resolvePreviewKind } from "@/lib/dev/presence";
 
 describe("Time Desenvolvimento IA", () => {
   it("reconhece pedido de restaurante sem site e sem cardápio", () => {
     expect(isPresenceIntent("Helena, procure 50 restaurantes que não tenham site nem cardápio online")).toBe(true);
     expect(isFoodNiche("Restaurantes")).toBe(true);
     expect(isPresenceIntent("ative o time comercial e comece a prospectar clientes")).toBe(false);
+    expect(isPresenceIntent("ative o rpa e faça 1000 leads no brasil com cardápio e time market")).toBe(false);
+    expect(isPresenceIntent("prospectar diversos nichos no brasil e ativar time comercial")).toBe(false);
+  });
+
+  it("chaveiro nunca vira cardápio mesmo com segmento Restaurantes", () => {
+    expect(isServiceBusiness("Chaveiro 24h")).toBe(true);
+    expect(isFoodNiche("Chaveiro")).toBe(false);
+    expect(resolvePreviewKind("Chaveiro", "Restaurantes")).toEqual({ food: false, segment: "Chaveiros" });
+    const preview = buildSitePreview({
+      organizationId: "o1",
+      companyId: "c1",
+      contactId: "p1",
+      place: { name: "Chaveiro", phone: "+55 21 99999-0000", city: "Rio de Janeiro, RJ", address: "Centro", contactName: "João", rating: 4.3, reviewCount: 71 },
+      segment: "Restaurantes",
+      slug: "chaveiro",
+    });
+    expect(preview.menu).toBeUndefined();
+    expect(preview.services?.length).toBeGreaterThan(0);
+    expect(preview.segment).toBe("Chaveiros");
+    expect(preview.tagline).not.toMatch(/cardápio/i);
+    const fixed = enrichPreviewMedia({
+      ...preview,
+      segment: "Restaurantes",
+      menu: [{ category: "Pratos", items: [{ name: "Moqueca", description: "x", price: 10 }] }],
+      tagline: "Chaveiro: nota 4.3 em Rio de Janeiro, RJ — cardápio e pedido no WhatsApp.",
+    });
+    expect(fixed.menu).toBeUndefined();
+    expect(fixed.segment).toBe("Chaveiros");
+    expect(fixed.tagline).not.toMatch(/cardápio/i);
   });
 
   it("Helena aciona o time Dev e o comercial recebe o link", () => {

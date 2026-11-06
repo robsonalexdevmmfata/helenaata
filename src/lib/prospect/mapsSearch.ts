@@ -54,6 +54,7 @@ export const WAVE_NICHES = [
   "Barbearias",
   "Salões de beleza",
   "Oficinas mecânicas",
+  "Chaveiros",
   "Imobiliárias",
   "Pet shops",
   "Veterinários",
@@ -114,6 +115,7 @@ export function queryForSegment(segment: string) {
   if (/veterin|pet shop|petshop/.test(n)) return `nwr["amenity"="veterinary"]`;
   if (/hotel|pousada/.test(n)) return `nwr["tourism"="hotel"]`;
   if (/oficina|auto pe/.test(n)) return `nwr["shop"="car_repair"]`;
+  if (/chaveir/.test(n)) return `nwr["craft"="locksmith"]\n      nwr["shop"="locksmith"]\n      nwr["name"~"chaveir",i]`;
   if (/clinic|medico|medica/.test(n)) {
     return `nwr["amenity"~"clinic|doctors|hospital"]`;
   }
@@ -160,6 +162,7 @@ export function extractProspectIntent(text: string) {
     [/pet shop|petshop|veterinar/, "Pet shops e veterinárias"],
     [/hotel|pousada/, "Hotéis e pousadas"],
     [/oficina|auto pe/, "Oficinas mecânicas"],
+    [/chaveir/, "Chaveiros"],
     [/loja|comercio/, "Comércios locais"],
   ];
 

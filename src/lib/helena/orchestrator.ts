@@ -158,18 +158,45 @@ export async function sendToHelena(text: string) {
     const user = currentUser(getDB());
     const requestedBy = user?.name || "Gestor";
     const allowDev = canUseDevTeam(user);
-    for (const tc of groqRes.toolCalls) {
-      if (allowDev && (tc.name === "dev_build_presence" || (tc.name === "prospect_scan_maps" && isPresenceIntent(clean)))) {
+    const wantsProspect =
+      /(1000|mil)\s*leads?|\brpa\b|prospect|prospecc|cacar|caçar|varr|diversos?\s*nichos?|brasil\s*(inteiro|todinho)|ativar\s+o?\s*time\s*(comercial|market|inteiro)/i.test(clean);
+    // Prospecção SEMPRE antes do Time Dev — nunca troca Maps por prévia Vercel.
+    const orderedCalls = [...groqRes.toolCalls].sort((a, b) => {
+      const rank = (name: string) =>
+        name === "prospect_scan_maps" ? 0
+          : name === "dev_build_presence" ? 2
+            : 1;
+      return rank(a.name) - rank(b.name);
+    });
+    for (const tc of orderedCalls) {
+      if (tc.name === "prospect_scan_maps") {
+        const args = {
+          ...tc.arguments,
+          ...(wantsProspect ? { wave: true, nationwide: true, limit: Math.min(Number(tc.arguments.limit) || 1000, 1000), city: "Brasil" } : {}),
+        };
+        const res = runTool("prospect.scan_maps", args, { actor: "Helena", actorType: "helena", requestedBy });
+        pushHelenaMessage(
+          groqRes.text || res.message || `Varredura Maps iniciada. Leads primeiro — Time Dev só depois.`,
+          { type: "result", ok: res.ok, title: "Varredura Maps · prospecção", detail: res.message }
+        );
+      } else if (tc.name === "dev_build_presence") {
+        if (wantsProspect) {
+          // Não dispara Dev no mesmo turno da onda: primeiro acha lead, depois prévia.
+          pushHelenaMessage(
+            "Prospecção na frente. Quando os leads entrarem no Pipeline, o Time Dev (Sofia/Caio/Diego) monta as prévias Vercel pra mandar no WhatsApp.",
+            { type: "result", ok: true, title: "Time Dev · aguardando leads", detail: "depois da varredura" },
+          );
+          continue;
+        }
+        if (!allowDev) {
+          const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
+          pushHelenaMessage(groqRes.text || res.message, { type: "result", ok: res.ok, title: "Varredura Maps", detail: res.message });
+          continue;
+        }
         const res = runTool("dev.build_presence", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Time Desenvolvimento IA · prévia", detail: res.message }
-        );
-      } else if (tc.name === "prospect_scan_maps" || tc.name === "dev_build_presence") {
-        const res = runTool("prospect.scan_maps", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
-        pushHelenaMessage(
-          groqRes.text || res.message || `Varredura Maps iniciada para ${tc.arguments.segment || "negócios locais"}. Quando achar WhatsApp válido, entram no Pipeline e no Inbox — te aviso ao terminar.`,
-          { type: "result", ok: res.ok, title: "Varredura Maps", detail: res.message }
         );
       } else if (tc.name === "calendar_create_event" || tc.name === "calendar_agendar_reuniao") {
         const res = runTool("calendar.agendar_reuniao", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
@@ -531,27 +558,27 @@ export function interpret(text: string): Reply[] {
           "Time Comercial e Closer ativos pra abordar e fechar.",
         ),
       );
+      // Time Dev NÃO sobe agora — só depois que a varredura achar leads (senão “ativa time” sem prospecção).
       if (canUseDevTeam(currentUser(getDB())) && (/time\s*dev|designer|cardapio|previa|site|time\s*inteiro/.test(n))) {
-        actions.push(
-          perform(
-            "dev.build_presence",
-            { segment: "diversos nichos locais", city: "Brasil", nationwide: true, limit: Math.min(80, limit) },
-            "Time Dev + Designer · prévias Vercel",
-            [{ label: "Dev", value: "Sofia + Caio + Diego · cardápio/site na Vercel" }],
-            "Time Dev em paralelo: prévias na Vercel pro comercial mandar link clicável.",
-          ),
-        );
+        actions.push({
+          text: "Ordem: 1) prospecção Maps → Pipeline 2) Comercial no WhatsApp 3) Time Dev monta prévia Vercel só nos leads achados. Não disparo Dev antes da varredura.",
+          card: {
+            type: "result" as const,
+            ok: true,
+            title: "Time Dev · depois dos leads",
+            detail: "aguarda RPA",
+          },
+        });
       }
       return actions;
     }
   }
 
-  // Time Dev IA: só na conta admin. Cliente cai na prospecção comercial abaixo.
-  // Não intercepta pedido de volume (RPA / 1000 leads).
+  // Time Dev IA: só prévia pura. Se pediu leads/RPA/prospecção, NÃO entra aqui.
   if (
     isPresenceIntent(text)
     && canUseDevTeam(currentUser(getDB()))
-    && !/\brpa\b|1000\s*leads?|mil\s*leads?|onda\s*multi/.test(n)
+    && !/\brpa\b|1000\s*leads?|mil\s*leads?|onda\s*multi|prospect|prospecc|cacar|caçar|varr|diversos?\s*nichos?|brasil\s*(inteiro|todinho)|ativar\s+o?\s*time\s*(comercial|market)/.test(n)
   ) {
     const intent = extractProspectIntent(text);
     const segment = intent.segment;
