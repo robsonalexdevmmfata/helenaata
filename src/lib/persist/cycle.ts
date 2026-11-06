@@ -1,5 +1,4 @@
-import type { Contact, DB, Execution, User } from "@/lib/types";
-import { isPlatformAdmin } from "@/lib/saas";
+import type { Contact, Conversation, DB, Deal, Execution, User } from "@/lib/types";
 import { currentUser, getDB, update } from "@/lib/store";
 
 function skipPersist() {
@@ -31,18 +30,19 @@ export function cycleSnapshot(db: DB, user: User) {
       phone: user.phone,
       evolutionInstance: user.evolutionInstance,
     },
-    companies: db.companies.slice(0, 200).map((c) => ({
+    companies: db.companies.slice(0, 1000).map((c) => ({
       id: c.id,
       name: c.name,
       segment: c.segment,
       city: c.city,
       website: c.website,
     })),
-    contacts: db.contacts.slice(0, 300).map((c) => ({
+    contacts: db.contacts.slice(0, 1000).map((c) => ({
       id: c.id,
       name: c.name,
       email: c.email,
       phone: c.phone,
+      companyId: c.companyId,
       status: c.status,
       source: c.source,
       tags: c.tags,
@@ -51,8 +51,52 @@ export function cycleSnapshot(db: DB, user: User) {
       score: c.score,
       opportunity: c.score >= 75 ? "alta" : c.score >= 50 ? "media" : "baixa",
       cycle_state: cycleOf(c),
+      lastContactAt: c.lastContactAt,
     })),
-    executions: db.executions.slice(0, 80).map((e: Execution) => ({
+    // Conversas + mensagens: não são temporárias — evitam reabordar e somem do Inbox.
+    conversations: db.conversations.slice(0, 800).map((c) => ({
+      id: c.id,
+      contactId: c.contactId,
+      channel: c.channel,
+      connectionId: c.connectionId,
+      remoteJid: c.remoteJid,
+      status: c.status,
+      handlerType: c.handlerType,
+      handlerId: c.handlerId,
+      unread: c.unread,
+      sentiment: c.sentiment,
+      lastMessageAt: c.lastMessageAt,
+      flow: c.flow,
+      messages: (c.messages || []).slice(-60).map((m) => ({
+        id: m.id,
+        from: m.from,
+        authorName: m.authorName,
+        text: m.text,
+        at: m.at,
+        kind: m.kind,
+        deliveryStatus: m.deliveryStatus,
+        externalId: m.externalId,
+      })),
+    })),
+    deals: (db.deals || []).slice(0, 800).map((d: Deal) => ({
+      id: d.id,
+      title: d.title,
+      contactId: d.contactId,
+      companyId: d.companyId,
+      pipelineId: d.pipelineId,
+      stageId: d.stageId,
+      value: d.value,
+      status: d.status,
+      source: d.source,
+      tags: d.tags,
+      ownerId: d.ownerId,
+      ownerType: d.ownerType,
+      probability: d.probability,
+      expectedClose: d.expectedClose,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    })),
+    executions: db.executions.slice(0, 120).map((e: Execution) => ({
       id: e.id,
       actor: e.actor,
       actorType: e.actorType,
@@ -64,7 +108,7 @@ export function cycleSnapshot(db: DB, user: User) {
     })),
     diagnoses: db.contacts
       .filter((c) => c.score > 0)
-      .slice(0, 100)
+      .slice(0, 200)
       .map((c) => ({
         contactId: c.id,
         score: c.score,
@@ -99,7 +143,7 @@ export function scheduleCyclePush() {
   if (skipPersist()) return;
   const db = getDB();
   const user = currentUser(db);
-  if (!user || isPlatformAdmin(user)) return;
+  if (!user) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     const token = typeof window !== "undefined" ? window.localStorage.getItem("helena-backend-token") : "";
@@ -109,20 +153,59 @@ export function scheduleCyclePush() {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(cycleSnapshot(db, user)),
+      body: JSON.stringify(cycleSnapshot(getDB(), user)),
     }).catch(() => { /* servidor local/Render pode estar frio */ });
   }, 800);
+}
+
+function mergeConversations(d: DB, rows: any[]) {
+  for (const row of rows) {
+    const id = row.id || row.app_id;
+    if (!id || !row.contactId) continue;
+    const existing = d.conversations.find((c) => c.id === id);
+    const messages = Array.isArray(row.messages) ? row.messages : [];
+    if (existing) {
+      existing.remoteJid = row.remoteJid || existing.remoteJid;
+      existing.status = row.status || existing.status;
+      existing.lastMessageAt = row.lastMessageAt || existing.lastMessageAt;
+      existing.flow = row.flow || existing.flow;
+      const seen = new Set(existing.messages.map((m) => m.id));
+      for (const m of messages) {
+        if (!m?.id || seen.has(m.id)) continue;
+        existing.messages.push(m);
+        seen.add(m.id);
+      }
+      existing.messages.sort((a, b) => +new Date(a.at) - +new Date(b.at));
+      continue;
+    }
+    d.conversations.unshift({
+      id,
+      organizationId: d.organization.id,
+      contactId: row.contactId,
+      channel: row.channel || "whatsapp",
+      connectionId: row.connectionId,
+      remoteJid: row.remoteJid,
+      status: row.status === "resolvida" || row.status === "pendente" ? row.status : "aberta",
+      handlerType: row.handlerType || "agent",
+      handlerId: row.handlerId || d.currentUserId,
+      unread: Number(row.unread) || 0,
+      sentiment: row.sentiment || "neutro",
+      lastMessageAt: row.lastMessageAt || new Date().toISOString(),
+      flow: row.flow,
+      messages,
+    } as Conversation);
+  }
 }
 
 export async function pullCycleIntoStore() {
   if (skipPersist()) return;
   const db = getDB();
   const user = currentUser(db);
-  if (!user || isPlatformAdmin(user)) return;
+  if (!user) return;
   try {
     const res = await fetch(`/api/helena/cycle?appUserId=${encodeURIComponent(user.id)}&email=${encodeURIComponent(user.email)}`);
     const data = await res.json().catch(() => ({}));
-    if (!data?.ok || !Array.isArray(data.contacts)) return;
+    if (!data?.ok) return;
     update((d) => {
       for (const row of data.contacts ?? []) {
         const id = row.app_id || row.id;
@@ -137,6 +220,7 @@ export async function pullCycleIntoStore() {
           existing.tags = tags.length ? tags : existing.tags;
           existing.phone = row.phone || existing.phone;
           existing.name = row.name || existing.name;
+          if (row.companyId) existing.companyId = row.companyId;
         } else {
           d.contacts.unshift({
             id,
@@ -144,6 +228,7 @@ export async function pullCycleIntoStore() {
             name: row.name || "Lead",
             email: row.email || "",
             phone: row.phone || "",
+            companyId: row.companyId || row.company_id,
             title: "",
             tags,
             source: (row.source || "Prospecção") as Contact["source"],
@@ -152,9 +237,36 @@ export async function pullCycleIntoStore() {
             score: Number(row.score) || 0,
             consent: row.consent !== false,
             createdAt: row.created_at || new Date().toISOString(),
-            lastContactAt: row.last_contact_at || new Date().toISOString(),
+            lastContactAt: row.last_contact_at || row.lastContactAt || new Date().toISOString(),
           });
         }
+      }
+      if (Array.isArray(data.conversations)) mergeConversations(d, data.conversations);
+      if (Array.isArray(data.inbox?.conversations)) mergeConversations(d, data.inbox.conversations);
+      for (const row of data.deals || data.inbox?.deals || []) {
+        const id = row.id || row.app_id;
+        if (!id || d.deals.some((x) => x.id === id)) continue;
+        const pipeline = d.pipelines[0];
+        const stage = pipeline?.stages[0];
+        d.deals.unshift({
+          id,
+          organizationId: d.organization.id,
+          pipelineId: row.pipelineId || pipeline?.id || "pl1",
+          stageId: row.stageId || stage?.id || "s1",
+          title: row.title || "Lead",
+          contactId: row.contactId,
+          companyId: row.companyId,
+          value: Number(row.value) || 100,
+          probability: Number(row.probability) || 10,
+          expectedClose: row.expectedClose || new Date(Date.now() + 20 * 86_400_000).toISOString(),
+          ownerId: row.ownerId || d.currentUserId,
+          ownerType: row.ownerType || "agent",
+          source: row.source || "Prospecção",
+          status: row.status || "aberto",
+          tags: row.tags || [],
+          createdAt: row.createdAt || new Date().toISOString(),
+          updatedAt: row.updatedAt || new Date().toISOString(),
+        } as Deal);
       }
       for (const row of data.executions || []) {
         const id = row.app_id || row.id;

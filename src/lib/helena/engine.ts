@@ -27,7 +27,7 @@ import {
   computeDynamicCadence,
 } from "./sales-brain";
 import { runPresencePipeline } from "@/lib/dev/presence";
-import { canUseDevTeam, grantAccessDays, grantLifetimeAccess, isPlatformAdmin, mustSubscribe, reserveProspects, setDailyLeadQuota } from "@/lib/saas";
+import { canUseDevTeam, grantAccessDays, grantLifetimeAccess, isPlatformAdmin, mustSubscribe, MAX_PROSPECT_WAVE, reserveProspects, setDailyLeadQuota } from "@/lib/saas";
 import { evaluateOutbound, isOptedOut } from "@/lib/whatsapp/antiban";
 import { findOrDraftConversation, pickRpaLeads, rpaOpening } from "@/lib/rpa/shift";
 import { enqueueRemoteSend } from "@/lib/rpa/enqueue";
@@ -1030,7 +1030,7 @@ const handlers: Record<string, Handler> = {
     return ok(`${contact?.name ?? "Cliente"} respondeu`);
   },
   "prospect.scan_maps": (p, ctx) => {
-    const asked = Math.min(Number(p.limit) || 10, 150);
+    const asked = Math.min(Number(p.limit) || 10, MAX_PROSPECT_WAVE);
     const quota = reserveProspects(asked);
     if (!quota.ok) return fail(quota.message);
     const segment = String(p.segment || "negócios locais sem site");
@@ -1040,7 +1040,7 @@ const handlers: Record<string, Handler> = {
     const noWhatsAppAi = p.noWhatsAppAi === true;
     const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
     if (!isTest && p.simulate !== true) {
-      const limitLive = Math.min(quota.allowed, 150);
+      const limitLive = Math.min(quota.allowed, MAX_PROSPECT_WAVE);
       // Onda só se pedida de propósito — pedido "300 restaurantes em BC" NÃO vira advogado em SP.
       const wave = p.wave === true || /varios nichos|diversos nichos|onda multi|rpa multi/i.test(segment);
       import("@/lib/prospect/runProspecting").then(async ({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
@@ -1100,7 +1100,7 @@ const handlers: Record<string, Handler> = {
         ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos em SP + interior (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
         : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Quando achar leads, entram no Pipeline, Inbox e WhatsApp. Te aviso ao terminar — ainda não é “já abordou”.`);
     }
-    const limit = Math.min(quota.allowed, 150);
+    const limit = Math.min(quota.allowed, MAX_PROSPECT_WAVE);
 
     const businessTemplates = [
       { name: "Consultório Dr. André", contact: "Dr. André Figueiredo", role: "Cirurgião Dentista" },
@@ -1553,8 +1553,7 @@ const handlers: Record<string, Handler> = {
     const city = String(p.city || p.cidade || user.companyName || "Brasil");
     const wave =
       p.wave === true ||
-      /varios nichos|diversos nichos|multi.?nicho|onda/i.test(segment) ||
-      (!segment && p.multi !== false);
+      /varios nichos|diversos nichos|multi.?nicho|onda/i.test(segment);
     if (wave || segment) {
       const scan = runTool(
         "prospect.scan_maps",
@@ -1562,7 +1561,7 @@ const handlers: Record<string, Handler> = {
           segment: wave ? "diversos nichos locais" : segment,
           city: wave ? "São Paulo, Campinas, Araçatuba, Andradina, Bauru" : city,
           state: wave ? "SP" : undefined,
-          limit: Math.min(Number(p.limit) || (wave ? 60 : 12), 150),
+          limit: Math.min(Number(p.limit) || (wave ? 120 : 12), MAX_PROSPECT_WAVE),
           wave: Boolean(wave),
           simulate: p.simulate === true,
         },

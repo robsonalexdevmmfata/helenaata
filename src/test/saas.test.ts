@@ -18,11 +18,11 @@ describe("SaaS trial e planos", () => {
     expect(mustSubscribe(admin)).toBe(false);
   });
 
-  it("conta demo está em trial com 30/dia", () => {
+  it("conta demo está em trial com cota do Impulso (150/dia)", () => {
     const demo = getDB().users.find((u) => u.id === "u_demo");
     expect(demo?.username).toBe("demo");
     expect(demo?.planId).toBe("trial");
-    expect(dailyLimitFor(demo)).toBe(30);
+    expect(dailyLimitFor(demo)).toBe(150);
     expect(mustSubscribe(demo)).toBe(false);
     expect(findLocalUser("demo", "123456")?.id).toBe("u_demo");
   });
@@ -47,7 +47,7 @@ describe("SaaS trial e planos", () => {
     });
   });
 
-  it("limita prospecção diária no trial", () => {
+  it("limita prospecção diária no trial (150 = Impulso)", () => {
     update((d) => {
       d.currentUserId = "u_demo";
       const u = d.users.find((x) => x.id === "u_demo")!;
@@ -55,14 +55,36 @@ describe("SaaS trial e planos", () => {
       u.trialEndsAt = trialEndsAtFrom();
       u.dailyProspectUsed = 0;
       u.dailyProspectDate = "";
+      u.dailyProspectLimit = undefined;
       u.status = "ativo";
     });
-    const first = reserveProspects(50);
+    const first = reserveProspects(200);
     expect(first.ok).toBe(true);
-    expect(first.allowed).toBe(30);
+    expect(first.allowed).toBe(150);
     const second = reserveProspects(1);
     expect(second.ok).toBe(false);
     update((d) => { d.currentUserId = "u1"; });
+  });
+
+  it("Máquina libera até 1000 leads/dia", () => {
+    update((d) => {
+      d.currentUserId = "u_demo";
+      const u = d.users.find((x) => x.id === "u_demo")!;
+      u.planId = "maquina";
+      u.lifetimeAccess = false;
+      u.dailyProspectLimit = undefined;
+      u.dailyProspectUsed = 0;
+      u.dailyProspectDate = "";
+    });
+    expect(dailyLimitFor(getDB().users.find((u) => u.id === "u_demo"))).toBe(1000);
+    update((d) => {
+      const u = d.users.find((x) => x.id === "u_demo");
+      if (u) {
+        u.planId = "trial";
+        u.lifetimeAccess = false;
+      }
+      d.currentUserId = "u1";
+    });
   });
 
   it("cadastro cria conta customer", () => {
@@ -116,6 +138,14 @@ describe("SaaS trial e planos", () => {
   });
 
   it("Time Dev libera no admin e no plano Máquina", () => {
+    update((d) => {
+      const u = d.users.find((x) => x.id === "u_demo");
+      if (u) {
+        u.planId = "trial";
+        u.lifetimeAccess = false;
+        u.kind = "customer";
+      }
+    });
     expect(planAllowsDevTeam("trial", "customer")).toBe(false);
     expect(planAllowsDevTeam("impulso", "customer")).toBe(false);
     expect(planAllowsDevTeam("maquina", "customer")).toBe(true);
@@ -154,7 +184,15 @@ describe("SaaS trial e planos", () => {
   });
 
   it("trial não dispara o Time Dev; Máquina dispara", () => {
-    update((d) => { d.currentUserId = "u_demo"; });
+    update((d) => {
+      d.currentUserId = "u_demo";
+      const u = d.users.find((x) => x.id === "u_demo");
+      if (u) {
+        u.planId = "trial";
+        u.lifetimeAccess = false;
+        u.kind = "customer";
+      }
+    });
     const blocked = runTool(
       "dev.build_presence",
       { segment: "Restaurantes", city: "Campinas, SP", limit: 1 },
@@ -186,8 +224,25 @@ describe("SaaS trial e planos", () => {
   });
 
   it("LGPD registra acesso e anonimiza titular", () => {
-    const id = getDB().contacts[0]?.id;
-    expect(id).toBeTruthy();
+    const id = `p_lgpd_${Date.now()}`;
+    update((d) => {
+      d.contacts.unshift({
+        id,
+        organizationId: d.organization.id,
+        name: "Titular LGPD",
+        email: "titular@teste.com",
+        phone: "+55 11 98888-7777",
+        title: "",
+        tags: [],
+        source: "Manual",
+        ownerId: d.currentUserId,
+        status: "lead",
+        score: 10,
+        consent: true,
+        createdAt: new Date().toISOString(),
+        lastContactAt: new Date().toISOString(),
+      });
+    });
     const logged = runTool("lgpd.log_access", { contactId: id }, { actor: "Ana", actorType: "user", requestedBy: "Ana" });
     expect(logged.ok).toBe(true);
     const erased = runTool("lgpd.erase_contact", { contactId: id }, { actor: "Ana", actorType: "user", requestedBy: "Ana" });
@@ -265,16 +320,16 @@ describe("SaaS trial e planos", () => {
     expect(getDB().users.find((x) => x.id === id)?.lifetimeAccess).toBe(true);
   });
 
-  it("freemium 30 leads; Impulso e Máquina teto 150 — Time Dev não passa disso", () => {
+  it("freemium = Impulso 150; Máquina sobe para 1000", () => {
     const email = `cota${Date.now()}@loja.com`;
     const res = registerCustomer({ name: "Cota", email, password: "1234", company: "Loja Cota" });
     const id = res.userId!;
-    expect(dailyLimitFor(getDB().users.find((x) => x.id === id))).toBe(30);
+    expect(dailyLimitFor(getDB().users.find((x) => x.id === id))).toBe(150);
     assignPlan(id, "impulso");
     expect(dailyLimitFor(getDB().users.find((x) => x.id === id))).toBe(150);
     assignPlan(id, "maquina");
-    expect(dailyLimitFor(getDB().users.find((x) => x.id === id))).toBe(150);
+    expect(dailyLimitFor(getDB().users.find((x) => x.id === id))).toBe(1000);
     expect(SAAS_PLANS.find((p) => p.id === "impulso")?.dailyProspects).toBe(150);
-    expect(SAAS_PLANS.find((p) => p.id === "maquina")?.dailyProspects).toBe(150);
+    expect(SAAS_PLANS.find((p) => p.id === "maquina")?.dailyProspects).toBe(1000);
   });
 });

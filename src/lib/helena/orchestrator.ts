@@ -468,7 +468,7 @@ export function interpret(text: string): Reply[] {
 
   // RPA multi-nicho: "quero rpa diversos nichos", "onda RPA", "expediente multi nicho"
   if (/\brpa\b/.test(n) || /expediente\s*(rpa|automat|multi)/.test(n) || /onda\s*(rpa|comercial|multi)/.test(n)) {
-    const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 60), 150);
+    const limit = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 120), 1000);
     const multi = /diversos|varios|multi|onda|todos?\s*os\s*nichos|nichos/.test(n) || !/dentista|advog|restaurante|clinic|barbear/.test(n);
     if (multi) {
       return [
@@ -476,7 +476,7 @@ export function interpret(text: string): Reply[] {
           "prospect.scan_maps",
           {
             segment: "diversos nichos locais",
-            city: "São Paulo, Campinas, Araçatuba, Andradina, Bauru",
+            city: "São Paulo, Campinas, Araçatuba, Andradina, Bauru, Rio Preto",
             nationwide: false,
             state: "SP",
             limit,
@@ -528,8 +528,8 @@ export function interpret(text: string): Reply[] {
     const segment = weak ? "Dentistas" : intent.segment;
     const nationwide = intent.nationwide;
     const city = intent.city;
-    const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 10), 150);
-    const wave = weak || limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|150 pessoas|diversos nichos|varios nichos|\brpa\b/.test(n);
+    const limit = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 10), 1000);
+    const wave = weak || limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|1000|diversos nichos|varios nichos|\brpa\b/.test(n);
 
     return [
       perform(
@@ -703,7 +703,7 @@ export function interpret(text: string): Reply[] {
   if (/prospect|ptrospec|leads?|potenciais clientes|novos clientes|consiga reunioes|conseguir reunioes|ativ\w*.*(comercial|marketing|time|sdr|agentes)/.test(n)) {
     const listId = /clinic|consultori|dentist/.test(n) ? "l2" : /imobili/.test(n) ? "l4" : "l1";
     const list = db.lists.find((l) => l.id === listId) ?? db.lists[0];
-    const total = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 50), 150);
+    const total = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 50), 1000);
     const listName = list?.name || "Prospecção WhatsApp";
     const segment = list?.segment || "negócios locais sem site";
     // Conta nova sem lista: onda multi-nicho → Pipeline + Inbox + WhatsApp.

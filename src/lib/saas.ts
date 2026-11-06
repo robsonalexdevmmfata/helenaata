@@ -4,9 +4,14 @@ import { planAllowsDevTeam } from "@/lib/seed";
 import { hashPw } from "@/lib/security/secrets";
 
 export const TRIAL_DAYS = 2;
-export const TRIAL_DAILY_PROSPECTS = 30;
-/** Teto do usuário comum (Impulso e Máquina). Freemium fica em 30. */
+/** Freemium = mesma cota do 1º plano (Impulso), pra dar gostinho real. Trial continua 2 dias. */
+export const TRIAL_DAILY_PROSPECTS = 150;
+/** Impulso (plano 1). */
 export const PAID_DAILY_PROSPECTS = 150;
+/** Máquina: onda grande multi-cidade (até 1000/dia). */
+export const MACHINE_DAILY_PROSPECTS = 1000;
+/** Teto técnico de uma varredura/onda (Helena). */
+export const MAX_PROSPECT_WAVE = 1000;
 export const CAKTO_NOTE = "Pix e cartão na Cakto. Impulso (plano 1) ou Máquina (plano 2, Time Dev). Sem plano depois do trial a conta trava.";
 
 export const CAKTO_CHECKOUT = {
@@ -38,10 +43,10 @@ export const SAAS_PLANS: SaasPlan[] = [
     quote: false,
     checkoutUrl: CAKTO_CHECKOUT.impulso,
     features: [
-      "Trial de 2 dias incluso no cadastro (30 leads/dia no freemium)",
+      "Trial de 2 dias incluso no cadastro (150 leads/dia — mesma cota do Impulso)",
       "Até 150 abordagens de prospecção por dia após assinar",
       "Helena + Time Comercial no WhatsApp",
-      "CRM, inbox e agenda",
+      "CRM, inbox e agenda — leads e conversas salvos",
       "Trilha de entrada e despedida da Helena",
     ],
   },
@@ -51,17 +56,17 @@ export const SAAS_PLANS: SaasPlan[] = [
     price: 140,
     priceLabel: "R$ 140,00/mês",
     tagline: "Operação completa. Volume que paga o plano com um cliente.",
-    dailyProspects: 150,
+    dailyProspects: 1000,
     quote: false,
     checkoutUrl: CAKTO_CHECKOUT.maquina,
     highlight: true,
     features: [
-      "Até 150 abordagens por dia (mesmo teto do Impulso)",
-      "Time Dev IA + Comercial + Closer — a cota não sobe só de clicar em Ativar",
+      "Até 1000 abordagens por dia · vários nichos e cidades ao mesmo tempo",
+      "Time Dev IA + Comercial + Closer",
       "Prévia de site e cardápio com link no WhatsApp",
       "Objeções, Pix e reunião na Agenda",
-      "Automações e analytics",
-      "Suporte prioritário",
+      "Leads e conversas persistidos (sem reabordar o mesmo número)",
+      "Automações, analytics e suporte prioritário",
     ],
   },
   {
@@ -163,7 +168,9 @@ export function dailyLimitFor(user?: User | null) {
   if (!user || isPlatformAdmin(user)) return 10_000;
   if (user.dailyProspectLimit != null && user.dailyProspectLimit > 0) return user.dailyProspectLimit;
   if (user.planId === "whitelabel") return 9999;
-  if (user.planId === "impulso" || user.planId === "maquina" || user.lifetimeAccess) return PAID_DAILY_PROSPECTS;
+  if (user.planId === "maquina" || user.lifetimeAccess) return MACHINE_DAILY_PROSPECTS;
+  if (user.planId === "impulso") return PAID_DAILY_PROSPECTS;
+  // Freemium / trial: mesma cota do 1º plano (Impulso).
   return TRIAL_DAILY_PROSPECTS;
 }
 
@@ -297,7 +304,7 @@ export function registerCustomer(input: {
     phone: input.phone ?? "",
   };
   provisionCustomerAccount(user);
-  return { ok: true, message: "Conta criada. Trial de 2 dias, 30 prospecções por dia.", userId: id, evolutionInstance };
+  return { ok: true, message: "Conta criada. Trial de 2 dias, 150 prospecções por dia (cota do plano Impulso).", userId: id, evolutionInstance };
 }
 
 export async function syncPaidPlanFromCakto(user?: User | null) {

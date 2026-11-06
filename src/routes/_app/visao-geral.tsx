@@ -55,7 +55,7 @@ function Home() {
           <div>
             <p className="text-sm font-semibold">Time Dev (site + cardápio) está no plano Máquina</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              No trial só roda o comercial (30 leads/dia). Clicar em Ativar Máquina não aumenta a cota — 150/dia vale depois do pagamento. Time Dev entra no Máquina assinado.
+              No trial o comercial roda com 150 leads/dia (2 dias). Impulso mantém 150; Máquina sobe para 1000 multi-cidade. Leads e conversas ficam salvos — sem reabordar o mesmo número.
             </p>
           </div>
           <ActivateMaquinaButton user={user} className="shrink-0" />

@@ -315,6 +315,31 @@ export async function saveCycle(payload) {
     );
   }
 
+  // Snapshot durable: leads + conversas (evita Inbox temporário e reabordagem).
+  const appOrg = String(payload.tenant?.organizationId || payload.tenant?.orgSlug || tenant.orgSlug || "");
+  if (appOrg) {
+    const inbox = {
+      conversations: Array.isArray(payload.conversations) ? payload.conversations.slice(0, 800) : [],
+      deals: Array.isArray(payload.deals) ? payload.deals.slice(0, 800) : [],
+      contacts: Array.isArray(payload.contacts) ? payload.contacts.slice(0, 1000) : [],
+      companies: Array.isArray(payload.companies) ? payload.companies.slice(0, 1000) : [],
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      await q(
+        `insert into workspace_snapshots (app_organization_id, payload, revision, updated_at)
+         values ($1, $2::jsonb, 1, now())
+         on conflict (app_organization_id) do update set
+           payload = excluded.payload,
+           revision = workspace_snapshots.revision + 1,
+           updated_at = now()`,
+        [appOrg, JSON.stringify(inbox)],
+      );
+    } catch (err) {
+      console.warn("[helena-db] workspace_snapshots:", err?.message || err);
+    }
+  }
+
   return { ok: true, organizationId: oid };
 }
 
@@ -325,12 +350,25 @@ export async function loadCycle({ appUserId, email }) {
   const profile = prof.rows[0];
   if (!profile) return { ok: false, empty: true };
   const oid = profile.organization_id;
-  const contacts = (await q("select * from contacts where organization_id = $1 order by created_at desc limit 400", [oid])).rows;
-  const companies = (await q("select * from companies where organization_id = $1 limit 400", [oid])).rows;
+  const contacts = (await q("select * from contacts where organization_id = $1 order by created_at desc limit 1000", [oid])).rows;
+  const companies = (await q("select * from companies where organization_id = $1 limit 1000", [oid])).rows;
   const executions = (await q("select * from executions where organization_id = $1 order by created_at desc limit 200", [oid])).rows;
   const diagnoses = (await q("select * from lead_diagnoses where organization_id = $1", [oid])).rows;
   const memories = (await q("select * from commercial_memory where organization_id = $1 order by created_at desc limit 200", [oid])).rows;
-  const deals = (await q("select * from deals where organization_id = $1 limit 200", [oid])).rows;
+  const deals = (await q("select * from deals where organization_id = $1 limit 800", [oid])).rows;
+  let inbox = null;
+  try {
+    const acc = profile.app_user_id
+      ? await q("select app_organization_id from app_accounts where app_user_id = $1 limit 1", [profile.app_user_id])
+      : { rows: [] };
+    const appOrg = String(acc.rows[0]?.app_organization_id || profile.app_organization_id || "");
+    const snap = appOrg
+      ? await q("select payload from workspace_snapshots where app_organization_id = $1 limit 1", [appOrg])
+      : { rows: [] };
+    inbox = snap.rows[0]?.payload || null;
+  } catch {
+    inbox = null;
+  }
   return {
     ok: true,
     profile,
@@ -340,6 +378,8 @@ export async function loadCycle({ appUserId, email }) {
     diagnoses,
     memories,
     deals,
+    conversations: inbox?.conversations || [],
+    inbox,
   };
 }
 

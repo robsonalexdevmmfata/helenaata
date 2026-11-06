@@ -13,6 +13,8 @@ import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { buildCatalogOpening } from "@/lib/catalog";
 import { getDB, update, uid, nowISO } from "@/lib/store";
 import { unansweredAgentStreak, wasDeliveredOutbound } from "@/lib/helena/sales-flow";
+import { phoneDedupeKey } from "@/lib/prospect/runProspecting";
+import { scheduleCyclePush } from "@/lib/persist/cycle";
 
 // ── Configurações de disparo seguro ──────────────────────────────────────────
 
@@ -114,7 +116,8 @@ export async function dispatchProspectMessages(
       continue;
     }
     const dbNow = getDB();
-    const already = dbNow.contacts.find((c) => c.phone.replace(/\D/g, "").slice(-10) === cleanPhone.slice(-10));
+    const key = phoneDedupeKey(cleanPhone);
+    const already = dbNow.contacts.find((c) => phoneDedupeKey(c.phone) === key);
     const existingConv = already
       ? dbNow.conversations.find((cv) => cv.contactId === already.id)
       : dbNow.conversations.find((cv) => cv.contactId === contact.contactId);
@@ -122,11 +125,10 @@ export async function dispatchProspectMessages(
       (e) =>
         e.action.includes("evolution.sendText") &&
         e.result === "sucesso" &&
-        e.description.includes(cleanPhone) &&
+        (e.description.includes(cleanPhone) || e.description.includes(key)) &&
         Date.now() - new Date(e.at).getTime() < 6 * 60 * 60_000,
     );
-    // Só pula se o WhatsApp realmente recebeu (deliveryStatus/externalId ou execution sucesso).
-    // Rascunho no Inbox NÃO conta — era isso que fazia o chat sumir do WhatsApp Web.
+    // Já abordado de verdade → nunca chama de novo (evita mensagem repetida).
     if (recentSend || (existingConv && unansweredAgentStreak(existingConv) >= 1)) {
       result.skipped++;
       continue;
@@ -261,6 +263,7 @@ export async function dispatchProspectMessages(
     });
   }
 
+  scheduleCyclePush();
   return result;
 }
 

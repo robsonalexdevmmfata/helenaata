@@ -17,7 +17,7 @@ export const Route = createFileRoute("/cadastro")({
   head: () =>
     pageHead(
       "Criar conta",
-      "Trial de 2 dias. 30 leads/dia no freemium. 150 após assinar. Sem cartão agora.",
+      "Trial de 2 dias. 150 leads/dia no freemium (cota do Impulso). Máquina até 1000/dia. Sem cartão agora.",
     ),
   validateSearch: (s: Record<string, unknown>): { plano?: "maquina" | "impulso" } =>
     s.plano === "maquina" || s.plano === "impulso" ? { plano: s.plano } : {},
@@ -97,7 +97,7 @@ function CadastroPage() {
         <div>
           <p className="font-serif text-5xl leading-tight">Dois dias para ver a máquina trabalhar.</p>
           <p className="mt-4 max-w-md text-sm text-[#f4efe6]/65">
-            Freemium: 30 leads/dia. Depois de assinar Impulso ou Máquina: até 150/dia. Time Dev não aumenta cota até o Cakto confirmar.
+            Freemium: 150 leads/dia por 2 dias (igual Impulso). Máquina: até 1000/dia multi-cidade. Leads e conversas ficam salvos.
             O timer começa na hora do cadastro. Depois de 2 dias, a conta só segue com um plano.
           </p>
         </div>

@@ -180,7 +180,7 @@ function TrialStrip() {
       >
         {label}
         {` · ${used}/${limit} leads hoje`}
-        {trial ? " (freemium 30/dia). Time Dev no Máquina não sobe a cota até o Cakto confirmar." : " · pago até 150/dia"}
+        {trial ? " (freemium 150/dia · 2 dias). Time Dev no Máquina após o Cakto." : " · Impulso 150/dia · Máquina 1000/dia"}
       </button>
       {trial && (
         <a

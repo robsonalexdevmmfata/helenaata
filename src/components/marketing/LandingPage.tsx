@@ -97,7 +97,7 @@ export function LandingPage() {
         <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 px-5 py-10 sm:grid-cols-4 sm:gap-6">
           {[
             ["2 dias", "para sentir a máquina"],
-            ["30/dia", "no trial, sem desperdício"],
+            ["150/dia", "no trial de 2 dias (cota Impulso)"],
             ["3 seniores", "front, back e design"],
             ["1 link", "que o dono consegue abrir"],
           ].map(([k, v], i) => (

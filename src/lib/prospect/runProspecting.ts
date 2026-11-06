@@ -30,6 +30,13 @@ function ownerForSegment<T extends { id: string; teamId?: string; role: string }
   return roster.find((a) => a.id === prefer) ?? roster[slot % Math.max(1, roster.length)] ?? roster[0] ?? agents[0];
 }
 
+/** Chave estável do WhatsApp BR (evita recriar lead e reabordar). */
+export function phoneDedupeKey(phone: string) {
+  let d = digits(phone);
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  return d.slice(-11);
+}
+
 export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
   const conn = getAgencyConnection(getDB());
   const createdContactIds: string[] = [];
@@ -37,13 +44,13 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
   update((d) => {
     const pipeline = d.pipelines[0];
     const stage = pipeline?.stages[0];
-    const existingPhones = new Set(d.contacts.map((c) => digits(c.phone)));
+    const existingPhones = new Set(d.contacts.map((c) => phoneDedupeKey(c.phone)).filter(Boolean));
     let slot = d.contacts.length;
     places.forEach((place) => {
       if (place.website && !place.likelyNoWaAi) return;
       if (!isValidBrazilWhatsApp(place.phone)) return;
-      const phoneKey = digits(place.phone);
-      if (phoneKey.endsWith("18981011186")) return;
+      const phoneKey = phoneDedupeKey(place.phone);
+      if (!phoneKey || phoneKey.endsWith("18981011186") || phoneKey === "18981011186") return;
       if (existingPhones.has(phoneKey)) return;
       existingPhones.add(phoneKey);
 
@@ -224,13 +231,13 @@ export async function sendOpeningNow(phone: string, contactName: string, company
 
 export async function runWaveProspecting(opts: { limit?: number; organizationId: string; operationId?: string; niches?: string[] }) {
   activateCommercialTeam();
-  const target = Math.min(Math.max(opts.limit ?? 150, 1), 150);
-  // Diversos nichos de verdade: cobre a grade WAVE_NICHES (ou lista pedida).
-  const hubs = WAVE_CITIES.slice(0, target <= 40 ? 3 : target <= 80 ? 5 : WAVE_CITIES.length);
+  const target = Math.min(Math.max(opts.limit ?? 150, 1), 1000);
+  // Diversos nichos + várias cidades ao mesmo tempo (até 1000 leads).
+  const hubs = WAVE_CITIES.slice(0, target <= 60 ? 3 : target <= 200 ? 5 : WAVE_CITIES.length);
   const pool = (opts.niches?.length ? opts.niches : WAVE_NICHES).filter(Boolean);
-  const niches = pool.slice(0, target <= 40 ? Math.min(8, pool.length) : target <= 80 ? Math.min(12, pool.length) : pool.length);
-  const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 3), 10);
-  const seen = new Set<string>();
+  const niches = pool.slice(0, target <= 60 ? Math.min(8, pool.length) : target <= 200 ? Math.min(12, pool.length) : pool.length);
+  const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 3), 14);
+  const seen = new Set<string>(getDB().contacts.map((c) => phoneDedupeKey(c.phone)).filter(Boolean));
   const bag: { place: MapPlace; segment: string }[] = [];
   for (const city of hubs) {
     for (const niche of niches) {
@@ -239,8 +246,8 @@ export async function runWaveProspecting(opts: { limit?: number; organizationId:
         const found = await searchBusinessesWithoutWebsite({ segment: niche, city, state: "SP", limit: perCombo });
         for (const p of found) {
           if (!isValidBrazilWhatsApp(p.phone)) continue;
-          const k = digits(p.phone);
-          if (!k || seen.has(k) || k.endsWith("18981011186")) continue;
+          const k = phoneDedupeKey(p.phone);
+          if (!k || seen.has(k) || k === "18981011186") continue;
           seen.add(k);
           bag.push({ place: p, segment: niche });
           if (bag.length >= target) break;

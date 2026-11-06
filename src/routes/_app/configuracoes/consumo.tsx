@@ -29,7 +29,7 @@ function ConsumoPage() {
         <div className="rounded-xl border bg-card p-4"><div className="text-xs text-muted-foreground">WhatsApp (execuções send)</div><div className="font-mono text-2xl">{c.msgs}</div></div>
         <div className="rounded-xl border bg-card p-4"><div className="text-xs text-muted-foreground">Dossiês</div><div className="font-mono text-2xl">{c.dossiers}</div></div>
       </div>
-      <p className="text-xs text-muted-foreground">{c.note} Trial 30/dia · pago 150/dia. Time Dev não sobe cota.</p>
+      <p className="text-xs text-muted-foreground">{c.note} Trial/Impulso 150/dia · Máquina 1000/dia. Leads e conversas persistidos.</p>
       <div className="rounded-xl border bg-card p-5">
         <h2 className="text-sm font-semibold">Território no cadastro</h2>
         <p className="mt-1 text-[11px] text-muted-foreground">{t.note}</p>
