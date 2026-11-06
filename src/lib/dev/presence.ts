@@ -519,18 +519,18 @@ export function buildPreviewOpening(contactName: string, companyName: string, ur
   const link = String(url || "").trim();
   // URL sozinha na linha = WhatsApp vira link azul clicável + preview de página.
   const product = withMenu
-    ? "um cardápio digital com pedidos no WhatsApp"
-    : "um site profissional com WhatsApp e presença no Google";
+    ? "um cardápio digital onde o cliente escolhe, monta a sacola e pede no WhatsApp"
+    : "um site profissional onde o cliente confia e te chama no WhatsApp em 1 toque";
   if (pitch) {
     return `${who} ${pitch}
 
-Montamos ${product} sob medida pra ${companyName} — já no ar, com a cara do seu negócio. Abre o link (é clicável):
+Montei ${product} sob medida pra ${companyName} — já no ar, com a cara do seu negócio. Abre e imagina seus clientes usando isso agora:
 
 ${link}
 
-Se gostar, a gente publica oficial e você passa a receber cliente por aí. Você é o dono(a)?`;
+Se gostar, a gente publica oficial ainda esta semana. Você é o dono(a)?`;
   }
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e preparei ${product} pra vocês — visual de produto final, já hospedado. Dá um play no link:
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e preparei ${product} pra vocês — visual de produto final, já hospedado. Abre o link e sente como o cliente vê o seu negócio:
 
 ${link}
 
