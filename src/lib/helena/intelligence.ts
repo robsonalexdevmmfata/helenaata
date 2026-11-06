@@ -14,7 +14,7 @@ import type {
   RoiScenario,
 } from "@/lib/types";
 import { cycleFromTags, diagnoseLead } from "@/lib/helena/diagnose";
-import { isFoodNiche } from "@/lib/dev/presence";
+import { wantsCardapio } from "@/lib/dev/presence";
 import { currentUser, getDB, nowISO, uid, update } from "@/lib/store";
 import { canUseDevTeam } from "@/lib/saas";
 import { normalize } from "@/lib/format";
@@ -38,7 +38,7 @@ const INTENT_RE = /quanto custa|qual o valor|quero contratar|manda (uma )?propos
 
 export function nichePlayOf(segment?: string, name?: string): NichePlay {
   const n = normalize(`${segment || ""} ${name || ""}`);
-  if (isFoodNiche(n) || /pizzaria/.test(n)) return "pizzaria";
+  if (wantsCardapio(n) || /pizzaria/.test(n)) return "pizzaria";
   if (/clinic|dentista|estetic|fisioter|odonto|medico|pet\b/.test(n)) return "clinica";
   if (/barbear|cabeleir|salao|salão|barbeiro/.test(n)) return "barbearia";
   return "outro";

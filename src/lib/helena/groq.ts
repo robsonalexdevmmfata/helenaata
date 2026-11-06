@@ -20,7 +20,8 @@ export function getGroqModel(): string {
   if (typeof import.meta !== "undefined" && import.meta.env?.VITE_GROQ_MODEL) {
     return import.meta.env.VITE_GROQ_MODEL;
   }
-  return "openai/gpt-oss-120b";
+  // Llama 3.3 70B: melhor pra texto comercial + instrução de produto (cardápio vs site).
+  return "llama-3.3-70b-versatile";
 }
 
 export interface GroqToolCall {
@@ -40,7 +41,7 @@ export const GROQ_TOOLS = [
     function: {
       name: "dev_build_presence",
       description:
-        "Aciona o Time Desenvolvimento IA (front, back e designer seniores): encontra negócios do NICHO sem site (e sem cardápio online se for comida), monta prévia com dados do mapa e passa o link ao Time Comercial para abordar o proprietário. Use para restaurantes, barbearias, clínicas, qualquer nicho — não só restaurante.",
+        "Time Dev (Caio/Diego/Sofia): monta prévia na Vercel. CARDÁPIO só pra restaurante/lanchonete/pizzaria/hamburguer/churrascaria. Sorveteria, açaí, padaria, barbearia, chaveiro etc. = SITE (sem cardápio de pratos). Depois o comercial manda o link.",
       parameters: {
         type: "object",
         properties: {
@@ -336,7 +337,7 @@ Diretrizes:
 3. Prospecção / RPA / 1000 leads / diversos nichos / Brasil: SEMPRE prospect_scan_maps primeiro (nationwide=true, wave). NUNCA chame só dev_build_presence nesse pedido — cardápio/site/time Dev vêm DEPOIS dos leads.
 4. Antes de venda no WhatsApp, leads_diagnose. Dono primeiro; preço só se perguntarem (site/cardápio R$ 100/mês).
 5. Horário fechado → calendar_agendar_reuniao na hora.
-${allowDev ? "6. Prévia Vercel pura (sem pedido de prospecção/RPA): aí sim dev_build_presence (Caio, Diego, Sofia). Se misturar prospecção+Dev, chame só prospect_scan_maps." : "6. Sem Time Dev liberado: prospect_scan_maps; comercial prospecta."}
+${allowDev ? "6. Prévia Vercel pura (sem RPA): dev_build_presence. Cardápio = só restaurante/lanchonete. Sorveteria e serviços = site. Se misturar prospecção+Dev, chame só prospect_scan_maps." : "6. Sem Time Dev liberado: prospect_scan_maps; comercial prospecta."}
 7. Você é dona do resultado: ensina o próximo clique, dispara o time e acompanha follow-up. Não empurre o usuário a clicar menu a menu se puder fazer por tool.
 
 Responda sempre em Português do Brasil.`;

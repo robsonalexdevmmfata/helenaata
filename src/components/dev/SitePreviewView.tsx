@@ -229,7 +229,7 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           className="flex-1 rounded-full px-4 py-3 text-center text-sm font-medium"
           style={{ background: palette.accent, color: palette.bg }}
         >
-          Pedir no WhatsApp
+          {hasMenu ? "Pedir no WhatsApp" : "Falar no WhatsApp"}
         </a>
         <a
           href={view.mapsUrl}

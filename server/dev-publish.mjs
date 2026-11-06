@@ -39,15 +39,27 @@ function repoName(slug) {
   return `helena-${String(slug || "site").replace(/[^a-z0-9-]/gi, "-")}`.slice(0, 90).toLowerCase();
 }
 
-const FALLBACK_GALLERY = [
+const FALLBACK_FOOD = [
   "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80",
   "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80",
   "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1200&q=80",
   "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&q=80",
   "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=1200&q=80",
   "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1200&q=80",
-  "https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?w=1200&q=80",
-  "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=1200&q=80",
+];
+const FALLBACK_SITE = [
+  "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80",
+  "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80",
+  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&q=80",
+  "https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1200&q=80",
+  "https://images.unsplash.com/photo-1581244277943-fe4a9c777189?w=1200&q=80",
+  "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=1200&q=80",
+];
+const FALLBACK_ICE = [
+  "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?w=1200&q=80",
+  "https://images.unsplash.com/photo-1501443762994-82bd5dace89a?w=1200&q=80",
+  "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=1200&q=80",
+  "https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=1200&q=80",
 ];
 const FALLBACK_DISH = [
   "https://images.unsplash.com/photo-1541014741259-de529411b96a?w=800&q=80",
@@ -58,13 +70,26 @@ const FALLBACK_DISH = [
   "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80",
 ];
 
-function padPhotos(photos) {
+function nicheKey(p) {
+  const n = String(`${p?.segment || ""} ${p?.name || ""}`).toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const hasMenu = Array.isArray(p?.menu) && p.menu.length > 0;
+  if (hasMenu || /restaurante|pizzaria|lanchonete|hamburguer|churrasc/.test(n)) return "food";
+  if (/sorvet|gelat|acai/.test(n)) return "ice";
+  return "site";
+}
+
+function padPhotos(photos, kind = "site") {
+  const pool = kind === "food" ? FALLBACK_FOOD : kind === "ice" ? FALLBACK_ICE : FALLBACK_SITE;
   const out = [...(Array.isArray(photos) ? photos : [])];
-  for (const src of FALLBACK_GALLERY) {
-    if (out.length >= 8) break;
-    if (!out.includes(src)) out.push(src);
+  // Nunca completa site/sorvete com foto de restaurante.
+  const banned = kind === "food" ? [] : FALLBACK_FOOD;
+  const cleaned = out.filter((src) => !banned.includes(src));
+  for (const src of pool) {
+    if (cleaned.length >= 8) break;
+    if (!cleaned.includes(src)) cleaned.push(src);
   }
-  return out;
+  return cleaned;
 }
 
 function withDishImages(menu) {
@@ -79,15 +104,28 @@ function withDishImages(menu) {
 }
 
 export function previewToHtml(p) {
-  const pal = p.palette || { bg: "#1a1410", fg: "#f7f1e8", accent: "#e8b86d" };
+  const kind = nicheKey(p);
+  const pal = p.palette || (kind === "food"
+    ? { bg: "#140f0c", fg: "#faf6f1", accent: "#e8a05c" }
+    : kind === "ice"
+      ? { bg: "#0c1220", fg: "#f4f7fb", accent: "#7dd3fc" }
+      : { bg: "#0b1220", fg: "#f1f5f9", accent: "#34d399" });
   const wa = String(p.phone || "").replace(/\D/g, "");
   const waLink = `https://wa.me/${wa.startsWith("55") ? wa : `55${wa}`}`;
-  const menu = withDishImages(p.menu);
+  const menu = kind === "food" ? withDishImages(p.menu) : [];
   const services = Array.isArray(p.services) ? p.services : [];
-  const photos = padPhotos(p.photos);
+  const photos = padPhotos(p.photos, kind);
   const reviews = Array.isArray(p.reviews) ? p.reviews : [];
   const featured = menu.flatMap((c) => c.items || []).filter((it) => it.image).slice(0, 4);
   const hasMenu = menu.length > 0;
+  const displayFont = kind === "food"
+    ? "Fraunces,Georgia,serif"
+    : kind === "ice"
+      ? "Fraunces,Georgia,serif"
+      : "Syne,system-ui,sans-serif";
+  const bodyFont = "Manrope,system-ui,sans-serif";
+  const ctaLabel = hasMenu ? "Pedir no WhatsApp" : "Falar no WhatsApp";
+  const galleryTitle = hasMenu ? "Ambiente &amp; pratos" : kind === "ice" ? "Sabores &amp; vitrine" : "Ambiente &amp; marca";
   const menuHtml = menu
     .map(
       (cat) => `
@@ -143,12 +181,12 @@ export function previewToHtml(p) {
   <title>${esc(p.name)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Syne:wght@500;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    :root{--bg:${esc(pal.bg)};--fg:${esc(pal.fg)};--acc:${esc(pal.accent)};--line:color-mix(in srgb, var(--fg) 14%, transparent);--soft:color-mix(in srgb, var(--fg) 6%, transparent)}
+    :root{--bg:${esc(pal.bg)};--fg:${esc(pal.fg)};--acc:${esc(pal.accent)};--line:color-mix(in srgb, var(--fg) 14%, transparent);--soft:color-mix(in srgb, var(--fg) 6%, transparent);--display:${displayFont};--body:${bodyFont}}
     *{box-sizing:border-box}
     html{scroll-behavior:smooth}
-    body{margin:0;font-family:Manrope,system-ui,sans-serif;background:var(--bg);color:var(--fg);line-height:1.55;-webkit-font-smoothing:antialiased}
+    body{margin:0;font-family:var(--body);background:var(--bg);color:var(--fg);line-height:1.55;-webkit-font-smoothing:antialiased}
     body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;background:
       radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--acc) 28%, transparent), transparent 55%),
       radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--fg) 8%, transparent), transparent 50%),
@@ -161,7 +199,7 @@ export function previewToHtml(p) {
     .hero{position:relative;max-width:44rem;margin:0 auto;width:100%}
     .logo{border-radius:1.15rem;border:2px solid color-mix(in srgb, var(--fg) 22%, transparent);margin-bottom:1rem;object-fit:cover;box-shadow:0 12px 40px color-mix(in srgb, #000 35%, transparent);animation:rise .7s ease both}
     .eyebrow{font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;opacity:.78;margin:0;animation:rise .75s .05s ease both}
-    h1{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:clamp(2.4rem,6vw,3.6rem);line-height:1.05;margin:.55rem 0 .4rem;letter-spacing:-.02em;animation:rise .8s .08s ease both}
+    h1{font-family:var(--display);font-weight:700;font-size:clamp(2.55rem,6.2vw,3.85rem);line-height:1.02;margin:.55rem 0 .4rem;letter-spacing:-.03em;animation:rise .8s .08s ease both}
     .tag{max-width:34rem;font-size:1.05rem;opacity:.92;margin:.75rem 0 0;animation:rise .85s .12s ease both}
     .rating{font-size:.92rem;margin:.9rem 0 0;opacity:.88;animation:rise .9s .15s ease both}
     .stars{color:var(--acc);letter-spacing:.08em}
@@ -172,7 +210,7 @@ export function previewToHtml(p) {
     .wrap{max-width:52rem;margin:0 auto;padding:0 1.25rem 6rem}
     .sec{margin-top:3.25rem}
     .kicker{margin:0 0 .35rem;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);opacity:.9}
-    h2{font-family:Fraunces,Georgia,serif;font-size:clamp(1.45rem,3vw,1.85rem);font-weight:600;margin:0 0 1.1rem;letter-spacing:-.01em}
+    h2{font-family:var(--display);font-size:clamp(1.5rem,3vw,1.95rem);font-weight:700;margin:0 0 1.1rem;letter-spacing:-.02em}
     .about{font-size:1.02rem;opacity:.9;max-width:40rem}
     .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem}
     .meta div{padding:1rem 1.05rem;border:1px solid var(--line);border-radius:1rem;background:var(--soft)}
@@ -186,7 +224,7 @@ export function previewToHtml(p) {
     .feat div{padding:.8rem .85rem}
     .feat strong{display:block;font-size:.92rem;margin-bottom:.3rem}
     .cat{margin-top:2rem}
-    .cat h3{font-family:Fraunces,Georgia,serif;color:var(--acc);font-size:1.35rem;margin:0 0 1rem;font-weight:600}
+    .cat h3{font-family:var(--display);color:var(--acc);font-size:1.35rem;margin:0 0 1rem;font-weight:700}
     .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
     .dish{display:flex;gap:.85rem;padding:.65rem;border:1px solid var(--line);border-radius:1.15rem;background:var(--soft);transition:border-color .2s ease, transform .2s ease}
     .dish:hover{border-color:color-mix(in srgb, var(--acc) 45%, var(--line));transform:translateY(-1px)}
@@ -233,13 +271,13 @@ export function previewToHtml(p) {
       ${ratingLine}
       <p class="tag">${esc(p.tagline)}</p>
       <div class="cta">
-        <a class="btn" href="${esc(waLink)}">${hasMenu ? "Pedir no WhatsApp" : "Falar no WhatsApp"}</a>
+        <a class="btn" href="${esc(waLink)}">${ctaLabel}</a>
         <a class="btn ghost" href="${esc(p.mapsUrl)}" target="_blank" rel="noreferrer">Ver no mapa</a>
       </div>
     </div>
   </header>
   <div class="wrap">
-    ${photosHtml ? `<section class="sec"><p class="kicker">Galeria</p><h2>Ambiente &amp; ${hasMenu ? "pratos" : "espaço"}</h2><div class="grid">${photosHtml}</div></section>` : ""}
+    ${photosHtml ? `<section class="sec"><p class="kicker">Galeria</p><h2>${galleryTitle}</h2><div class="grid">${photosHtml}</div></section>` : ""}
     <section class="sec">
       <p class="kicker">Quem somos</p>
       <h2>Sobre</h2>
@@ -252,15 +290,15 @@ export function previewToHtml(p) {
     </section>
     ${featuredHtml}
     ${menuHtml ? `<section class="sec"><p class="kicker">Cardápio digital</p><h2>Cardápio online</h2>${menuHtml}</section>` : ""}
-    ${servicesHtml ? `<section class="sec"><p class="kicker">O que fazemos</p><h2>Serviços</h2><div class="svc-grid">${servicesHtml}</div></section>` : ""}
+    ${servicesHtml ? `<section class="sec"><p class="kicker">${kind === "ice" ? "Vitrine" : "O que fazemos"}</p><h2>${kind === "ice" ? "Sabores &amp; pedidos" : "Serviços"}</h2><div class="svc-grid">${servicesHtml}</div></section>` : ""}
     ${reviewsHtml ? `<section class="sec"><p class="kicker">Prova social</p><h2>Avaliações no mapa</h2>${reviewsHtml}</section>` : ""}
     <footer>
-      <p class="credit">Arte · Sofia Almeida · Designer Gráfico · Time Dev Info Tech</p>
-      <p class="fine">Prévia hospedada na Vercel a partir de dados públicos do mapa. Não é o site oficial até o proprietário aprovar.</p>
+      <p class="credit">Arte · Sofia · Time Dev · Claude Sonnet · Info Tech</p>
+      <p class="fine">Prévia na Vercel com dados públicos do mapa. Vira site oficial quando o proprietário aprovar.</p>
     </footer>
   </div>
   <div class="dock">
-    <a class="btn" href="${esc(waLink)}">${hasMenu ? "Pedir no WhatsApp" : "WhatsApp"}</a>
+    <a class="btn" href="${esc(waLink)}">${hasMenu ? "Pedir" : "WhatsApp"}</a>
     <a class="btn ghost" href="${esc(p.mapsUrl)}" target="_blank" rel="noreferrer">Mapa</a>
   </div>
   </div>

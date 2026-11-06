@@ -19,28 +19,69 @@ export function isServiceBusiness(text: string) {
   return /chaveir|serralher|eletricit|encanador|desentupid|marceneir|funilar|guincho|borrachar|oficina|auto\s*pe[cç]|mecanica|dentista|odont|advog|contab|imobili|corretor|veterin|pet\s*shop|academia|personal\s*train|fotogra|arquitet|despachante|cartor|telecom|provedor|informatica|assistencia\s*tec|conserto|refriger|ar\s*cond|lavagem|lava\s*jato|estacionamento|transport|mudanc|limpeza|dedetiz|seguranc|vigilanc|escola|curso|idioma|clinica(?!\s*de\s*comida)|consultorio|estetic|barbearia|salao|cabeleireir|manicure|podolog|fisioterap|psicolog|nutricion/.test(n);
 }
 
-export function isFoodNiche(segment: string) {
-  const n = normalize(segment);
+/**
+ * Cardápio digital = SÓ refeição pra pedir (restaurante / lanchonete / pizza / burguer / churrasco).
+ * Sorveteria, açaí, padaria, cafeteria, doceria, bar → SITE (não cardápio).
+ */
+export function wantsCardapio(text: string) {
+  const n = normalize(text);
   if (isServiceBusiness(n)) return false;
-  return /restaurante|pizzaria|lanchonete|padaria|cafeteria|\bbar\b|hamburguer|churrasc|comida|gastronom|cardapio|sorvete|acai|pastelaria|doceria|confeitaria|marmita|food\s*truck/.test(n);
+  if (/sorvet|gelat|acai|açaí|padaria|cafeteria|\bcafe\b|café|doceria|confeitaria|bombonier|milk\s*shake|shake\s*house/.test(n)) {
+    return false;
+  }
+  return /restaurante|pizzaria|lanchonete|hamburguer|hamburger|burger|churrasc|pastelaria|marmita|food\s*truck/.test(n);
 }
 
-/** Decide cardápio vs site de serviço pelo NOME do lugar + segmento (nome vence). */
+/** @deprecated use wantsCardapio — mantido p/ imports antigos */
+export function isFoodNiche(segment: string) {
+  return wantsCardapio(segment);
+}
+
+/** Negócios de comida que recebem SITE (não cardápio de restaurante). */
+export function isSiteOnlyFood(text: string) {
+  const n = normalize(text);
+  return /sorvet|gelat|acai|açaí|padaria|cafeteria|\bcafe\b|café|doceria|confeitaria|bombonier|milk\s*shake/.test(n);
+}
+
+/** Decide cardápio vs site pelo NOME do lugar + segmento (nome do estabelecimento vence). */
 export function resolvePreviewKind(placeName: string, segment: string) {
-  const blob = `${placeName} ${segment}`;
-  if (isServiceBusiness(placeName) || (isServiceBusiness(blob) && !isFoodNiche(placeName))) {
-    const label = inferServiceLabel(placeName) || inferServiceLabel(segment) || segment || "Serviços locais";
+  // 1) Nome do lugar manda: chaveiro / sorvete / padaria nunca viram cardápio por causa do lote.
+  if (isServiceBusiness(placeName) || isSiteOnlyFood(placeName)) {
+    const label = inferServiceLabel(placeName) || segment || "Negócio local";
     return { food: false as const, segment: label };
   }
-  if (isFoodNiche(placeName) || isFoodNiche(segment)) {
-    return { food: true as const, segment: isFoodNiche(segment) ? segment : "Restaurantes" };
+  if (wantsCardapio(placeName)) {
+    return { food: true as const, segment: inferFoodLabel(placeName) || "Restaurantes" };
   }
-  return { food: false as const, segment: segment || "Serviços locais" };
+  // 2) Sem sinal no nome: usa o segmento da campanha.
+  if (isServiceBusiness(segment) || isSiteOnlyFood(segment)) {
+    return { food: false as const, segment: inferServiceLabel(segment) || segment };
+  }
+  if (wantsCardapio(segment)) {
+    return { food: true as const, segment: segment || "Restaurantes" };
+  }
+  const shop = inferServiceLabel(placeName) || inferServiceLabel(segment);
+  if (shop) return { food: false as const, segment: shop };
+  return { food: false as const, segment: segment || "Negócio local" };
+}
+
+function inferFoodLabel(text: string) {
+  const n = normalize(text);
+  if (/pizzaria|pizza/.test(n)) return "Pizzarias";
+  if (/hamburguer|burger/.test(n)) return "Hamburguerias";
+  if (/churrasc/.test(n)) return "Churrascarias";
+  if (/lanchonete|lanche/.test(n)) return "Lanchonetes";
+  return "Restaurantes";
 }
 
 function inferServiceLabel(text: string) {
   const n = normalize(text);
   if (/chaveir/.test(n)) return "Chaveiros";
+  if (/sorvet|gelat/.test(n)) return "Sorveterias";
+  if (/acai|açaí/.test(n)) return "Açaí";
+  if (/padaria/.test(n)) return "Padarias";
+  if (/cafeteria|\bcafe\b|café/.test(n)) return "Cafeterias";
+  if (/doceria|confeitaria/.test(n)) return "Docerias";
   if (/oficina|mecanica|auto\s*pe/.test(n)) return "Oficinas mecânicas";
   if (/dentista|odont/.test(n)) return "Dentistas";
   if (/advog/.test(n)) return "Advogados";
@@ -104,13 +145,15 @@ function pick<T>(arr: T[], seed: number) {
 
 export function paletteFor(segment: string) {
   const n = normalize(segment);
-  if (isFoodNiche(n)) return { bg: "#1c1410", fg: "#f7efe6", accent: "#e07a3d" };
-  if (/chaveir|eletricit|encanador|desentupid/.test(n)) return { bg: "#0f1419", fg: "#e8eef4", accent: "#f59e0b" };
-  if (/barbearia|salao|cabeleireir/.test(n)) return { bg: "#121212", fg: "#f4e9d0", accent: "#c9a227" };
-  if (/advog|jurid/.test(n)) return { bg: "#0f172a", fg: "#e8eef7", accent: "#3b82f6" };
-  if (/clinic|dentist|odont|estetic|medico|saude/.test(n)) return { bg: "#0b1f1c", fg: "#e8f6f2", accent: "#2dd4bf" };
-  if (/imobili|oficina|mecanica/.test(n)) return { bg: "#1a1714", fg: "#f3eee6", accent: "#d97706" };
-  return { bg: "#111827", fg: "#f3f4f6", accent: "#34d399" };
+  if (wantsCardapio(n)) return { bg: "#140f0c", fg: "#faf6f1", accent: "#e8a05c" };
+  if (/sorvet|gelat|acai/.test(n)) return { bg: "#0c1220", fg: "#f4f7fb", accent: "#7dd3fc" };
+  if (/padaria|cafeteria|cafe|doceria/.test(n)) return { bg: "#1a120e", fg: "#faf3ea", accent: "#d4a574" };
+  if (/chaveir|eletricit|encanador|desentupid/.test(n)) return { bg: "#0b1016", fg: "#eef3f8", accent: "#fbbf24" };
+  if (/barbearia|salao|cabeleireir/.test(n)) return { bg: "#0c0c0c", fg: "#f5ecd8", accent: "#d4af37" };
+  if (/advog|jurid/.test(n)) return { bg: "#0a1224", fg: "#eef3fb", accent: "#60a5fa" };
+  if (/clinic|dentist|odont|estetic|medico|saude/.test(n)) return { bg: "#071816", fg: "#eaf8f4", accent: "#2dd4bf" };
+  if (/imobili|oficina|mecanica/.test(n)) return { bg: "#14110e", fg: "#f6f1ea", accent: "#f59e0b" };
+  return { bg: "#0b1220", fg: "#f1f5f9", accent: "#34d399" };
 }
 
 const FOOD_PHOTOS = [
@@ -177,13 +220,29 @@ const TRADE_PHOTOS = [
   "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1200&q=80",
   "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1200&q=80",
 ];
+const ICE_PHOTOS = [
+  "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?w=1200&q=80",
+  "https://images.unsplash.com/photo-1501443762994-82bd5dace89a?w=1200&q=80",
+  "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=1200&q=80",
+  "https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=1200&q=80",
+  "https://images.unsplash.com/photo-1488900123125-4e6f9e9a0b1a?w=1200&q=80",
+  "https://images.unsplash.com/photo-1557142046-c704a3adf364?w=1200&q=80",
+];
+const BAKERY_PHOTOS = [
+  "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1200&q=80",
+  "https://images.unsplash.com/photo-1517433674937-ae294d2d3e7e?w=1200&q=80",
+  "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=1200&q=80",
+  "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1200&q=80",
+];
 const OFFICE_PHOTOS = [
   "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80",
   "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80",
+  "https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1200&q=80",
+  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&q=80",
 ];
 
 function isSeafoodPlace(name: string, segment: string) {
-  if (isServiceBusiness(name)) return false;
+  if (isServiceBusiness(name) || !wantsCardapio(`${name} ${segment}`)) return false;
   return /moqueca|peixe|marisco|camarao|camarão|seafood|frutos.?do.?mar|pescados|siri|osta|baiana/.test(
     normalize(`${name} ${segment}`),
   );
@@ -194,6 +253,8 @@ function photosFor(segment: string, placeName = "") {
   if (kind.food && isSeafoodPlace(placeName, segment)) return SEAFOOD_PHOTOS;
   if (kind.food) return FOOD_PHOTOS;
   const n = normalize(`${placeName} ${kind.segment}`);
+  if (/sorvet|gelat|acai/.test(n)) return ICE_PHOTOS;
+  if (/padaria|cafeteria|cafe|doceria/.test(n)) return BAKERY_PHOTOS;
   if (/chaveir|eletricit|encanador|desentupid|oficina|mecanica|conserto/.test(n)) return TRADE_PHOTOS;
   if (/clinic|dentist|odont|estetic|saude/.test(n)) return CLINIC_PHOTOS;
   if (/barbearia|salao|loja/.test(n)) return SHOP_PHOTOS;
@@ -290,6 +351,7 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
   // Remove fotos de restaurante grudadas em prévia errada (ex.: chaveiro com prato).
   let photos = [...(preview.photos || [])];
   if (!food) {
+    // Tira foto de prato/restaurante grudada — mantém gelato/padaria/serviço.
     const foodSet = new Set([...FOOD_PHOTOS, ...SEAFOOD_PHOTOS, ...Object.values(DISH_PHOTOS).flat()]);
     photos = photos.filter((src) => !foodSet.has(src));
   }
@@ -351,6 +413,27 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
 
 function servicesFor(segment: string, placeName = ""): NonNullable<SitePreview["services"]> {
   const n = normalize(`${placeName} ${segment}`);
+  if (/sorvet|gelat/.test(n)) {
+    return [
+      { name: "Sabores do dia", description: "Vitrine atualizada — pergunte no WhatsApp o que tem agora." },
+      { name: "Casquinha, pote e família", description: "Do unitário ao pack para levar." },
+      { name: "Encomendas", description: "Festa e evento com reserva pelo WhatsApp." },
+    ];
+  }
+  if (/acai/.test(n)) {
+    return [
+      { name: "Açaí no copo", description: "Montagem na hora com toppings." },
+      { name: "Combos", description: "Opções pra levar ou comer no local." },
+      { name: "Pedido no WhatsApp", description: "Manda o sabor e a gente separa." },
+    ];
+  }
+  if (/padaria|cafeteria|cafe|doceria/.test(n)) {
+    return [
+      { name: "Frescos do dia", description: "Pães, doces e salgados feitos na casa." },
+      { name: "Café e lanches", description: "Pra comer aqui ou levar." },
+      { name: "Encomendas", description: "Reserve pelo WhatsApp." },
+    ];
+  }
   if (/chaveir/.test(n)) {
     return [
       { name: "Abertura de portas", description: "Residencial e comercial, com atendimento rápido." },
@@ -388,8 +471,8 @@ function servicesFor(segment: string, placeName = ""): NonNullable<SitePreview["
   }
   return [
     { name: "Atendimento", description: "Fale com o responsável pelo WhatsApp do site." },
-    { name: "Serviços locais", description: "O que a região já procura no mapa, agora com página própria." },
-    { name: "Presença no Google", description: "Nome, endereço, horário e fotos em um link só." },
+    { name: "Como funciona", description: "Horário, endereço e contato em um link só — pronto pra mandar no WhatsApp." },
+    { name: "Presença no Google", description: "Quem te busca no mapa encontra uma página limpa, não só o pin." },
   ];
 }
 
@@ -424,7 +507,7 @@ Você é o proprietário ou a proprietária?`;
 }
 
 export function syntheticPlaces(segment: string, city: string, limit: number): MapPlace[] {
-  const food = isFoodNiche(segment);
+  const food = wantsCardapio(segment);
   const names = food
     ? ["Cantina do Nonno", "Sabor da Esquina", "Grill do Parque", "Pizzaria Vila Nova", "Casa da Moqueca", "Botequim da Praça", "Tempero Mineiro", "Tapioca & Cia", "Churrasquinho do Zé", "La Pasta da Nonna", "Empório do Pão", "Café Aurora", "Hamburgueria 081", "Peixaria da Costa", "Fogão a Lenha"]
     : /barbearia/.test(normalize(segment))
@@ -498,13 +581,17 @@ export function buildSitePreview(opts: {
     rating: Math.round(rating * 10) / 10,
     reviewCount,
     reviews,
-    hours: opts.place.hours || (food ? "Seg–Sáb, 11:00–22:00" : "Seg–Sáb, 08:00–18:00"),
+    hours: opts.place.hours || (food ? "Seg–Sáb, 11:00–22:00" : /sorvet|padaria|cafe|acai/.test(normalize(segment)) ? "Seg–Dom, 10:00–22:00" : "Seg–Sáb, 08:00–18:00"),
     tagline: food
-      ? `${opts.place.name}: nota ${Math.round(rating * 10) / 10} em ${opts.place.city} — cardápio e pedido no WhatsApp.`
-      : `${opts.place.name} em ${opts.place.city}: horário, WhatsApp e endereço próprio no Google.`,
+      ? `${opts.place.name} · ${opts.place.city} — cardápio digital e pedido no WhatsApp.`
+      : /sorvet|gelat|acai/.test(normalize(segment))
+        ? `${opts.place.name} em ${opts.place.city}: sabores, horário e pedido pelo WhatsApp.`
+        : `${opts.place.name} · ${opts.place.city} — site próprio com WhatsApp e endereço.`,
     about: food
-      ? `${opts.place.name} (${opts.place.address || opts.place.city}) aparece no mapa com ${reviewCount} avaliações (nota ${Math.round(rating * 10) / 10}), mas ainda não tinha site nem cardápio online. Esta prévia fecha o furo: endereço, fotos e pedido pelo WhatsApp ${opts.place.phone || ""}.`
-      : `${opts.place.name} em ${opts.place.city} estava só no mapa (${reviewCount} avaliações). Esta prévia organiza horário, contato ${opts.place.phone || ""} e um botão de WhatsApp para quem busca o serviço na região.`,
+      ? `${opts.place.name} já aparece no mapa (${reviewCount} avaliações · nota ${Math.round(rating * 10) / 10}), mas sem cardápio online. Esta prévia entrega o cardápio visual, fotos e pedido direto no WhatsApp ${opts.place.phone || ""}.`
+      : /sorvet|gelat|acai/.test(normalize(segment))
+        ? `${opts.place.name} em ${opts.place.city} (${reviewCount} avaliações) merece vitrine própria — não cardápio de restaurante. Página limpa com sabores, horário e WhatsApp ${opts.place.phone || ""} pra encomendar.`
+        : `${opts.place.name} em ${opts.place.city} estava só no pin do mapa (${reviewCount} avaliações). Esta página organiza quem somos, o que fazemos, horário e WhatsApp ${opts.place.phone || ""} — o produto final que o cliente clica e chama.`,
     palette: pal,
     photos: photosFor(segment, opts.place.name),
     logoUrl,
@@ -545,37 +632,45 @@ export function ensureDevSquad(db: DB) {
     db.agents.push(mk({
       id: DEV_FE_ID, name: "Caio Ferreira", role: "Front-end Sênior", color: "chart-1",
       description: "Engenheiro de software sênior · front-end",
-      objective: "Montar a prévia do site (páginas, WhatsApp, cardápio/catálogo visível) a partir dos dados do mapa.",
+      objective: "Montar prévia premium na Vercel: tipografia, CTA WhatsApp, layout por nicho (cardápio só restaurante/lanchonete).",
       personality: "Detalhista em UI, fala de entrega, não de buzzword.",
       supervisorId: DEV_FE_ID,
+      model: "anthropic/claude-sonnet",
     }));
+  } else {
+    const caio = db.agents.find((a) => a.id === DEV_FE_ID);
+    if (caio) caio.model = "anthropic/claude-sonnet";
   }
   if (!db.agents.some((a) => a.id === DEV_BE_ID)) {
     db.agents.push(mk({
       id: DEV_BE_ID, name: "Diego Nakamura", role: "Back-end Sênior", color: "chart-2",
       description: "Engenheiro de software sênior · back-end",
-      objective: "Estruturar cardápio/catálogo, link de prévia e dados de contato para o Time Comercial enviar.",
+      objective: "Dados limpos, slug estável, publish Vercel e link clicável pro comercial.",
       personality: "Direto, pensa em dado limpo e link estável.",
       supervisorId: DEV_FE_ID,
       model: "openai/gpt-4o",
     }));
+  } else {
+    const diego = db.agents.find((a) => a.id === DEV_BE_ID);
+    if (diego) diego.model = "openai/gpt-4o";
   }
   if (!db.agents.some((a) => a.id === DEV_DS_ID)) {
     db.agents.push(mk({
       id: DEV_DS_ID, name: "Sofia Almeida", role: "Designer Gráfico", color: "chart-4",
-      description: "Designer gráfico · cardápio digital e identidade de site",
-      objective: "Direção de arte da prévia: tipografia, paleta, fotos de prato/ambiente e cardápio visual pronto pra Vercel.",
-      personality: "Olho de marca: visual irresistível, hierarquia limpa, cardápio que dá fome de clicar.",
+      description: "Designer gráfico · sites e cardápios digitais",
+      objective: "Direção de arte: cardápio só em restaurante/lanchonete; sorveteria e serviços ganham site de marca (não prato genérico).",
+      personality: "Olho de marca: visual irresistível, hierarquia limpa, produto final que o dono quer publicar.",
       supervisorId: DEV_FE_ID,
-      model: "google/gemini-flash",
+      model: "anthropic/claude-sonnet",
       temperature: 0.55,
     }));
   } else {
     const sofia = db.agents.find((a) => a.id === DEV_DS_ID);
     if (sofia) {
       sofia.role = "Designer Gráfico";
-      sofia.description = "Designer gráfico · cardápio digital e identidade de site";
-      sofia.objective = "Direção de arte da prévia: tipografia, paleta, fotos de prato/ambiente e cardápio visual pronto pra Vercel.";
+      sofia.model = "anthropic/claude-sonnet";
+      sofia.description = "Designer gráfico · sites e cardápios digitais";
+      sofia.objective = "Direção de arte: cardápio só em restaurante/lanchonete; sorveteria e serviços ganham site de marca.";
     }
   }
   const team: Team = {

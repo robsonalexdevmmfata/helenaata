@@ -2,15 +2,36 @@ import { describe, expect, it } from "vitest";
 import { interpret } from "@/lib/helena/orchestrator";
 import { runTool } from "@/lib/helena/engine";
 import { getDB } from "@/lib/store";
-import { buildSitePreview, enrichPreviewMedia, isFoodNiche, isPresenceIntent, isServiceBusiness, previewUrl, PUBLIC_SITE_ORIGIN, resolvePreviewKind } from "@/lib/dev/presence";
+import { buildSitePreview, enrichPreviewMedia, isFoodNiche, isPresenceIntent, isServiceBusiness, previewUrl, PUBLIC_SITE_ORIGIN, resolvePreviewKind, wantsCardapio } from "@/lib/dev/presence";
 
 describe("Time Desenvolvimento IA", () => {
   it("reconhece pedido de restaurante sem site e sem cardápio", () => {
     expect(isPresenceIntent("Helena, procure 50 restaurantes que não tenham site nem cardápio online")).toBe(true);
     expect(isFoodNiche("Restaurantes")).toBe(true);
+    expect(wantsCardapio("Lanchonetes")).toBe(true);
+    expect(wantsCardapio("Pizzarias")).toBe(true);
+    expect(wantsCardapio("Sorveterias")).toBe(false);
+    expect(wantsCardapio("Açaí do Parque")).toBe(false);
+    expect(wantsCardapio("Padaria Central")).toBe(false);
     expect(isPresenceIntent("ative o time comercial e comece a prospectar clientes")).toBe(false);
     expect(isPresenceIntent("ative o rpa e faça 1000 leads no brasil com cardápio e time market")).toBe(false);
     expect(isPresenceIntent("prospectar diversos nichos no brasil e ativar time comercial")).toBe(false);
+  });
+
+  it("sorveteria ganha site, nunca cardápio de restaurante", () => {
+    expect(resolvePreviewKind("Sorveteria Gelato", "Restaurantes")).toEqual({ food: false, segment: "Sorveterias" });
+    const preview = buildSitePreview({
+      organizationId: "o1",
+      companyId: "c1",
+      contactId: "p1",
+      place: { name: "Sorveteria Gelato", phone: "+55 11 98888-0000", city: "Campinas, SP", address: "Centro", contactName: "Ana", rating: 4.6, reviewCount: 40 },
+      segment: "Restaurantes",
+      slug: "sorveteria-gelato",
+    });
+    expect(preview.menu).toBeUndefined();
+    expect(preview.services?.some((s) => /sabor/i.test(s.name))).toBe(true);
+    expect(preview.tagline).not.toMatch(/cardápio/i);
+    expect(preview.segment).toBe("Sorveterias");
   });
 
   it("chaveiro nunca vira cardápio mesmo com segmento Restaurantes", () => {
