@@ -362,6 +362,8 @@ export async function saveCycle(payload) {
       sitePreviews: Array.isArray(payload.sitePreviews) ? payload.sitePreviews.slice(0, 200) : [],
       whatsappPhone: waPhone || null,
       evolutionInstance: payload.tenant?.evolutionInstance || null,
+      // Sistema inteiro: agents, teams, pipelines, RPA, Helena, agenda, etc.
+      workspace: payload.workspace && typeof payload.workspace === "object" ? payload.workspace : null,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -421,6 +423,7 @@ export async function loadCycle({ appUserId, email }) {
     connections: inbox?.connections || [],
     whatsappPhone: inbox?.whatsappPhone || profile.phone || null,
     evolutionInstance: inbox?.evolutionInstance || profile.evolution_instance || null,
+    workspace: inbox?.workspace || null,
     inbox,
   };
 }

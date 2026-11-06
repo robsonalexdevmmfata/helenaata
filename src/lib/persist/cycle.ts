@@ -1,5 +1,6 @@
 import type { Contact, Conversation, DB, Deal, Execution, User } from "@/lib/types";
 import { currentUser, getDB, update } from "@/lib/store";
+import { applyWorkspaceCloud, serializeWorkspace } from "@/lib/persist/workspaceCloud";
 
 function skipPersist() {
   try {
@@ -165,6 +166,8 @@ export function cycleSnapshot(db: DB, user: User) {
         fact: a.text,
         created_by: a.actor,
       })),
+    // Sistema inteiro (CRM, IA, times, RPA, WhatsApp, agenda, prévias…).
+    workspace: serializeWorkspace(db),
   };
 }
 
@@ -296,6 +299,9 @@ export async function pullCycleIntoStore() {
     const data = await res.json().catch(() => ({}));
     if (!data?.ok) return;
     update((d) => {
+      // 1) Workspace completo do Supabase (prioridade).
+      const cloud = data.inbox?.workspace || data.workspace;
+      if (cloud) applyWorkspaceCloud(d, cloud);
       for (const row of data.contacts ?? []) {
         const id = row.app_id || row.id;
         if (!id) continue;

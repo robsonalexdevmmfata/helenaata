@@ -194,7 +194,8 @@ export async function handleApi(req, res) {
     }
 
     if (p === "/api/helena/cycle" && req.method === "POST") {
-      const body = await readJson(req, 2_000_000);
+      // Workspace completo (CRM + IA + WhatsApp + RPA) pode passar de 2MB.
+      const body = await readJson(req, 12_000_000);
       const out = await saveCycle(body);
       send(res, out.ok || out.skipped ? 200 : 503, out);
       return true;
