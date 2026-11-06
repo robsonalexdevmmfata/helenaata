@@ -2,6 +2,30 @@ import type { SitePreview } from "@/lib/types";
 import { update } from "@/lib/store";
 
 export const RENDER_API_ORIGIN = "https://helenaata.onrender.com";
+const HANDOFF_KEY = "helena-preview-handoff";
+
+/** Guarda a prévia na aba pra /v/:slug abrir mesmo antes do Supabase responder. */
+export function stashPreviewHandoff(preview: SitePreview) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(HANDOFF_KEY, JSON.stringify(preview));
+  } catch {
+    /* quota */
+  }
+}
+
+export function readPreviewHandoff(slug: string): SitePreview | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(HANDOFF_KEY);
+    if (!raw) return null;
+    const row = JSON.parse(raw) as SitePreview;
+    if (row?.slug === slug && row?.name) return row;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 function previewApiBases() {
   const env = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -29,12 +53,18 @@ export async function publishSitePreviews(previews: SitePreview[]): Promise<Reco
   if (typeof process !== "undefined" && process.env?.VITEST) return out;
 
   const body = JSON.stringify({ previews });
+  // Grava JSON no Supabase (link /v/slug). Não pode ser fire-and-forget.
   for (const base of previewApiBases()) {
-    void fetchJson(`${base}/api/previews`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    }, 45_000).catch(() => { /* fallback /v/slug */ });
+    try {
+      const res = await fetchJson(`${base}/api/previews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      }, 45_000);
+      if (res.ok) break;
+    } catch {
+      /* tenta próximo host */
+    }
   }
 
   for (const preview of previews.slice(0, 12)) {

@@ -381,7 +381,68 @@ export async function saveCycle(payload) {
     }
   }
 
+  // Prévias públicas /v/:slug — durable no Supabase (disco do Render some no redeploy).
+  try {
+    const fullList = Array.isArray(payload.workspace?.sitePreviews)
+      ? payload.workspace.sitePreviews
+      : Array.isArray(payload.sitePreviews)
+        ? payload.sitePreviews
+        : [];
+    for (const preview of fullList.slice(0, 200)) {
+      if (preview?.slug) await upsertAppPreview(preview, appOrg || String(oid || ""));
+    }
+  } catch (err) {
+    console.warn("[helena-db] app_previews upsert:", err?.message || err);
+  }
+
   return { ok: true, organizationId: oid };
+}
+
+function cleanPreviewSlug(slug) {
+  return String(slug || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "")
+    .slice(0, 80);
+}
+
+/** Grava prévia completa pra link público /v/:slug (sem auth). */
+export async function upsertAppPreview(preview, appOrganizationId = "") {
+  const p = await getPool();
+  if (!p || !preview) return { ok: false };
+  const slug = cleanPreviewSlug(preview.slug);
+  if (!slug) return { ok: false };
+  const org = String(appOrganizationId || preview.organizationId || "public");
+  const row = { ...preview, slug };
+  try {
+    await q(
+      `insert into app_previews (slug, app_organization_id, payload, created_at, updated_at)
+       values ($1, $2, $3::jsonb, now(), now())
+       on conflict (slug) do update set
+         payload = excluded.payload,
+         app_organization_id = excluded.app_organization_id,
+         updated_at = now()`,
+      [slug, org, JSON.stringify(row)],
+    );
+    return { ok: true, slug };
+  } catch (err) {
+    console.warn("[helena-db] upsertAppPreview:", err?.message || err);
+    return { ok: false, error: err?.message };
+  }
+}
+
+export async function loadAppPreview(slug) {
+  const p = await getPool();
+  if (!p) return null;
+  const clean = cleanPreviewSlug(slug);
+  if (!clean) return null;
+  try {
+    const res = await q("select payload from app_previews where slug = $1 limit 1", [clean]);
+    const payload = res.rows[0]?.payload;
+    return payload && typeof payload === "object" ? payload : null;
+  } catch (err) {
+    console.warn("[helena-db] loadAppPreview:", err?.message || err);
+    return null;
+  }
 }
 
 export async function loadCycle({ appUserId, email }) {

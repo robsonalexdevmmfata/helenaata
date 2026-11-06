@@ -143,20 +143,8 @@ export function cycleSnapshot(db: DB, user: User) {
       dailyLimit: c.dailyLimit,
       lastSyncAt: c.lastSyncAt,
     })),
-    sitePreviews: (db.sitePreviews || []).slice(0, 200).map((p) => ({
-      id: p.id,
-      slug: p.slug,
-      name: p.name,
-      segment: p.segment,
-      city: p.city,
-      phone: p.phone,
-      vercelUrl: p.vercelUrl,
-      previewPath: p.previewPath,
-      status: p.status,
-      contactId: p.contactId,
-      companyId: p.companyId,
-      createdAt: p.createdAt,
-    })),
+    // Payload completo — o /v/:slug e o upsert no Supabase precisam de menu/fotos/tagline.
+    sitePreviews: (db.sitePreviews || []).slice(0, 200),
     memories: db.activities
       .filter((a) => a.type === "ia" && /obje|caro|retorno|LGPD|ciclo/i.test(a.text))
       .slice(0, 80)

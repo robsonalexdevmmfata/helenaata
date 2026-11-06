@@ -24,6 +24,7 @@ import {
   retryRpaJobDb,
   rpaMonitorDb,
   saveCycle,
+  upsertAppPreview,
   workspaceAccountById,
   workspaceAccountByLogin,
   workspacePasswordMatches,
@@ -395,14 +396,19 @@ export async function handleApi(req, res) {
       const body = await readJson(req, 2_000_000);
       const list = Array.isArray(body.previews) ? body.previews : body.preview ? [body.preview] : [body];
       const slugs = [];
-      for (const preview of list.slice(0, 50)) slugs.push(savePreview(preview).slug);
+      for (const preview of list.slice(0, 50)) {
+        if (!preview?.slug) continue;
+        const saved = await savePreview(preview);
+        slugs.push(saved.slug);
+        await upsertAppPreview(preview, String(preview.organizationId || "public"));
+      }
       send(res, 200, { ok: true, slugs });
       return true;
     }
 
     if (p.startsWith("/api/previews/") && req.method === "GET") {
       const slug = decodeURIComponent(p.slice("/api/previews/".length).split("/")[0] || "");
-      const preview = loadPreview(slug);
+      const preview = await loadPreview(slug);
       if (!preview) return send(res, 404, { error: "Prévia não encontrada." }), true;
       send(res, 200, { preview });
       return true;
