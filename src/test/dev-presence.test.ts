@@ -3,6 +3,7 @@ import { interpret } from "@/lib/helena/orchestrator";
 import { runTool } from "@/lib/helena/engine";
 import { getDB } from "@/lib/store";
 import { buildSitePreview, enrichPreviewMedia, isFoodNiche, isPresenceIntent, isServiceBusiness, previewUrl, PUBLIC_SITE_ORIGIN, resolvePreviewKind, wantsCardapio } from "@/lib/dev/presence";
+import { resolveNicheProduct } from "@/lib/dev/nicheProduct";
 
 describe("Time Desenvolvimento IA", () => {
   it("reconhece pedido de restaurante sem site e sem cardápio", () => {
@@ -32,6 +33,16 @@ describe("Time Desenvolvimento IA", () => {
     expect(preview.services?.some((s) => /sabor/i.test(s.name))).toBe(true);
     expect(preview.tagline).not.toMatch(/cardápio/i);
     expect(preview.segment).toBe("Sorveterias");
+  });
+
+  it("cada nicho resolve um produto visual distinto", () => {
+    expect(resolveNicheProduct("Chaveiro 24h", "Restaurantes").family).toBe("trade");
+    expect(resolveNicheProduct("Barbearia Dom", "Barbearias").family).toBe("beauty");
+    expect(resolveNicheProduct("Clínica Sorriso", "Dentistas").family).toBe("clinic");
+    expect(resolveNicheProduct("Sorveteria Gelato", "Restaurantes").family).toBe("sweet");
+    expect(resolveNicheProduct("Cantina Nonno", "Restaurantes").family).toBe("delivery");
+    expect(resolveNicheProduct("Almeida Advogados", "Advogados").family).toBe("pro");
+    expect(resolveNicheProduct("Chaveiro 24h", "x").cta).toMatch(/chaveiro|Chamar/i);
   });
 
   it("chaveiro nunca vira cardápio mesmo com segmento Restaurantes", () => {
