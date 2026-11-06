@@ -47,13 +47,23 @@ const WATCHED: FlowState[] = ["abordado", "visualizou", "closer"];
 export const READ_CONTINUITY_HOURS = 2;
 
 /** Quantas mensagens do time estão empilhadas sem o cliente ter falado. */
+/** Conta só mensagens que de fato saíram no WhatsApp (não rascunho/fila/falha). */
+export function wasDeliveredOutbound(m: { from: string; deliveryStatus?: string; externalId?: string }) {
+  if (m.from !== "agent" && m.from !== "helena") return false;
+  if (m.deliveryStatus === "queued" || m.deliveryStatus === "failed") return false;
+  if (m.deliveryStatus === "sent" || m.deliveryStatus === "delivered" || m.deliveryStatus === "read") return true;
+  if (m.externalId) return true;
+  // Legacy sem status: assume enviado (fantasmas sem Evolution são marcados "failed" no repair).
+  return m.deliveryStatus == null;
+}
+
 export function unansweredAgentStreak(conv: Pick<Conversation, "messages">): number {
   let n = 0;
   for (let i = conv.messages.length - 1; i >= 0; i--) {
     const m = conv.messages[i];
     if (!m) break;
     if (m.from === "contact") break;
-    if (m.from === "agent" || m.from === "helena") n += 1;
+    if (wasDeliveredOutbound(m)) n += 1;
   }
   return n;
 }

@@ -216,7 +216,12 @@ function InboxPage() {
                         ),
                       )}
                     </div>
-                    <div className="mt-0.5 text-right text-[10px] opacity-60">{fmtTime(m.at)}</div>
+                    <div className="mt-0.5 flex items-center justify-end gap-2 text-[10px] opacity-60">
+                      {m.deliveryStatus === "queued" && <span title="Ainda na fila">fila</span>}
+                      {m.deliveryStatus === "failed" && <span className="text-destructive" title="Não saiu no WhatsApp Web">falhou no WhatsApp</span>}
+                      {m.deliveryStatus === "sent" && <span>✓</span>}
+                      <span>{fmtTime(m.at)}</span>
+                    </div>
                   </div>
                 </div>
               ),

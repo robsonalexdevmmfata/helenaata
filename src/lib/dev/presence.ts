@@ -625,14 +625,16 @@ export function applyPresenceFromPlaces(opts: {
       published.push(preview);
       dispatchMeta.push({ contactId, withMenu: food, slug });
       const url = previewUrl(slug);
+      // Conversa pronta no CRM — o texto só entra no Inbox depois do envio real na Evolution
+      // (senão o WhatsApp Web fica sem o chat e o dispatcher acha que já mandou).
       d.conversations.unshift({
         id: uid("conv_"),
         organizationId: d.organization.id,
         contactId,
         channel: "whatsapp",
         connectionId: getAgencyConnection(d)?.id ?? d.salesFlow?.sharedConnectionId,
-        flow: { origin: "prospeccao", state: "abordado", lastOutboundAt: nowISO(), closerAttempts: 0 },
-        status: "aberta",
+        flow: { origin: "prospeccao", state: "novo", closerAttempts: 0 },
+        status: "pendente",
         handlerType: "agent",
         handlerId: owner.id,
         unread: 0,
@@ -640,11 +642,11 @@ export function applyPresenceFromPlaces(opts: {
         lastMessageAt: nowISO(),
         messages: [{
           id: uid("m_"),
-          from: "agent",
-          authorName: owner.name,
-          text: formatForWhatsApp(buildPreviewOpening(place.contactName || place.name, place.name, url, food, dx.recommend_pitch)),
+          from: "system",
+          authorName: "Helena",
+          text: `Prévia pronta (${url}). Aguardando envio real no WhatsApp da agência (+55 18 98101-1186).`,
           at: nowISO(),
-          kind: "text",
+          kind: "event",
         }],
       });
       d.activities.unshift({
@@ -653,7 +655,7 @@ export function applyPresenceFromPlaces(opts: {
         contactId,
         dealId,
         type: "ia",
-        text: `Time Desenvolvimento IA gerou a prévia ${url}. Time Comercial (Marina/Camila) abordou o proprietário com o link.`,
+        text: `Time Desenvolvimento IA gerou a prévia ${url}. Comercial dispara o link no WhatsApp quando a Evolution confirmar o envio.`,
         actor: "Helena",
         createdAt: nowISO(),
       });

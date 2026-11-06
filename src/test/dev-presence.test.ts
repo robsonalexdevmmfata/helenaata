@@ -35,7 +35,9 @@ describe("Time Desenvolvimento IA", () => {
     expect(prev.photos.length).toBeGreaterThanOrEqual(6);
     expect(prev.previewPath).toMatch(/^\/v\//);
     const conv = db.conversations.find((c) => c.contactId === prev.contactId);
-    expect(conv?.messages[0]?.text).toMatch(/prévia|proprietár/i);
+    expect(conv?.status).toBe("pendente");
+    expect(conv?.messages[0]?.kind).toBe("event");
+    expect(conv?.messages[0]?.text).toMatch(/prévia|aguardando envio/i);
     expect(conv?.messages[0]?.text).toContain(previewUrl(prev.slug));
     expect(previewUrl(prev.slug)).toMatch(/^https:\/\/helenaata\.vercel\.app\/v\//);
     expect(PUBLIC_SITE_ORIGIN).toBe("https://helenaata.vercel.app");

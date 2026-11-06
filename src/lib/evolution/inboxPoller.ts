@@ -12,11 +12,13 @@ import {
 } from "./evolutionapi";
 import { formatAudioTranscript, transcribeWhatsAppAudio } from "./transcribe";
 import { processEvolutionWebhook } from "./webhookHandler";
+import { repairGhostWhatsAppDrafts } from "./prospectDispatcher";
 import { getDB, nowISO, uid, update } from "@/lib/store";
 import { sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
 
 const SEEN_KEY = "helena_evo_seen_ids";
 const BOOT_KEY = "helena_evo_bootstrapped";
+const REPAIR_KEY = "helena_wa_ghost_repaired";
 
 function seenIds(): Set<string> {
   try {
@@ -260,6 +262,15 @@ export async function pollEvolutionInbox(): Promise<number> {
   if (!isPlatform) {
     const own = getAgencyConnection(db);
     if (!own || own.status !== "online" || !String(own.phone || "").replace(/\D/g, "")) return 0;
+  }
+  // Uma vez por sessão: separa rascunho do Inbox do que realmente saiu no WhatsApp Web.
+  if (typeof window !== "undefined" && localStorage.getItem(REPAIR_KEY) !== "1") {
+    try {
+      repairGhostWhatsAppDrafts();
+      localStorage.setItem(REPAIR_KEY, "1");
+    } catch {
+      /* ignore */
+    }
   }
   const chatsRes = await evolutionFindChats().catch(() => ({ ok: false as const, chats: [] as any[] }));
   const contactsRes = await evolutionFindContacts().catch(() => ({ ok: false as const, contacts: [] as any[] }));

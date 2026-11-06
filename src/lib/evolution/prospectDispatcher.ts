@@ -12,7 +12,7 @@ import { evolutionSendText, getEvolutionConfigUI } from "./evolutionapi";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { buildCatalogOpening } from "@/lib/catalog";
 import { getDB, update, uid, nowISO } from "@/lib/store";
-import { unansweredAgentStreak } from "@/lib/helena/sales-flow";
+import { unansweredAgentStreak, wasDeliveredOutbound } from "@/lib/helena/sales-flow";
 
 // ── Configurações de disparo seguro ──────────────────────────────────────────
 
@@ -51,6 +51,38 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * @param organizationId - ID da organização (para auditoria)
  * @param operationId - ID da operação Helena (para atualizar progresso)
  */
+/**
+ * Conversa no Inbox sem confirmação na Evolution = fantasma (não aparece no WhatsApp Web).
+ * Marca como failed para liberar reenvio real.
+ */
+export function repairGhostWhatsAppDrafts() {
+  update((d) => {
+    for (const conv of d.conversations) {
+      if (conv.channel !== "whatsapp") continue;
+      const contact = d.contacts.find((c) => c.id === conv.contactId);
+      const phone = String(contact?.phone || "").replace(/\D/g, "");
+      const tail = phone.slice(-8);
+      const confirmed = Boolean(
+        tail &&
+          d.executions.some(
+            (e) =>
+              e.action.includes("evolution.sendText") &&
+              e.result === "sucesso" &&
+              e.description.includes(tail),
+          ),
+      );
+      for (const m of conv.messages) {
+        if (m.from !== "agent" && m.from !== "helena") continue;
+        if (m.deliveryStatus || m.externalId) continue;
+        m.deliveryStatus = confirmed ? "sent" : "failed";
+      }
+      if (!confirmed && conv.status === "aberta" && conv.flow?.origin === "prospeccao" && unansweredAgentStreak(conv) === 0) {
+        conv.status = "pendente";
+      }
+    }
+  });
+}
+
 export async function dispatchProspectMessages(
   contacts: ProspectContact[],
   messageFactory: (c: ProspectContact) => string,
@@ -70,6 +102,8 @@ export async function dispatchProspectMessages(
     return result;
   }
 
+  repairGhostWhatsAppDrafts();
+
   for (let i = 0; i < contacts.length; i++) {
     const contact = contacts[i]!;
 
@@ -81,12 +115,9 @@ export async function dispatchProspectMessages(
     }
     const dbNow = getDB();
     const already = dbNow.contacts.find((c) => c.phone.replace(/\D/g, "").slice(-10) === cleanPhone.slice(-10));
-    const existingConv = already ? dbNow.conversations.find((cv) => cv.contactId === already.id) : undefined;
-    // Já abordado sem resposta → não reenvia (corta mensagem repetida).
-    if (existingConv && unansweredAgentStreak(existingConv) >= 1) {
-      result.skipped++;
-      continue;
-    }
+    const existingConv = already
+      ? dbNow.conversations.find((cv) => cv.contactId === already.id)
+      : dbNow.conversations.find((cv) => cv.contactId === contact.contactId);
     const recentSend = dbNow.executions.some(
       (e) =>
         e.action.includes("evolution.sendText") &&
@@ -94,7 +125,9 @@ export async function dispatchProspectMessages(
         e.description.includes(cleanPhone) &&
         Date.now() - new Date(e.at).getTime() < 6 * 60 * 60_000,
     );
-    if (recentSend) {
+    // Só pula se o WhatsApp realmente recebeu (deliveryStatus/externalId ou execution sucesso).
+    // Rascunho no Inbox NÃO conta — era isso que fazia o chat sumir do WhatsApp Web.
+    if (recentSend || (existingConv && unansweredAgentStreak(existingConv) >= 1)) {
       result.skipped++;
       continue;
     }
@@ -124,15 +157,32 @@ export async function dispatchProspectMessages(
         const conv = already
           ? d.conversations.find((cv) => cv.contactId === already.id)
           : d.conversations.find((cv) => cv.contactId === contact.contactId);
-        if (conv && !conv.messages.some((m) => m.from === "agent" && m.text === text)) {
-          conv.messages.push({
-            id: uid("m_"),
-            from: "agent",
-            authorName: contact.agentName,
-            text,
-            at: nowISO(),
-            kind: "text",
-          });
+        if (conv) {
+          const digits = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+          conv.remoteJid = `${digits}@s.whatsapp.net`;
+          conv.status = "aberta";
+          const ghost = conv.messages.find(
+            (m) =>
+              (m.from === "agent" || m.from === "helena") &&
+              (m.deliveryStatus === "queued" || m.deliveryStatus === "failed" || (!m.deliveryStatus && !m.externalId && m.text === text)),
+          );
+          if (ghost) {
+            ghost.text = text;
+            ghost.deliveryStatus = "sent";
+            ghost.externalId = res.messageId;
+            ghost.at = nowISO();
+          } else if (!conv.messages.some((m) => m.from === "agent" && m.text === text && wasDeliveredOutbound(m))) {
+            conv.messages.push({
+              id: uid("m_"),
+              from: "agent",
+              authorName: contact.agentName,
+              text,
+              at: nowISO(),
+              kind: "text",
+              deliveryStatus: "sent",
+              externalId: res.messageId,
+            });
+          }
           conv.lastMessageAt = nowISO();
           conv.flow = {
             origin: conv.flow?.origin ?? "prospeccao",

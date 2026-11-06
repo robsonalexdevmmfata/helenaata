@@ -433,7 +433,7 @@ const handlers: Record<string, Handler> = {
     update((d) => {
       const c = d.conversations.find((x) => x.id === conv.id)!;
 
-      // Registra a mensagem enviada pelo agente
+      // Registra rascunho; deliveryStatus vira "sent" só depois da Evolution confirmar.
       c.messages.push({
         id: uid("m_"),
         from: p.from ?? "agent",
@@ -441,10 +441,11 @@ const handlers: Record<string, Handler> = {
         text: outText,
         at: nowISO(),
         kind: "text",
+        deliveryStatus: conv.channel === "whatsapp" ? "queued" : "sent",
       });
       c.lastMessageAt = nowISO();
       c.unread = 0;
-      if (c.flow) c.flow.lastOutboundAt = nowISO();
+      if (c.flow && conv.channel !== "whatsapp") c.flow.lastOutboundAt = nowISO();
 
       // Atualiza métricas do contato
       const ct = d.contacts.find((x) => x.id === c.contactId);
@@ -510,52 +511,59 @@ const handlers: Record<string, Handler> = {
         : contactPhone;
       if (sendTo) {
         const delay = Number(p.delayMs);
+        const markLocal = (okSend: boolean, messageId?: string, error?: string) => {
+          update((d) => {
+            const c = d.conversations.find((x) => x.id === conv.id);
+            const last = c?.messages.slice().reverse().find((m) => m.text === outText && (m.from === "agent" || m.from === "helena"));
+            if (last) {
+              last.deliveryStatus = okSend ? "sent" : "failed";
+              if (messageId) last.externalId = messageId;
+            }
+            if (c && okSend) {
+              const digits = String(sendTo).replace(/\D/g, "");
+              const full = digits.startsWith("55") ? digits : `55${digits}`;
+              c.remoteJid = `${full}@s.whatsapp.net`;
+              c.status = "aberta";
+              if (c.flow) c.flow.lastOutboundAt = nowISO();
+            }
+            const wa = getAgencyConnection(d);
+            if (okSend && wa) wa.sentToday += 1;
+            d.executions.unshift({
+              id: uid("ex_evo_"),
+              organizationId: d.organization.id,
+              at: nowISO(),
+              actor: ctx.actor,
+              actorType: ctx.actorType,
+              action: "evolution.sendText",
+              description: okSend
+                ? `Mensagem enviada via Evolution (${wa?.name ?? "agencia"}) para ${contactPhone}`
+                : `Falha ao enviar via Evolution API: ${error || "erro"}`,
+              result: okSend ? "sucesso" : "falha",
+              error: okSend ? undefined : error,
+              requestedBy: ctx.requestedBy ?? ctx.actor,
+              durationMs: 0,
+            });
+            if (okSend) {
+              const camp = d.campaigns.find((x) => x.status === "ativa");
+              if (camp) camp.sent += 1;
+            }
+          });
+        };
+        // Com delay: só fila no worker (não dispara imediato + fila = duplicata / chat fantasma).
         if (delay > 0 && typeof window !== "undefined") {
-          void enqueueRemoteSend({ number: sendTo, text: outText, delayMs: delay, instance: getEvolutionConfigUI().instance });
+          void enqueueRemoteSend({ number: sendTo, text: outText, delayMs: delay, instance: getEvolutionConfigUI().instance })
+            .then((r) => {
+              if (r && r.ok === false) markLocal(false, undefined, "fila RPA recusou o envio");
+            });
+          return ok("Mensagem na fila do WhatsApp");
         }
         evolutionSendText(sendTo, outText)
           .then((res) => {
-            if (!res.ok) {
-              // Registra falha de envio na auditoria sem interromper o fluxo
-              update((d) => {
-                d.executions.unshift({
-                  id: uid("ex_evo_"),
-                  organizationId: d.organization.id,
-                  at: nowISO(),
-                  actor: ctx.actor,
-                  actorType: ctx.actorType,
-                  action: "evolution.sendText",
-                  description: `Falha ao enviar via Evolution API: ${res.error}`,
-                  result: "falha",
-                  error: res.error,
-                  requestedBy: ctx.requestedBy ?? ctx.actor,
-                  durationMs: 0,
-                });
-              });
-              /* falha já vai para Execution */
-            } else {
-              update((d) => {
-                const wa = getAgencyConnection(d);
-                if (wa) wa.sentToday += 1;
-                d.executions.unshift({
-                  id: uid("ex_evo_"),
-                  organizationId: d.organization.id,
-                  at: nowISO(),
-                  actor: ctx.actor,
-                  actorType: ctx.actorType,
-                  action: "evolution.sendText",
-                  description: `Mensagem enviada via Evolution (${wa?.name ?? "agencia"}) para ${contactPhone}`,
-                  result: "sucesso",
-                  requestedBy: ctx.requestedBy ?? ctx.actor,
-                  durationMs: 0,
-                });
-                const camp = d.campaigns.find((x) => x.status === "ativa");
-                if (camp) camp.sent += 1;
-              });
-              console.log("[Evolution API] ✅ Enviado:", res.messageId);
-            }
+            markLocal(Boolean(res.ok), res.messageId, res.error);
+            if (res.ok) console.log("[Evolution API] ✅ Enviado:", res.messageId);
           })
           .catch((err) => {
+            markLocal(false, undefined, err instanceof Error ? err.message : String(err));
             console.warn("[Evolution API] Erro inesperado:", err);
           });
       }
