@@ -938,6 +938,8 @@ export interface SitePreviewItem {
   name: string;
   description: string;
   price: number;
+  /** Foto do prato/serviço (Unsplash ou Maps). */
+  image?: string;
 }
 
 export interface SitePreview {

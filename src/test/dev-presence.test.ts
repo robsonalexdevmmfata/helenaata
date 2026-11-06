@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { interpret } from "@/lib/helena/orchestrator";
 import { runTool } from "@/lib/helena/engine";
 import { getDB } from "@/lib/store";
-import { isFoodNiche, isPresenceIntent, previewUrl, PUBLIC_SITE_ORIGIN } from "@/lib/dev/presence";
+import { enrichPreviewMedia, isFoodNiche, isPresenceIntent, previewUrl, PUBLIC_SITE_ORIGIN } from "@/lib/dev/presence";
 
 describe("Time Desenvolvimento IA", () => {
   it("reconhece pedido de restaurante sem site e sem cardápio", () => {
@@ -31,6 +31,8 @@ describe("Time Desenvolvimento IA", () => {
     expect(db.agents.filter((a) => a.teamId === "t_dev")).toHaveLength(3);
     const prev = db.sitePreviews[0]!;
     expect(prev.menu?.length).toBeGreaterThan(0);
+    expect(prev.menu?.[0]?.items?.[0]?.image).toMatch(/^https:\/\//);
+    expect(prev.photos.length).toBeGreaterThanOrEqual(6);
     expect(prev.previewPath).toMatch(/^\/v\//);
     const conv = db.conversations.find((c) => c.contactId === prev.contactId);
     expect(conv?.messages[0]?.text).toMatch(/prévia|proprietár/i);
@@ -40,6 +42,43 @@ describe("Time Desenvolvimento IA", () => {
     expect(db.contacts.find((c) => c.id === prev.contactId)?.tags).toEqual(
       expect.arrayContaining(["#sem-site", "#sem-cardapio"]),
     );
+  });
+
+  it("enriquece prévia antiga de moqueca com fotos e pratos", () => {
+    const rich = enrichPreviewMedia({
+      id: "prev_t",
+      organizationId: "o1",
+      slug: "casa-da-moqueca",
+      companyId: "c1",
+      contactId: "p1",
+      name: "Casa da Moqueca",
+      segment: "Restaurantes",
+      city: "Balneário Camboriú",
+      address: "BC",
+      phone: "+55 11 90000-0000",
+      rating: 4.5,
+      reviewCount: 20,
+      reviews: [],
+      hours: "11–22",
+      tagline: "x",
+      about: "y",
+      palette: { bg: "#1c1410", fg: "#f7efe6", accent: "#e07a3d" },
+      photos: ["https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80"],
+      menu: [
+        {
+          category: "Pratos",
+          items: [{ name: "Especial da casa", description: "genérico", price: 55 }],
+        },
+      ],
+      mapsUrl: "https://maps.google.com",
+      previewPath: "/v/casa-da-moqueca",
+      status: "enviada",
+      createdBy: "test",
+      createdAt: new Date().toISOString(),
+    });
+    expect(rich.photos.length).toBeGreaterThanOrEqual(6);
+    expect(rich.menu?.some((c) => /moqueca/i.test(c.category) || c.items.some((i) => /moqueca/i.test(i.name)))).toBe(true);
+    expect(rich.menu?.every((c) => c.items.every((i) => Boolean(i.image)))).toBe(true);
   });
 
   it("nicho sem comida gera site de serviços, não cardápio", () => {

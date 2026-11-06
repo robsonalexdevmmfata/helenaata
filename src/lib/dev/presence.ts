@@ -73,7 +73,52 @@ const FOOD_PHOTOS = [
   "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80",
   "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80",
   "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1200&q=80",
+  "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&q=80",
+  "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=1200&q=80",
+  "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1200&q=80",
+  "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=900&q=80&sat=-20",
+  "https://images.unsplash.com/photo-1544025162-d76694265947?w=1200&q=80",
 ];
+const SEAFOOD_PHOTOS = [
+  "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1200&q=80",
+  "https://images.unsplash.com/photo-1625944230946-1d2b0cdd4f4b?w=1200&q=80",
+  "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=1200&q=80",
+  "https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?w=1200&q=80",
+  "https://images.unsplash.com/photo-1534604973900-c43ab4c2e0df?w=1200&q=80",
+  "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=1200&q=80",
+  "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=1200&q=80",
+  "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=1200&q=80",
+];
+const DISH_PHOTOS = {
+  entrada: [
+    "https://images.unsplash.com/photo-1541014741259-de529411b96a?w=800&q=80",
+    "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=800&q=80",
+    "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&q=80",
+  ],
+  prato: [
+    "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80",
+    "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=800&q=80",
+    "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80",
+    "https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80",
+  ],
+  seafood: [
+    "https://images.unsplash.com/photo-1625944230946-1d2b0cdd4f4b?w=800&q=80",
+    "https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?w=800&q=80",
+    "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=800&q=80",
+    "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&q=80",
+    "https://images.unsplash.com/photo-1534604973900-c43ab4c2e0df?w=800&q=80",
+  ],
+  bebida: [
+    "https://images.unsplash.com/photo-1546173159-315724a31696?w=800&q=80",
+    "https://images.unsplash.com/photo-1437418747212-8d9709afab22?w=800&q=80",
+    "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80",
+    "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=800&q=80",
+  ],
+  sobremesa: [
+    "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80",
+    "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=800&q=80",
+  ],
+};
 const CLINIC_PHOTOS = [
   "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=1200&q=80",
   "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=1200&q=80",
@@ -87,40 +132,144 @@ const OFFICE_PHOTOS = [
   "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80",
 ];
 
-function photosFor(segment: string) {
+function isSeafoodPlace(name: string, segment: string) {
+  return /moqueca|peixe|marisco|camarao|camarão|seafood|frutos.?do.?mar|pescados|siri|osta|baiana/.test(
+    normalize(`${name} ${segment}`),
+  );
+}
+
+function photosFor(segment: string, placeName = "") {
+  if (isSeafoodPlace(placeName, segment)) return SEAFOOD_PHOTOS;
   if (isFoodNiche(segment)) return FOOD_PHOTOS;
   if (/clinic|dentist|odont|estetic|saude/.test(normalize(segment))) return CLINIC_PHOTOS;
   if (/barbearia|salao|oficina|loja/.test(normalize(segment))) return SHOP_PHOTOS;
   return OFFICE_PHOTOS;
 }
 
-function foodMenu(seed: number): NonNullable<SitePreview["menu"]> {
+function dishImage(pool: string[], seed: number, i: number) {
+  return pick(pool, seed + i * 3);
+}
+
+function foodMenu(seed: number, placeName = "", segment = ""): NonNullable<SitePreview["menu"]> {
+  if (isSeafoodPlace(placeName, segment)) {
+    return [
+      {
+        category: "Entradas do mar",
+        items: [
+          { name: "Casquinha de siri", description: "Recheio cremoso, tostado na hora.", price: 42 + (seed % 10), image: dishImage(DISH_PHOTOS.entrada, seed, 0) },
+          { name: "Bolinho de peixe", description: "Porção com molho tártaro da casa.", price: 36 + (seed % 8), image: dishImage(DISH_PHOTOS.entrada, seed, 1) },
+          { name: "Salada de polvo", description: "Azeite, limão e ervas frescas.", price: 48 + (seed % 12), image: dishImage(DISH_PHOTOS.seafood, seed, 0) },
+        ],
+      },
+      {
+        category: "Moquecas & peixes",
+        items: [
+          { name: "Moqueca de peixe", description: "Leite de coco, dendê e pirão — clássico da casa.", price: 89 + (seed % 16), image: dishImage(DISH_PHOTOS.seafood, seed, 1) },
+          { name: "Moqueca de camarão", description: "Camarão fresco, cozido no dendê com arroz.", price: 118 + (seed % 20), image: dishImage(DISH_PHOTOS.seafood, seed, 2) },
+          { name: "Peixe grelhado", description: "Filet do dia com legumes e farofa.", price: 72 + (seed % 14), image: dishImage(DISH_PHOTOS.seafood, seed, 3) },
+          { name: "Bobó de camarão", description: "Cremoso, com mandioca e dendê.", price: 98 + (seed % 18), image: dishImage(DISH_PHOTOS.seafood, seed, 4) },
+        ],
+      },
+      {
+        category: "Bebidas",
+        items: [
+          { name: "Caipirinha da casa", description: "Fruta da estação.", price: 22, image: dishImage(DISH_PHOTOS.bebida, seed, 0) },
+          { name: "Suco natural", description: "Laranja, abacaxi ou maracujá.", price: 14, image: dishImage(DISH_PHOTOS.bebida, seed, 1) },
+          { name: "Água de coco", description: "Gelada.", price: 12, image: dishImage(DISH_PHOTOS.bebida, seed, 2) },
+          { name: "Cerveja longa", description: "Garrafa gelada.", price: 16, image: dishImage(DISH_PHOTOS.bebida, seed, 3) },
+        ],
+      },
+      {
+        category: "Sobremesas",
+        items: [
+          { name: "Cocada cremosa", description: "Doce de coco da casa.", price: 18, image: dishImage(DISH_PHOTOS.sobremesa, seed, 0) },
+          { name: "Pudim", description: "Fatia generosa.", price: 16, image: dishImage(DISH_PHOTOS.sobremesa, seed, 1) },
+        ],
+      },
+    ];
+  }
   const mains = ["Prato do dia", "Especial da casa", "Grelhado da semana", "Massa da chef"];
   return [
     {
       category: "Entradas",
       items: [
-        { name: "Porção da casa", description: "Para compartilhar, do jeito que o salão sempre serviu.", price: 38 + (seed % 12) },
-        { name: "Salada da estação", description: "Folhas, legumes e molho da casa.", price: 24 + (seed % 8) },
+        { name: "Porção da casa", description: "Para compartilhar, do jeito que o salão sempre serviu.", price: 38 + (seed % 12), image: dishImage(DISH_PHOTOS.entrada, seed, 0) },
+        { name: "Salada da estação", description: "Folhas, legumes e molho da casa.", price: 24 + (seed % 8), image: dishImage(DISH_PHOTOS.entrada, seed, 1) },
+        { name: "Bruschetta", description: "Pão tostado com tomate e manjericão.", price: 28 + (seed % 6), image: dishImage(DISH_PHOTOS.entrada, seed, 2) },
       ],
     },
     {
       category: "Pratos",
       items: [
-        { name: pick(mains, seed), description: "Montado com o que o Google já mostra que o público pede.", price: 42 + (seed % 20) },
-        { name: "Executivo", description: "Almoço rápido com acompanhamento.", price: 32 + (seed % 10) },
-        { name: "Opção da casa", description: "Receita assinada do estabelecimento.", price: 48 + (seed % 14) },
+        { name: pick(mains, seed), description: "Montado com o que o Google já mostra que o público pede.", price: 42 + (seed % 20), image: dishImage(DISH_PHOTOS.prato, seed, 0) },
+        { name: "Executivo", description: "Almoço rápido com acompanhamento.", price: 32 + (seed % 10), image: dishImage(DISH_PHOTOS.prato, seed, 1) },
+        { name: "Opção da casa", description: "Receita assinada do estabelecimento.", price: 48 + (seed % 14), image: dishImage(DISH_PHOTOS.prato, seed, 2) },
+        { name: "Grelhado especial", description: "Acompanha arroz e salada.", price: 56 + (seed % 12), image: dishImage(DISH_PHOTOS.prato, seed, 3) },
       ],
     },
     {
       category: "Bebidas",
       items: [
-        { name: "Suco natural", description: "Frutas da estação.", price: 12 },
-        { name: "Refrigerante", description: "Lata.", price: 8 },
-        { name: "Café", description: "Passado na hora.", price: 6 },
+        { name: "Suco natural", description: "Frutas da estação.", price: 12, image: dishImage(DISH_PHOTOS.bebida, seed, 0) },
+        { name: "Refrigerante", description: "Lata.", price: 8, image: dishImage(DISH_PHOTOS.bebida, seed, 1) },
+        { name: "Café", description: "Passado na hora.", price: 6, image: dishImage(DISH_PHOTOS.bebida, seed, 2) },
+        { name: "Água com gás", description: "Garrafa 500 ml.", price: 7, image: dishImage(DISH_PHOTOS.bebida, seed, 3) },
+      ],
+    },
+    {
+      category: "Sobremesas",
+      items: [
+        { name: "Sobremesa da casa", description: "Doce do dia.", price: 18, image: dishImage(DISH_PHOTOS.sobremesa, seed, 0) },
+        { name: "Petit gateau", description: "Com sorvete de creme.", price: 24, image: dishImage(DISH_PHOTOS.sobremesa, seed, 1) },
       ],
     },
   ];
+}
+
+/** Completa fotos e imagens de prato em prévias antigas (sem re-gerar no CRM). */
+export function enrichPreviewMedia(preview: SitePreview): SitePreview {
+  const seed = hash(preview.name + preview.city);
+  const food = Boolean(preview.menu?.length) || isFoodNiche(preview.segment);
+  const pool = photosFor(preview.segment, preview.name);
+  const photos = [...(preview.photos || [])];
+  for (const src of pool) {
+    if (photos.length >= 8) break;
+    if (!photos.includes(src)) photos.push(src);
+  }
+
+  let menu = preview.menu;
+  if (food) {
+    const needsRichMenu =
+      !menu?.length ||
+      menu.every((c) => c.items.every((it) => !it.image)) ||
+      (isSeafoodPlace(preview.name, preview.segment) && !/moqueca|camarao|camarão|peixe|siri|bobo|bobó/i.test(JSON.stringify(menu)));
+    if (needsRichMenu) {
+      menu = foodMenu(seed, preview.name, preview.segment);
+    } else {
+      let i = 0;
+      menu = menu!.map((cat) => {
+        const n = normalize(cat.category);
+        const poolKey: keyof typeof DISH_PHOTOS = /bebida|drink|suco/.test(n)
+          ? "bebida"
+          : /sobremesa|doce/.test(n)
+            ? "sobremesa"
+            : /entrada|aperitivo/.test(n)
+              ? "entrada"
+              : isSeafoodPlace(preview.name, preview.segment) || /peixe|mar|moqueca/.test(n)
+                ? "seafood"
+                : "prato";
+        return {
+          ...cat,
+          items: cat.items.map((item) => ({
+            ...item,
+            image: item.image || dishImage(DISH_PHOTOS[poolKey], seed, i++),
+          })),
+        };
+      });
+    }
+  }
+
+  return { ...preview, photos, ...(menu ? { menu } : {}) };
 }
 
 function servicesFor(segment: string): NonNullable<SitePreview["services"]> {
@@ -263,9 +412,9 @@ export function buildSitePreview(opts: {
       ? `${opts.place.name} (${opts.place.address || opts.place.city}) aparece no mapa com ${reviewCount} avaliações (nota ${Math.round(rating * 10) / 10}), mas ainda não tinha site nem cardápio online. Esta prévia fecha o furo: endereço, fotos e pedido pelo WhatsApp ${opts.place.phone || ""}.`
       : `${opts.place.name} em ${opts.place.city} estava só no mapa (${reviewCount} avaliações). Esta prévia organiza horário, contato ${opts.place.phone || ""} e um botão de WhatsApp para quem busca o serviço na região.`,
     palette: pal,
-    photos: photosFor(opts.segment),
+    photos: photosFor(opts.segment, opts.place.name),
     logoUrl,
-    menu: food ? foodMenu(seed) : undefined,
+    menu: food ? foodMenu(seed, opts.place.name, opts.segment) : undefined,
     services: food ? undefined : servicesFor(opts.segment),
     mapsUrl: `https://www.google.com/maps/search/?api=1&query=${query}`,
     previewPath: `/v/${opts.slug}`,
