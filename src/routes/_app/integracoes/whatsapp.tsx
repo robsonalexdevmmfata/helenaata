@@ -573,13 +573,29 @@ function WhatsAppPage() {
     setQr("");
     toast.success(`WhatsApp conectado${number ? ` · ${number}` : ""}`);
     update((d) => {
-      const c = (id && d.connections.find((x) => x.id === id))
+      const phone = number
+        ? (number.startsWith("+") ? number : number.replace(/\D/g, "").replace(/^55/, "+55 ").replace(/(\d{2})(\d{4,5})(\d{4})$/, "$1 $2-$3"))
+        : "";
+      const mark = (c: (typeof d.connections)[0]) => {
+        c.status = "online";
+        if (phone) c.phone = phone;
+        c.lastSyncAt = nowISO();
+      };
+      const primary = (id && d.connections.find((x) => x.id === id))
+        || d.connections.find((x) => /info tech|helena/i.test(x.name))
         || d.connections.find((x) => x.status === "conectando")
         || d.connections[0];
-      if (c) {
-        c.status = "online";
-        if (number) c.phone = number;
-        c.lastSyncAt = nowISO();
+      if (primary) mark(primary);
+      // Mantém a linha da agência sincronizada (não some no refresh).
+      const agency = d.connections.find((x) => x.id === "wa_agency" || /info tech/i.test(x.name));
+      if (agency && agency !== primary) mark(agency);
+      if (!agency && primary) {
+        d.connections.unshift({
+          ...primary,
+          id: "wa_agency",
+          name: "agência info tech",
+          dailyLimit: 1000,
+        });
       }
     });
     setQrConnId(null);
@@ -800,24 +816,24 @@ function WhatsAppPage() {
                   </div>
 
                   {/* Ações */}
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex flex-col gap-2 pt-1 sm:flex-row">
                     {conn.status !== "online" && (
                       <Button
                         size="sm"
-                        className="flex-1 h-8 text-xs gap-1.5"
+                        className="h-10 flex-1 gap-1.5 text-xs font-semibold sm:h-9"
                         disabled={qrBusy}
                         onClick={() => void openQrForConnection(conn.id)}
                       >
-                        <QrCode className="size-3.5" /> {qrBusy && qrConnId === conn.id ? "Gerando QR…" : "Abrir QR"}
+                        <QrCode className="size-4" /> {qrBusy && qrConnId === conn.id ? "Gerando QR…" : "Escanear QR Code"}
                       </Button>
                     )}
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="flex-1 h-8 text-xs gap-1.5"
+                      variant={conn.status === "online" ? "outline" : "secondary"}
+                      className="h-10 flex-1 gap-1.5 text-xs sm:h-9"
                       onClick={() => void handleSync(conn.id)}
                     >
-                      <RefreshCw className="size-3.5" /> Sincronizar
+                      <RefreshCw className="size-3.5" /> {conn.status === "online" ? "Sincronizar" : "Sincronizar / QR"}
                     </Button>
                     {conn.status === "online" && (
                       <Button
