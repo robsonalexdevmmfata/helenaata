@@ -22,8 +22,13 @@ export interface RevenuePlan {
 /** Extracts the BRL amount from a revenue-goal command, or null when the text is not one. */
 export function parseRevenueGoal(text: string): number | null {
   const n = normalize(text);
-  if (!/(faturar|faturamento|faturem|receita|bater\s+r\$|vender\s+r\$)/.test(n)) return null;
-  const m = n.match(/r\$\s*([\d.]+(?:,\d+)?)\s*(mil|k)?/) ?? n.match(/([\d.]+(?:,\d+)?)\s*(mil|k)\b/);
+  if (!/(faturar|faturamento|faturem|receita|bater\s+r\$|vender\s+r\$|fechar\s+(?:r\$\s*)?\d|meta\s+(?:de\s+)?(?:r\$\s*)?\d|projetos?\s+fechad)/.test(n)) {
+    return null;
+  }
+  const m =
+    n.match(/(?:fechar|meta|faturar|bater|vender)\s*(?:de\s*)?(?:r\$\s*)?([\d.]+(?:,\d+)?)\s*(mil|k)?/)
+    ?? n.match(/r\$\s*([\d.]+(?:,\d+)?)\s*(mil|k)?/)
+    ?? n.match(/([\d.]+(?:,\d+)?)\s*(mil|k)\b/);
   if (!m) return null;
   let value = Number(m[1].replace(/\./g, "").replace(",", "."));
   if (m[2]) value *= 1000;

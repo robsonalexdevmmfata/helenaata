@@ -466,42 +466,94 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
-  // RPA multi-nicho: "quero rpa diversos nichos", "onda RPA", "expediente multi nicho"
-  if (/\brpa\b/.test(n) || /expediente\s*(rpa|automat|multi)/.test(n) || /onda\s*(rpa|comercial|multi)/.test(n)) {
-    const limit = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 120), 1000);
-    const multi = /diversos|varios|multi|onda|todos?\s*os\s*nichos|nichos/.test(n) || !/dentista|advog|restaurante|clinic|barbear/.test(n);
+  // RPA multi-nicho / 1000 leads / Brasil: NÃO deixa o Time Dev roubar com 8 prévias fake.
+  if (
+    /\brpa\b/.test(n)
+    || /expediente\s*(rpa|automat|multi)/.test(n)
+    || /onda\s*(rpa|comercial|multi)/.test(n)
+    || (/(1000|mil)\s*leads?/.test(n) && /(prospect|prospecc|cacar|caçar|varr|busca|rpa|nichos)/.test(n))
+  ) {
+    const nums = [...n.matchAll(/(\d{1,4})/g)].map((m) => Number(m[1])).filter((x) => x >= 10 && x <= 1000);
+    const limit = Math.min(nums.find((x) => x >= 80) ?? nums[0] ?? 120, 1000);
+    const nationwide = /brasil|nacional|todinho|país|pais/.test(n);
+    const multi = /diversos|varios|multi|onda|todos?\s*os\s*nichos|nichos|profisso|profiss|1000|mil leads|\brpa\b/.test(n)
+      || !/dentista|advog|restaurante|clinic|barbear/.test(n);
     if (multi) {
-      return [
+      const goalMatch = n.match(/(?:fechar|meta|faturar|bater)\s*(?:de\s*)?(?:r\$\s*)?(\d{3,5})/);
+      const actions = [
         perform(
           "prospect.scan_maps",
           {
             segment: "diversos nichos locais",
-            city: "São Paulo, Campinas, Araçatuba, Andradina, Bauru, Rio Preto",
-            nationwide: false,
-            state: "SP",
+            city: nationwide ? "Brasil" : "São Paulo, Campinas, Araçatuba, Andradina, Bauru, Rio Preto",
+            nationwide,
+            state: nationwide ? "TODOS" : "SP",
             limit,
             wave: true,
           },
-          `RPA multi-nicho · até ${limit} leads`,
+          `RPA multi-nicho · até ${limit} leads${nationwide ? " · Brasil" : ""}`,
           [
-            { label: "Modo", value: "RPA · diversos nichos" },
+            { label: "Modo", value: "RPA · diversos nichos e profissões" },
             { label: "Nichos", value: "Dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias, oficinas, academias…" },
-            { label: "Escopo", value: "SP + interior (Maps → Pipeline → Inbox → WhatsApp)" },
-            { label: "Disparo", value: "Evolution · só após confirmação real" },
+            { label: "Escopo", value: nationwide ? "Brasil (hubs nacionais + SP)" : "SP + interior (Maps → Pipeline → Inbox → WhatsApp)" },
+            { label: "Times", value: "Comercial + Closer ativos · Dev quando Máquina" },
+            { label: "Disparo", value: "Evolution · só com WhatsApp online" },
           ],
-          `RPA multi-nicho ligado: varro vários nichos em SP + interior (até ${limit}), jogo no Pipeline/Inbox e disparo no WhatsApp da agência. Te aviso quando a onda terminar.`,
+          `RPA multi-nicho ligado: até ${limit} leads sem site/cardápio${nationwide ? " no Brasil" : " em SP + interior"}, Pipeline/Inbox e WhatsApp. Time Comercial + Closer no jogo. Te aviso quando a onda terminar.`,
         ),
       ];
+      if (goalMatch) {
+        const goal = Number(goalMatch[1]);
+        actions.push(
+          perform(
+            "missions.plan",
+            {
+              title: `Meta R$ ${goal.toLocaleString("pt-BR")}`,
+              objective: `Fechar R$ ${goal.toLocaleString("pt-BR")} em projetos (site/cardápio) com Comercial + Closer + Dev`,
+              targetValue: Math.min(40, Math.max(8, Math.ceil(goal / 250))),
+            },
+            `Missão · meta R$ ${goal.toLocaleString("pt-BR")}`,
+            [{ label: "Meta", value: `R$ ${goal.toLocaleString("pt-BR")} em projetos fechados` }],
+            `Missão criada: meta de R$ ${goal.toLocaleString("pt-BR")} em projetos fechados. Comercial + Closer + Dev alinhados.`,
+          ),
+        );
+      }
+      actions.push(
+        perform(
+          "teams.activate",
+          { teamId: "t_com" },
+          "Ativar Time Comercial + Closer",
+          [{ label: "Time", value: "Comercial (SDR + Closer + Market)" }],
+          "Time Comercial e Closer ativos pra abordar e fechar.",
+        ),
+      );
+      if (canUseDevTeam(currentUser(getDB())) && (/time\s*dev|designer|cardapio|previa|site/.test(n))) {
+        actions.push(
+          perform(
+            "dev.build_presence",
+            { segment: "restaurantes e clínicas", city: nationwide ? "Brasil" : "São Paulo", nationwide, limit: Math.min(30, limit) },
+            "Time Dev + Designer · prévias Vercel",
+            [{ label: "Dev", value: "Sofia + Caio + Diego · cardápio/site na Vercel" }],
+            "Time Dev em paralelo: prévias bonitas na Vercel pro comercial mandar link clicável.",
+          ),
+        );
+      }
+      return actions;
     }
   }
 
   // Time Dev IA: só na conta admin. Cliente cai na prospecção comercial abaixo.
-  if (isPresenceIntent(text) && canUseDevTeam(currentUser(getDB()))) {
+  // Não intercepta pedido de volume (RPA / 1000 leads).
+  if (
+    isPresenceIntent(text)
+    && canUseDevTeam(currentUser(getDB()))
+    && !/\brpa\b|1000\s*leads?|mil\s*leads?|onda\s*multi/.test(n)
+  ) {
     const intent = extractProspectIntent(text);
     const segment = intent.segment;
     const nationwide = intent.nationwide;
     const city = intent.city;
-    const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 10), 50);
+    const limit = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 10), 50);
     return [
       perform(
         "dev.build_presence",
@@ -511,10 +563,11 @@ export function interpret(text: string): Reply[] {
           { label: "Nicho", value: segment },
           { label: "Escopo", value: nationwide ? "Brasil inteiro" : city },
           { label: "Critério", value: /restaurante|comida|cardapio|pizzaria|lanchonete/.test(n) ? "Sem site e sem cardápio online" : "Sem site" },
-          { label: "Time Dev", value: "Caio (front) · Diego (back) · Sofia (design)" },
-          { label: "Depois", value: "Time Comercial aborda o proprietário com o link da prévia" },
+          { label: "Time Dev", value: "Sofia (Designer Gráfico) · Caio (front) · Diego (back)" },
+          { label: "Entrega", value: "Prévia bonita hospedada na Vercel · link clicável no WhatsApp" },
+          { label: "Depois", value: "Time Comercial manda o link e pergunta se é o dono" },
         ],
-        `Orquestrei o Time Desenvolvimento IA para ${limit} ${segment} (${nationwide ? "Brasil inteiro" : city}). Quem não tem site${/cardapio|restaurante|pizzaria/.test(n) ? " nem cardápio online" : ""} ganha prévia. O Time Comercial manda o link e pergunta se fala com o dono. Veja as prévias em IA → Prévia de sites.`,
+        `Orquestrei o Time Dev com a Sofia (Designer Gráfico) para ${limit} ${segment} (${nationwide ? "Brasil inteiro" : city}). Quem não tem site${/cardapio|restaurante|pizzaria/.test(n) ? " nem cardápio" : ""} ganha prévia visual na Vercel. O comercial manda o link clicável. Veja em IA → Prévia de sites.`,
       ),
     ];
   }

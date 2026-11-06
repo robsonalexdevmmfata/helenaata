@@ -1,6 +1,7 @@
 import type { Agent, DB, SitePreview, Team } from "@/lib/types";
 import { bumpAutomation, getDB, nowISO, uid, update } from "@/lib/store";
 import { getAgencyConnection } from "@/lib/evolution/evolutionapi";
+import { stageForNewProspect } from "@/lib/crm/pipelineStages";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { diagnoseLead, setCycleTag } from "@/lib/helena/diagnose";
 import type { MapPlace } from "@/lib/prospect/mapsSearch";
@@ -314,17 +315,18 @@ const AUTHORS = ["Carla M.", "Roberto S.", "Ana P.", "Diego L.", "Fernanda G.", 
 export function buildPreviewOpening(contactName: string, companyName: string, url: string, withMenu: boolean, pitch?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
   const link = String(url || "").trim();
-  // URL sozinha na linha = WhatsApp vira link azul clicável + preview.
+  // URL sozinha na linha = WhatsApp vira link azul clicável + preview de página.
   if (pitch) {
     return `${who} ${pitch}
 
-Abre a prévia do site (link público):
+O Time Dev (Sofia · Designer Gráfico + Caio + Diego) montou a prévia${withMenu ? " com cardápio visual" : ""} já hospedada na Vercel. Abre o link (é clicável):
+
 ${link}
 
 Você é o proprietário ou a proprietária?`;
   }
   const offer = withMenu ? "site nem cardápio online" : "site";
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. O time montou uma prévia só de front na Vercel pra você ver:
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. A Sofia (Designer Gráfico) + o Time Dev montaram uma prévia bonita, já no ar na Vercel — é só clicar:
 
 ${link}
 
@@ -419,7 +421,7 @@ export function buildSitePreview(opts: {
     mapsUrl: `https://www.google.com/maps/search/?api=1&query=${query}`,
     previewPath: `/v/${opts.slug}`,
     status: "enviada",
-    createdBy: "Time Desenvolvimento IA",
+    createdBy: "Time Dev · Sofia Designer Gráfico",
     createdAt: nowISO(),
   };
 }
@@ -468,22 +470,30 @@ export function ensureDevSquad(db: DB) {
   }
   if (!db.agents.some((a) => a.id === DEV_DS_ID)) {
     db.agents.push(mk({
-      id: DEV_DS_ID, name: "Sofia Almeida", role: "Designer Sênior", color: "chart-4",
-      description: "Designer gráfico sênior",
-      objective: "Identidade visual da prévia: paleta, hierarquia e fotos de referência do nicho.",
-      personality: "Visual forte, copy curta, marca local.",
+      id: DEV_DS_ID, name: "Sofia Almeida", role: "Designer Gráfico", color: "chart-4",
+      description: "Designer gráfico · cardápio digital e identidade de site",
+      objective: "Direção de arte da prévia: tipografia, paleta, fotos de prato/ambiente e cardápio visual pronto pra Vercel.",
+      personality: "Olho de marca: visual irresistível, hierarquia limpa, cardápio que dá fome de clicar.",
       supervisorId: DEV_FE_ID,
       model: "google/gemini-flash",
+      temperature: 0.55,
     }));
+  } else {
+    const sofia = db.agents.find((a) => a.id === DEV_DS_ID);
+    if (sofia) {
+      sofia.role = "Designer Gráfico";
+      sofia.description = "Designer gráfico · cardápio digital e identidade de site";
+      sofia.objective = "Direção de arte da prévia: tipografia, paleta, fotos de prato/ambiente e cardápio visual pronto pra Vercel.";
+    }
   }
   const team: Team = {
     id: DEV_TEAM_ID,
     organizationId: db.organization.id,
     name: "Desenvolvimento IA",
-    objective: "Quando a Helena achar negócio sem site (e sem cardápio online, se for comida), montar prévia com dados do mapa e passar o link ao Time Comercial.",
+    objective: "Sofia (Designer Gráfico) + Caio + Diego: cardápio/site bonito a partir do mapa, hospedar na Vercel e entregar link clicável ao Time Comercial.",
     supervisorId: DEV_FE_ID,
     agentIds: [...DEV_AGENT_IDS],
-    goals: "Prévia pronta + link enviado ao comercial",
+    goals: "Arte + prévia na Vercel + link clicável no WhatsApp",
     schedule: "Seg–Sex, 08:00–19:00",
     channels: ["webchat", "whatsapp"],
     budget: 700,
@@ -495,6 +505,7 @@ export function ensureDevSquad(db: DB) {
   if (!existing) db.teams.push(team);
   else {
     existing.objective = team.objective;
+    existing.goals = team.goals;
     existing.agentIds = [...DEV_AGENT_IDS];
     existing.supervisorId = DEV_FE_ID;
   }
@@ -515,13 +526,12 @@ export function applyPresenceFromPlaces(opts: {
   update((d) => {
     ensureDevSquad(d);
     const pipeline = d.pipelines[0];
-    const stage = pipeline?.stages[0];
     const sdrs = d.agents.filter((a) => a.role === "SDR");
     const used = new Set(d.sitePreviews.map((p) => p.slug));
     d.agents.forEach((a) => {
-      if (a.id === DEV_FE_ID) { a.status = "trabalhando"; a.currentTask = "Montar páginas da prévia"; a.metrics.tasks += opts.places.length; }
-      if (a.id === DEV_BE_ID) { a.status = "trabalhando"; a.currentTask = food ? "Estruturar cardápio e link" : "Estruturar catálogo e link"; a.metrics.tasks += opts.places.length; }
-      if (a.id === DEV_DS_ID) { a.status = "trabalhando"; a.currentTask = "Identidade visual do nicho"; a.metrics.tasks += opts.places.length; }
+      if (a.id === DEV_FE_ID) { a.status = "trabalhando"; a.currentTask = "Caio · páginas na Vercel"; a.metrics.tasks += opts.places.length; }
+      if (a.id === DEV_BE_ID) { a.status = "trabalhando"; a.currentTask = food ? "Diego · dados do cardápio + deploy" : "Diego · dados + deploy"; a.metrics.tasks += opts.places.length; }
+      if (a.id === DEV_DS_ID) { a.status = "trabalhando"; a.currentTask = food ? "Sofia · arte do cardápio digital" : "Sofia · identidade visual do site"; a.metrics.tasks += opts.places.length; }
       if (a.teamId === "t_com" && a.role === "SDR") { a.status = "trabalhando"; a.currentTask = "Abordar dono com link da prévia"; }
     });
     const devTeam = d.teams.find((t) => t.id === DEV_TEAM_ID);
@@ -587,6 +597,8 @@ export function applyPresenceFromPlaces(opts: {
         lastContactAt: nowISO(),
       });
       createdContactIds.push(contactId);
+      const dealTags = food ? ["#sem-site", "#sem-cardapio", "prévia"] : ["#sem-site", "prévia"];
+      const stage = stageForNewProspect(pipeline, dealTags) || pipeline?.stages[0];
       if (stage && pipeline) {
         d.deals.unshift({
           id: dealId,
@@ -605,7 +617,7 @@ export function applyPresenceFromPlaces(opts: {
           ownerType: "agent",
           source: "Prospecção",
           status: "aberto",
-          tags: food ? ["#sem-site", "#sem-cardapio", "prévia"] : ["#sem-site", "prévia"],
+          tags: dealTags,
           createdAt: nowISO(),
           updatedAt: nowISO(),
         });
@@ -655,7 +667,7 @@ export function applyPresenceFromPlaces(opts: {
         contactId,
         dealId,
         type: "ia",
-        text: `Time Desenvolvimento IA gerou a prévia ${url}. Comercial dispara o link no WhatsApp quando a Evolution confirmar o envio.`,
+        text: `Sofia (Designer Gráfico) + Time Dev publicaram a prévia ${url}. Comercial manda o link clicável no WhatsApp.`,
         actor: "Helena",
         createdAt: nowISO(),
       });
@@ -678,18 +690,18 @@ export function applyPresenceFromPlaces(opts: {
       cost: Math.round(opts.places.length * 0.12 * 100) / 100,
       steps: [
         { id: "s0", label: "Varredura Maps (sem site / sem cardápio)", status: "done" },
-        { id: "s1", label: "Sofia · identidade visual", status: "done" },
+        { id: "s1", label: "Sofia · Designer Gráfico (arte + cardápio/site)", status: "done" },
         { id: "s2", label: food ? "Diego · cardápio e dados" : "Diego · catálogo e dados", status: "done" },
-        { id: "s3", label: "Caio · páginas da prévia", status: "done" },
-        { id: "s4", label: "Link de visualização", status: "done" },
-        { id: "s5", label: "Handoff ao Time Comercial", status: "done" },
+        { id: "s3", label: "Caio · páginas + hospedagem Vercel", status: "done" },
+        { id: "s4", label: "Link público clicável", status: "done" },
+        { id: "s5", label: "Handoff ao Time Comercial (WhatsApp)", status: "done" },
       ],
       events: [
-        { at: nowISO(), text: `Helena acionou o Time Desenvolvimento IA para ${opts.segment} em ${opts.city}`, kind: "info" },
-        { at: nowISO(), text: `${opts.places.length} prévias geradas e enviadas ao comercial`, kind: "success" },
+        { at: nowISO(), text: `Helena acionou o Time Dev + Designer Gráfico para ${opts.segment} em ${opts.city}`, kind: "info" },
+        { at: nowISO(), text: `${opts.places.length} prévias com arte na Vercel · links clicáveis pro comercial`, kind: "success" },
       ],
       createdAt: nowISO(),
-      result: `${opts.places.length} links de prévia prontos`,
+      result: `${opts.places.length} links Vercel prontos`,
     });
     bumpAutomation(d, "lead_criado", opts.places.length);
   });
@@ -768,8 +780,8 @@ export function runPresencePipeline(p: {
   import("@/lib/prospect/mapsSearch").then(async ({ searchBusinessesWithoutWebsite }) => {
     const { pushHelenaMessage } = await import("@/lib/helena/engine");
     pushHelenaMessage(
-      `Time Dev (Caio, Diego, Sofia) varreu ${segment} em ${city}: montando landing com logo + avaliações do mapa e publicando na Vercel…`,
-      { type: "result", ok: true, title: "Time Dev · landing", detail: "em andamento" },
+      `Time Dev + Designer Gráfico (Sofia): arte do ${food ? "cardápio" : "site"}, páginas e publish na Vercel em ${city}…`,
+      { type: "result", ok: true, title: "Time Dev · design + Vercel", detail: "em andamento" },
     );
     let places = await searchBusinessesWithoutWebsite({
       segment,
@@ -781,14 +793,14 @@ export function runPresencePipeline(p: {
     if (!places.length) places = syntheticPlaces(segment, city, Math.min(limit, 5));
     const res = applyPresenceFromPlaces({ places, segment, city });
     pushHelenaMessage(
-      `Prévias prontas: ${res.count} ${food ? "site+cardápio" : "landing"} · links públicos na Vercel · Time Comercial manda no WhatsApp. Quando o lead visualizar (✓✓ azul), eu continuo sozinha.`,
+      `Prévias prontas: ${res.count} ${food ? "cardápio + site" : "site"} com arte da Sofia · hospedados na Vercel · link clicável no WhatsApp. Quando o lead abrir (✓✓ azul), eu continuo.`,
       { type: "result", ok: true, title: "Time Dev · Vercel", detail: res.slugs.slice(0, 3).map((s) => previewUrl(s)).join(" · ") },
     );
   }).catch((err) => console.warn("[Time Dev]", err));
 
   return {
     ok: true,
-    message: `Time Desenvolvimento IA iniciou: varre ${segment} em ${city}, monta landing (logo + avaliações do mapa), hospeda na Vercel e manda o link público no WhatsApp. Quando a pessoa visualizar (azul), a prospecção continua sozinha.`,
+    message: `Time Dev + Designer Gráfico (Sofia): varre ${segment} em ${city}, cria cardápio/site bonito, publica na Vercel e manda link clicável no WhatsApp. Quando visualizar (azul), continuo sozinha.`,
     data: { count: 0, previewIds: [], slugs: [], async: true },
   };
 }

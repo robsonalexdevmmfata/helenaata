@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DB } from "./types";
 import { applyDevTeamGate, createCustomerSeed, createSeed, defaultSalesFlow, liveMapsAutomations, ensureSaasUsers, PLATFORM_ORG } from "./seed";
+import { ensureCommercialStageOrder, promoteNoSiteDealsToQualified } from "@/lib/crm/pipelineStages";
 import type { User } from "./types";
 import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "./catalog";
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
@@ -175,18 +176,32 @@ function hydrate(db: DB): DB {
     t.metrics = { leads: 0, meetings: 0, conversions: 0 };
     if (t.id === "t_com" && !t.agentIds.includes("a_valentina")) t.agentIds.push("a_valentina");
   });
+  // Funil: Proposta antes de Reunião. Sem site → Qualificado.
+  for (const pl of db.pipelines || []) {
+    if (pl.id === "pl_com" || /comercial/i.test(pl.name)) ensureCommercialStageOrder(pl);
+  }
+  promoteNoSiteDealsToQualified(db.deals || [], db.pipelines?.[0]);
+  // Time Comercial sempre pode mover etapa no pipeline.
+  db.agents?.forEach((a) => {
+    if (a.teamId !== "t_com" && a.role !== "Closer" && a.role !== "SDR" && a.role !== "Qualificador") return;
+    if (!a.tools.includes("crm.move_lead")) a.tools.push("crm.move_lead");
+    if (!a.tools.includes("crm.assign_lead")) a.tools.push("crm.assign_lead");
+    if (!a.permissions.includes("crm.edit")) a.permissions.push("crm.edit");
+  });
   const platformOrg = db.organization?.id === PLATFORM_ORG || db.users?.some((u) => u.id === "u1" && u.kind === "platform");
   if (platformOrg) {
-    db.connections = (db.connections ?? []).filter((c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name));
-    if (!db.connections.length) {
+    // NÃO zera status/números no refresh — só garante a linha da agência existir.
+    const hasAgency = (db.connections ?? []).some((c) => c.id === AGENCY_WHATSAPP.id || /info tech/i.test(c.name));
+    if (!hasAgency) {
       db.connections = [
+        ...(db.connections ?? []),
         {
           id: AGENCY_WHATSAPP.id,
           organizationId: db.organization.id,
           name: AGENCY_WHATSAPP.name,
           phone: AGENCY_WHATSAPP.phone,
           type: "cloud_api",
-          status: "online",
+          status: "offline",
           queue: 0,
           sentToday: 0,
           dailyLimit: 1000,
@@ -441,6 +456,10 @@ export function update(fn: (draft: DB) => void) {
   state = next;
   persist();
   listeners.forEach((l) => l());
+  // Espelha CRM/WhatsApp no Supabase — senão refresh some com leads e conexão.
+  if (typeof window !== "undefined") {
+    void import("@/lib/persist/cycle").then(({ scheduleCyclePush }) => scheduleCyclePush()).catch(() => {});
+  }
 }
 
 export function getWorkspacePreference<T>(key: string, fallback: T): T {

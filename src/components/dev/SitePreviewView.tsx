@@ -14,28 +14,47 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
   const waLink = `https://wa.me/${wa.startsWith("55") ? wa : `55${wa}`}`;
   const gallery = view.photos.slice(1);
   const featured = view.menu?.flatMap((c) => c.items).filter((i) => i.image).slice(0, 4) ?? [];
+  const hasMenu = Boolean(view.menu?.length);
 
   return (
-    <div className="min-h-screen" style={{ background: palette.bg, color: palette.fg }}>
-      <header className="relative isolate overflow-hidden">
+    <div
+      className="relative min-h-screen overflow-x-hidden"
+      style={{
+        background: palette.bg,
+        color: palette.fg,
+        backgroundImage: `radial-gradient(ellipse 80% 50% at 10% -10%, ${palette.accent}44, transparent 55%), radial-gradient(ellipse 60% 40% at 100% 0%, ${palette.fg}14, transparent 50%)`,
+      }}
+    >
+      <header className="relative isolate flex min-h-[min(78vh,640px)] items-end overflow-hidden">
         {view.photos[0] && (
-          <img src={view.photos[0]} alt="" className="absolute inset-0 size-full object-cover opacity-40" />
+          <img
+            src={view.photos[0]}
+            alt=""
+            className="absolute inset-0 size-full scale-105 object-cover saturate-[1.05] contrast-[1.05]"
+          />
         )}
-        <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${palette.bg}55, ${palette.bg})` }} />
-        <div className="relative mx-auto max-w-4xl px-5 pb-14 pt-16 sm:pb-20 sm:pt-24">
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(180deg, ${palette.bg}40 0%, ${palette.bg}b8 45%, ${palette.bg} 100%)`,
+          }}
+        />
+        <div className="relative mx-auto w-full max-w-3xl px-5 pb-14 pt-16 sm:pb-20 sm:pt-24">
           {view.logoUrl && (
             <img
               src={view.logoUrl}
               alt=""
-              className="mb-4 size-16 rounded-2xl border-2 object-cover sm:size-20"
-              style={{ borderColor: `${palette.fg}33` }}
+              className="mb-4 size-20 rounded-[1.15rem] border-2 object-cover shadow-xl sm:size-20"
+              style={{ borderColor: `${palette.fg}38` }}
             />
           )}
-          <p className="text-[11px] uppercase tracking-[0.2em] opacity-80">
+          <p className="text-[11px] uppercase tracking-[0.22em] opacity-80">
             {view.segment} · {view.city}
           </p>
-          <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">{view.name}</h1>
-          <p className="mt-3 max-w-xl text-base opacity-90">{view.tagline}</p>
+          <h1 className="mt-3 font-serif text-4xl leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
+            {view.name}
+          </h1>
+          <p className="mt-3 max-w-xl text-base opacity-90 sm:text-lg">{view.tagline}</p>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
             <span style={{ color: palette.accent }}>
               {stars(view.rating)} {view.rating}
@@ -45,16 +64,16 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           <div className="mt-8 hidden flex-wrap gap-3 sm:flex">
             <a
               href={waLink}
-              className="rounded-full px-5 py-2.5 text-sm font-medium"
+              className="rounded-xl px-5 py-2.5 text-sm font-bold shadow-lg transition hover:-translate-y-0.5"
               style={{ background: palette.accent, color: palette.bg }}
             >
-              Pedir no WhatsApp
+              {hasMenu ? "Pedir no WhatsApp" : "Falar no WhatsApp"}
             </a>
             <a
               href={view.mapsUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full border px-5 py-2.5 text-sm"
+              className="rounded-xl border px-5 py-2.5 text-sm font-semibold"
               style={{ borderColor: `${palette.fg}33` }}
             >
               Ver no mapa
@@ -192,8 +211,11 @@ export function SitePreviewView({ preview }: { preview: SitePreview }) {
           </ul>
         </section>
 
-        <p className="text-center text-[11px] opacity-50">
-          Prévia montada pela Info Tech a partir de dados públicos do mapa. Não é o site oficial até o proprietário aprovar.
+        <p className="text-center text-[11px] opacity-60">
+          Arte · Sofia Almeida · Designer Gráfico · Time Dev Info Tech
+        </p>
+        <p className="text-center text-[10px] opacity-40">
+          Prévia hospedada na Vercel a partir de dados públicos do mapa. Não é o site oficial até o proprietário aprovar.
         </p>
       </main>
       <div

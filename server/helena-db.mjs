@@ -323,6 +323,8 @@ export async function saveCycle(payload) {
       deals: Array.isArray(payload.deals) ? payload.deals.slice(0, 800) : [],
       contacts: Array.isArray(payload.contacts) ? payload.contacts.slice(0, 1000) : [],
       companies: Array.isArray(payload.companies) ? payload.companies.slice(0, 1000) : [],
+      connections: Array.isArray(payload.connections) ? payload.connections.slice(0, 20) : [],
+      sitePreviews: Array.isArray(payload.sitePreviews) ? payload.sitePreviews.slice(0, 200) : [],
       savedAt: new Date().toISOString(),
     };
     try {

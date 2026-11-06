@@ -1,6 +1,7 @@
 import { evolutionSendText, getAgencyConnection } from "@/lib/evolution/evolutionapi";
 import { dispatchProspectMessages, buildProspectMessage } from "@/lib/evolution/prospectDispatcher";
 import { buildCatalogOpening } from "@/lib/catalog";
+import { stageForNewProspect } from "@/lib/crm/pipelineStages";
 import { formatForWhatsApp } from "@/lib/helena/whatsapp-formatter";
 import { bumpAutomation, getDB, nowISO, uid, update } from "@/lib/store";
 import { syncLiveCommercial } from "@/lib/analytics";
@@ -43,7 +44,6 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
 
   update((d) => {
     const pipeline = d.pipelines[0];
-    const stage = pipeline?.stages[0];
     const existingPhones = new Set(d.contacts.map((c) => phoneDedupeKey(c.phone)).filter(Boolean));
     let slot = d.contacts.length;
     places.forEach((place) => {
@@ -61,6 +61,12 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
       const contactId = uid("p_maps_");
       const dealId = uid("d_maps_");
       createdContactIds.push(contactId);
+      const dealTags = [
+        ...(place.website ? [] : ["#sem-site"]),
+        ...(place.likelyNoWaAi ? ["#sem-ia-whatsapp"] : []),
+      ];
+      // Sem site = já qualificado (Helena joga direto em Qualificado).
+      const stage = stageForNewProspect(pipeline, dealTags) || pipeline?.stages[0];
       d.companies.unshift({
         id: compId,
         organizationId: d.organization.id,
@@ -81,8 +87,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
         companyId: compId,
         title: segment,
         tags: [
-          ...(place.website ? [] : ["#sem-site"]),
-          ...(place.likelyNoWaAi ? ["#sem-ia-whatsapp"] : []),
+          ...dealTags,
           "OpenStreetMap",
           segment.toLowerCase(),
         ],
@@ -109,7 +114,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
           ownerId: owner.id,
           ownerType: "agent",
           source: "Prospecção",
-          tags: [...(place.website ? [] : ["#sem-site"]), ...(place.likelyNoWaAi ? ["#sem-ia-whatsapp"] : [])],
+          tags: dealTags,
           status: "aberto",
           createdAt: nowISO(),
           updatedAt: nowISO(),
@@ -229,11 +234,19 @@ export async function sendOpeningNow(phone: string, contactName: string, company
   return evolutionSendText(phone, text);
 }
 
-export async function runWaveProspecting(opts: { limit?: number; organizationId: string; operationId?: string; niches?: string[] }) {
+export async function runWaveProspecting(opts: {
+  limit?: number;
+  organizationId: string;
+  operationId?: string;
+  niches?: string[];
+  nationwide?: boolean;
+}) {
   activateCommercialTeam();
   const target = Math.min(Math.max(opts.limit ?? 150, 1), 1000);
-  // Diversos nichos + várias cidades ao mesmo tempo (até 1000 leads).
-  const hubs = WAVE_CITIES.slice(0, target <= 60 ? 3 : target <= 200 ? 5 : WAVE_CITIES.length);
+  // Diversos nichos + várias cidades ao mesmo tempo (até 1000 leads). Brasil = hubs nacionais.
+  const { NATIONAL_HUBS } = await import("./mapsSearch");
+  const cityPool = opts.nationwide ? [...new Set([...NATIONAL_HUBS, ...WAVE_CITIES])] : WAVE_CITIES;
+  const hubs = cityPool.slice(0, target <= 60 ? 3 : target <= 200 ? 6 : cityPool.length);
   const pool = (opts.niches?.length ? opts.niches : WAVE_NICHES).filter(Boolean);
   const niches = pool.slice(0, target <= 60 ? Math.min(8, pool.length) : target <= 200 ? Math.min(12, pool.length) : pool.length);
   const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 3), 14);
@@ -243,7 +256,14 @@ export async function runWaveProspecting(opts: { limit?: number; organizationId:
     for (const niche of niches) {
       if (bag.length >= target) break;
       try {
-        const found = await searchBusinessesWithoutWebsite({ segment: niche, city, state: "SP", limit: perCombo });
+        const stateGuess = String(city).match(/,\s*([A-Z]{2})\s*$/)?.[1] || (opts.nationwide ? undefined : "SP");
+        const found = await searchBusinessesWithoutWebsite({
+          segment: niche,
+          city,
+          state: stateGuess,
+          nationwide: false,
+          limit: perCombo,
+        });
         for (const p of found) {
           if (!isValidBrazilWhatsApp(p.phone)) continue;
           const k = phoneDedupeKey(p.phone);

@@ -44,6 +44,7 @@ import { coachGuideText } from "@/lib/helena/coach";
 import { agentBenchmark, autonomyBlocksTool, circuitBreaker, integrationHealth, missionReplayText, replayMission } from "@/lib/helena/reliability";
 import { createMissionFromObjective, pauseMission, startMission, tickMissions } from "@/lib/helena/mission-engine";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
+import { meetingStage, stageForNewProspect } from "@/lib/crm/pipelineStages";
 
 export interface ToolContext {
   actor: string;
@@ -260,7 +261,7 @@ function createCalendarEvent(p: Record<string, any>, ctx: ToolContext): ToolResu
     const dealId = event.dealId;
     if (dealId) {
       const deal = d.deals.find((x) => x.id === dealId);
-      const reunStage = d.pipelines[0]?.stages.find((s) => s.id === "st_reun" || /reuni/i.test(s.name));
+      const reunStage = meetingStage(d.pipelines[0]);
       if (deal && reunStage) {
         deal.stageId = reunStage.id;
         deal.probability = reunStage.probability;
@@ -1038,8 +1039,12 @@ const handlers: Record<string, Handler> = {
     const state = p.state != null ? String(p.state) : undefined;
     const nationwide = p.nationwide === true || /brasil|nacional/i.test(city) || state === "TODOS";
     const noWhatsAppAi = p.noWhatsAppAi === true;
-    const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
-    if (!isTest && p.simulate !== true) {
+    // Fake/demo só no Vitest. No browser (e no Render) SEMPRE Maps real — nunca inventa 8 clínicas.
+    const isVitestNode =
+      typeof window === "undefined"
+      && typeof process !== "undefined"
+      && Boolean(process.env?.VITEST);
+    if (!isVitestNode && p.simulate !== true) {
       const limitLive = Math.min(quota.allowed, MAX_PROSPECT_WAVE);
       // Onda só se pedida de propósito — pedido "300 restaurantes em BC" NÃO vira advogado em SP.
       const wave = p.wave === true || /varios nichos|diversos nichos|onda multi|rpa multi/i.test(segment);
@@ -1051,6 +1056,7 @@ const handlers: Record<string, Handler> = {
             limit: limitLive,
             organizationId: getDB().organization.id,
             niches: Array.isArray(p.niches) ? p.niches.map(String) : WAVE_NICHES,
+            nationwide,
           })
           : runRealProspecting({
             segment,
@@ -1070,12 +1076,13 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `${wave ? `RPA multi-nicho (${WAVE_NICHES.length} nichos) SP` : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? `RPA multi-nicho (${WAVE_NICHES.length} nichos)${nationwide ? " Brasil" : " SP"}` : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
             });
           });
+          scheduleCyclePush();
           const deals = getDB().deals.filter((d) => d.source === "Prospecção").length;
           const convs = getDB().conversations.filter((c) => c.flow?.origin === "prospeccao").length;
           if (r.found > 0) {
@@ -1097,7 +1104,7 @@ const handlers: Record<string, Handler> = {
         });
       });
       return ok(wave
-        ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos em SP + interior (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
+        ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos ${nationwide ? "no Brasil" : "em SP + interior"} (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
         : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Quando achar leads, entram no Pipeline, Inbox e WhatsApp. Te aviso ao terminar — ainda não é “já abordou”.`);
     }
     const limit = Math.min(quota.allowed, MAX_PROSPECT_WAVE);
@@ -1123,7 +1130,8 @@ const handlers: Record<string, Handler> = {
 
     update((d) => {
       const pipeline = d.pipelines[0];
-      const stage = pipeline?.stages[0]; // Primeiro contato
+      // Sem site = Qualificado (não fica parado em Novo lead).
+      const stage = stageForNewProspect(pipeline, ["#sem-site"]) || pipeline?.stages[0];
 
       for (let i = 0; i < limit; i++) {
         const tmpl = businessTemplates[i % businessTemplates.length];
@@ -1277,7 +1285,7 @@ const handlers: Record<string, Handler> = {
   "dev.build_presence": (p) => {
     const user = currentUser(getDB());
     if (!canUseDevTeam(user)) {
-      return fail("O Time Dev (Caio, Diego e Sofia) entra no plano Máquina. No trial e no Impulso o Time Comercial prospecta no WhatsApp.");
+      return fail("O Time Dev + Designer Gráfico (Sofia, Caio, Diego) entra no plano Máquina. No trial e no Impulso o Time Comercial prospecta no WhatsApp.");
     }
     const quota = reserveProspects(Math.min(Number(p.limit) || 10, 50));
     if (!quota.ok) return fail(quota.message);

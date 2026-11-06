@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, CheckCircle2, Copy, ExternalLink, Globe, KeyRound,
   MessageCircle, Plus, QrCode, RefreshCw, Settings2, Smartphone,
@@ -511,10 +511,79 @@ function WhatsAppPage() {
   const [newInstance, setNewInstance] = useState("");
   const [instanceTouched, setInstanceTouched] = useState(false);
   const [newPhone, setNewPhone] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qr, setQr] = useState("");
+  const [qrConnId, setQrConnId] = useState<string | null>(null);
+  const [qrBusy, setQrBusy] = useState(false);
+  const qrConnIdRef = useRef<string | null>(null);
+  qrConnIdRef.current = qrConnId;
 
   const online     = db.connections.filter((c) => c.status === "online").length;
   const totalSent  = db.connections.reduce((s, c) => s + c.sentToday, 0);
   const totalQueue = db.connections.reduce((s, c) => s + c.queue, 0);
+
+  const openQrForConnection = async (id: string) => {
+    setQrBusy(true);
+    setQrConnId(id);
+    setQrOpen(true);
+    setQr("");
+    update((d) => {
+      const c = d.connections.find((x) => x.id === id);
+      if (c) c.status = "conectando";
+    });
+    try {
+      const pair = await evolutionConnectQr(undefined, 6);
+      if (pair.connected) {
+        setQrOpen(false);
+        setQr("");
+        update((d) => {
+          const c = d.connections.find((x) => x.id === id);
+          if (c) {
+            c.status = "online";
+            c.lastSyncAt = nowISO();
+          }
+        });
+        toast.success("WhatsApp já estava conectado.");
+        return;
+      }
+      if (pair.qr) {
+        setQr(pair.qr);
+        toast.success("QR gerado — escaneie no celular (Aparelhos conectados).");
+      } else {
+        toast.error(pair.error || "A Evolution não devolveu o QR. Tenta de novo em alguns segundos.");
+        update((d) => {
+          const c = d.connections.find((x) => x.id === id);
+          if (c) c.status = "offline";
+        });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao gerar QR");
+      update((d) => {
+        const c = d.connections.find((x) => x.id === id);
+        if (c) c.status = "offline";
+      });
+    } finally {
+      setQrBusy(false);
+    }
+  };
+
+  useEvolutionPairing(qr, setQr, (number) => {
+    const id = qrConnIdRef.current;
+    setQrOpen(false);
+    setQr("");
+    toast.success(`WhatsApp conectado${number ? ` · ${number}` : ""}`);
+    update((d) => {
+      const c = (id && d.connections.find((x) => x.id === id))
+        || d.connections.find((x) => x.status === "conectando")
+        || d.connections[0];
+      if (c) {
+        c.status = "online";
+        if (number) c.phone = number;
+        c.lastSyncAt = nowISO();
+      }
+    });
+    setQrConnId(null);
+  });
 
   const handleCreate = () => {
     if (!newName.trim() && !newInstance.trim()) {
@@ -550,19 +619,37 @@ function WhatsAppPage() {
   };
 
   const handleSync = async (id: string) => {
+    // Sempre abre o QR se não estiver online — nunca só toast “escaneie”.
     update((d) => { const c = d.connections.find((x) => x.id === id); if (c) c.status = "conectando"; });
     const result = await testEvolutionConnection();
-    update((d) => {
-      const c = d.connections.find((x) => x.id === id);
-      if (c) {
-        c.status = result.connected ? "online" : "offline";
-        c.lastSyncAt = nowISO();
-        if (result.number) c.phone = result.number;
-      }
-    });
-    if (result.connected) toast.success(`Sincronizado! ${result.number} · ${result.latencyMs}ms`);
-    else toast.error(result.message);
+    if (result.connected) {
+      update((d) => {
+        const c = d.connections.find((x) => x.id === id);
+        if (c) {
+          c.status = "online";
+          c.lastSyncAt = nowISO();
+          if (result.number) c.phone = result.number;
+        }
+      });
+      toast.success(`Sincronizado! ${result.number} · ${result.latencyMs}ms`);
+      return;
+    }
+    await openQrForConnection(id);
   };
+
+  // Offline ao abrir a página → já joga o modal do QR.
+  useEffect(() => {
+    if (online > 0 || qrOpen || qrBusy) return;
+    const target = db.connections.find((c) => /info tech|helena/i.test(c.name))
+      ?? db.connections.find((c) => c.status !== "online")
+      ?? db.connections[0];
+    if (!target) return;
+    const t = window.setTimeout(() => {
+      void openQrForConnection(target.id);
+    }, 400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -571,11 +658,49 @@ function WhatsAppPage() {
         title="WhatsApp"
         description="Conecte o número da agência via Evolution API. Todos os agentes SDR, Closer e Atendimento usam este número para prospecção e atendimento."
         actions={
-          <Button className="gap-2" onClick={() => setIsNewOpen(true)}>
-            <Plus className="size-4" /> Adicionar Número
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {online === 0 && (
+              <Button
+                className="gap-2 bg-[#25D366] text-white hover:bg-[#1ebe57]"
+                disabled={qrBusy}
+                onClick={() => {
+                  const id = db.connections.find((c) => /info tech/i.test(c.name))?.id
+                    ?? db.connections[0]?.id;
+                  if (id) void openQrForConnection(id);
+                }}
+              >
+                <QrCode className="size-4" /> {qrBusy ? "Gerando QR…" : "Escanear QR agora"}
+              </Button>
+            )}
+            <Button className="gap-2" variant="outline" onClick={() => setIsNewOpen(true)}>
+              <Plus className="size-4" /> Adicionar Número
+            </Button>
+          </div>
         }
       />
+
+      {online === 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            const id = db.connections.find((c) => /info tech/i.test(c.name))?.id
+              ?? db.connections[0]?.id;
+            if (id) void openQrForConnection(id);
+          }}
+          className="flex w-full items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 text-left transition hover:bg-warning/15"
+        >
+          <QrCode className="mt-0.5 size-5 shrink-0 text-warning" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-sm">WhatsApp desconectado — clique aqui para abrir o QR Code</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              No celular: WhatsApp → Aparelhos conectados → Conectar aparelho. O QR aparece no modal.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background">
+            Abrir QR
+          </span>
+        </button>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard label="Números Online" value={online} icon={<CheckCircle2 />} tone="success" />
@@ -583,7 +708,7 @@ function WhatsAppPage() {
         <StatCard label="Na Fila" value={totalQueue} hint="Aguardando envio" icon={<Zap />} tone="helena" />
       </div>
 
-      {!admin && <CustomerWhatsAppConnect />}
+      <CustomerWhatsAppConnect />
 
       <Tabs defaultValue="numeros">
         <TabsList>
@@ -676,11 +801,21 @@ function WhatsAppPage() {
 
                   {/* Ações */}
                   <div className="flex gap-2 pt-1">
+                    {conn.status !== "online" && (
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8 text-xs gap-1.5"
+                        disabled={qrBusy}
+                        onClick={() => void openQrForConnection(conn.id)}
+                      >
+                        <QrCode className="size-3.5" /> {qrBusy && qrConnId === conn.id ? "Gerando QR…" : "Abrir QR"}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
                       className="flex-1 h-8 text-xs gap-1.5"
-                      onClick={() => handleSync(conn.id)}
+                      onClick={() => void handleSync(conn.id)}
                     >
                       <RefreshCw className="size-3.5" /> Sincronizar
                     </Button>
@@ -707,6 +842,48 @@ function WhatsAppPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      <Dialog open={qrOpen} onOpenChange={(open) => {
+        setQrOpen(open);
+        if (!open) {
+          setQr("");
+          if (qrConnId) {
+            update((d) => {
+              const c = d.connections.find((x) => x.id === qrConnId);
+              if (c && c.status === "conectando") c.status = "offline";
+            });
+          }
+        }
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Escanear QR Code</DialogTitle>
+            <DialogDescription>
+              No celular: WhatsApp → Aparelhos conectados → Conectar aparelho. O QR renova sozinho até parear.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-2">
+            {qrBusy && !qr && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <RefreshCw className="size-4 animate-spin" /> Gerando QR na Evolution…
+              </div>
+            )}
+            {qr && <img src={qr} alt="QR WhatsApp" className="w-56 h-56 rounded-lg border bg-white p-2" />}
+            {!qrBusy && !qr && (
+              <p className="text-sm text-muted-foreground text-center">Sem QR ainda. Fecha e clica em Abrir QR de novo.</p>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={qrBusy || !qrConnId}
+              onClick={() => qrConnId && void openQrForConnection(qrConnId)}
+            >
+              <RefreshCw className={`size-3.5 ${qrBusy ? "animate-spin" : ""}`} /> Atualizar QR
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal adicionar número manual */}
       <Dialog open={isNewOpen} onOpenChange={setIsNewOpen}>

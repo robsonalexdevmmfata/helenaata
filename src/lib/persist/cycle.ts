@@ -125,6 +125,32 @@ export function cycleSnapshot(db: DB, user: User) {
       runAt: j.runAt,
       idempotencyKey: j.idempotencyKey,
     })),
+    // WhatsApp + prévias: sem isso, refresh “desconecta” e some prospecção.
+    connections: (db.connections || []).slice(0, 20).map((c) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone,
+      type: c.type,
+      status: c.status,
+      queue: c.queue,
+      sentToday: c.sentToday,
+      dailyLimit: c.dailyLimit,
+      lastSyncAt: c.lastSyncAt,
+    })),
+    sitePreviews: (db.sitePreviews || []).slice(0, 200).map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      segment: p.segment,
+      city: p.city,
+      phone: p.phone,
+      vercelUrl: p.vercelUrl,
+      previewPath: p.previewPath,
+      status: p.status,
+      contactId: p.contactId,
+      companyId: p.companyId,
+      createdAt: p.createdAt,
+    })),
     memories: db.activities
       .filter((a) => a.type === "ia" && /obje|caro|retorno|LGPD|ciclo/i.test(a.text))
       .slice(0, 80)
@@ -284,6 +310,63 @@ export async function pullCycleIntoStore() {
           durationMs: row.duration_ms || 0,
         });
       }
+      const snap = data.inbox || {};
+      for (const row of data.connections || snap.connections || []) {
+        if (!row?.id) continue;
+        const existing = d.connections.find((c) => c.id === row.id);
+        if (existing) {
+          existing.name = row.name || existing.name;
+          existing.phone = row.phone || existing.phone;
+          if (row.status === "online" || row.status === "offline" || row.status === "conectando") {
+            existing.status = row.status;
+          }
+          if (row.lastSyncAt) existing.lastSyncAt = row.lastSyncAt;
+          if (Number.isFinite(Number(row.dailyLimit))) existing.dailyLimit = Number(row.dailyLimit);
+        } else {
+          d.connections.push({
+            id: row.id,
+            organizationId: d.organization.id,
+            name: row.name || "WhatsApp",
+            phone: row.phone || "",
+            type: row.type || "cloud_api",
+            status: row.status === "online" ? "online" : "offline",
+            queue: Number(row.queue) || 0,
+            sentToday: Number(row.sentToday) || 0,
+            dailyLimit: Number(row.dailyLimit) || 1000,
+            lastSyncAt: row.lastSyncAt || new Date().toISOString(),
+          });
+        }
+      }
+      if (Array.isArray(snap.companies)) {
+        for (const row of snap.companies) {
+          const id = row.id || row.app_id;
+          if (!id || d.companies.some((c) => c.id === id)) continue;
+          d.companies.unshift({
+            id,
+            organizationId: d.organization.id,
+            name: row.name || "Empresa",
+            segment: row.segment || "",
+            city: row.city || "",
+            size: "1–10",
+            website: row.website || "",
+            ownerId: d.currentUserId,
+            createdAt: row.createdAt || new Date().toISOString(),
+          });
+        }
+      }
+    });
+    // Reconfirma Evolution de verdade (sessão no servidor) pra não marcar online à toa.
+    void import("@/lib/evolution/evolutionapi").then(async ({ getEvolutionStatus }) => {
+      const st = await getEvolutionStatus().catch(() => null);
+      if (!st) return;
+      update((d) => {
+        const conn = d.connections.find((c) => c.status === "online" || c.status === "conectando" || /info tech|helena/i.test(c.name))
+          ?? d.connections[0];
+        if (!conn) return;
+        conn.status = st.connected ? "online" : conn.status === "conectando" ? "conectando" : "offline";
+        if (st.number) conn.phone = st.number;
+        conn.lastSyncAt = new Date().toISOString();
+      });
     });
   } catch {
     /* offline */
