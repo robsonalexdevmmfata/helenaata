@@ -1569,7 +1569,7 @@ const handlers: Record<string, Handler> = {
           segment: wave ? "diversos nichos locais" : segment,
           city: wave ? "São Paulo, Campinas, Araçatuba, Andradina, Bauru" : city,
           state: wave ? "SP" : undefined,
-          limit: Math.min(Number(p.limit) || (wave ? 120 : 12), MAX_PROSPECT_WAVE),
+          limit: Math.min(Number(p.limit) || (wave ? 1000 : 12), MAX_PROSPECT_WAVE),
           wave: Boolean(wave),
           simulate: p.simulate === true,
         },

@@ -181,6 +181,10 @@ function hydrate(db: DB): DB {
     if (pl.id === "pl_com" || /comercial/i.test(pl.name)) ensureCommercialStageOrder(pl);
   }
   promoteNoSiteDealsToQualified(db.deals || [], db.pipelines?.[0]);
+  // Tira teto antigo de 30 leads/dia no chip — operação Máquina = 1000.
+  for (const c of db.connections || []) {
+    if ((c.dailyLimit || 0) > 0 && c.dailyLimit < 150) c.dailyLimit = 1000;
+  }
   // Time Comercial sempre pode mover etapa no pipeline.
   db.agents?.forEach((a) => {
     if (a.teamId !== "t_com" && a.role !== "Closer" && a.role !== "SDR" && a.role !== "Qualificador") return;

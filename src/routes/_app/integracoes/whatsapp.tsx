@@ -579,6 +579,7 @@ function WhatsAppPage() {
       const mark = (c: (typeof d.connections)[0]) => {
         c.status = "online";
         if (phone) c.phone = phone;
+        c.dailyLimit = Math.max(c.dailyLimit || 0, 1000);
         c.lastSyncAt = nowISO();
       };
       const primary = (id && d.connections.find((x) => x.id === id))
@@ -599,6 +600,12 @@ function WhatsAppPage() {
       }
     });
     setQrConnId(null);
+    // Grava número + status ONLINE no Supabase na hora (não espera fechar o navegador).
+    void import("@/lib/persist/cycle").then(async ({ flushCyclePush }) => {
+      const out = await flushCyclePush();
+      if (out.ok) toast.success("Número salvo no Supabase.");
+      else toast.error(out.error || "Não gravou no banco — tenta Sincronizar de novo.");
+    });
   });
 
   const handleCreate = () => {
@@ -648,6 +655,7 @@ function WhatsAppPage() {
         }
       });
       toast.success(`Sincronizado! ${result.number} · ${result.latencyMs}ms`);
+      void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush());
       return;
     }
     await openQrForConnection(id);

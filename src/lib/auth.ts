@@ -40,7 +40,10 @@ export function startSession(userId: string) {
     const u = getDB().users.find((x) => x.id === userId);
     if (u) elevatePrivilegedAccount(u);
   });
-  void import("@/lib/persist/cycle").then(({ pullCycleIntoStore }) => pullCycleIntoStore());
+  void import("@/lib/persist/cycle").then(({ pullCycleIntoStore, installCyclePersistHooks, flushCyclePush }) => {
+    installCyclePersistHooks();
+    void pullCycleIntoStore().then(() => flushCyclePush());
+  });
 }
 
 export function findLocalUser(username: string, password: string) {

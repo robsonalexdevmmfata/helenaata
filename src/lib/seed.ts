@@ -595,7 +595,7 @@ export function createCustomerSeed(owner: User): DB {
     status: "offline",
     queue: 0,
     sentToday: 0,
-    dailyLimit: 30,
+    dailyLimit: 1000,
     lastSyncAt: now,
   }];
   db.agents.forEach((a) => {

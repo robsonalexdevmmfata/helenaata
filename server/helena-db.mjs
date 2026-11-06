@@ -202,14 +202,49 @@ export async function ensureTenant(input) {
         appUserId,
       ],
     );
+  } else {
+    // Sempre atualiza telefone / instância Evolution (WhatsApp conectado não pode sumir).
+    await q(
+      `update profiles set
+         phone = coalesce(nullif($2, ''), phone),
+         evolution_instance = coalesce(nullif($3, ''), evolution_instance),
+         full_name = coalesce(nullif($4, ''), full_name),
+         company_name = coalesce(nullif($5, ''), company_name)
+       where app_user_id = $1`,
+      [
+        appUserId,
+        input.phone || input.whatsappPhone || null,
+        input.evolutionInstance || null,
+        input.name || null,
+        input.companyName || null,
+      ],
+    );
   }
   return { organizationId, orgSlug, appUserId };
 }
 
 export async function saveCycle(payload) {
-  const tenant = await ensureTenant(payload.tenant || {});
+  const connections = Array.isArray(payload.connections) ? payload.connections : [];
+  const waPhone =
+    connections.find((c) => c?.status === "online" && c?.phone)?.phone
+    || connections.find((c) => c?.phone)?.phone
+    || payload.tenant?.whatsappPhone
+    || payload.tenant?.phone
+    || null;
+  const tenantInput = {
+    ...(payload.tenant || {}),
+    phone: waPhone || payload.tenant?.phone || null,
+    whatsappPhone: waPhone || null,
+  };
+  const tenant = await ensureTenant(tenantInput);
   if (!tenant?.organizationId || tenant.skipped) return { ok: false, skipped: true };
   const oid = tenant.organizationId;
+  if (waPhone && tenant.appUserId) {
+    await q(
+      `update profiles set phone = $2 where app_user_id = $1`,
+      [tenant.appUserId, waPhone],
+    ).catch(() => {});
+  }
 
   for (const c of payload.companies || []) {
     await q(
@@ -323,8 +358,10 @@ export async function saveCycle(payload) {
       deals: Array.isArray(payload.deals) ? payload.deals.slice(0, 800) : [],
       contacts: Array.isArray(payload.contacts) ? payload.contacts.slice(0, 1000) : [],
       companies: Array.isArray(payload.companies) ? payload.companies.slice(0, 1000) : [],
-      connections: Array.isArray(payload.connections) ? payload.connections.slice(0, 20) : [],
+      connections: connections.slice(0, 20),
       sitePreviews: Array.isArray(payload.sitePreviews) ? payload.sitePreviews.slice(0, 200) : [],
+      whatsappPhone: waPhone || null,
+      evolutionInstance: payload.tenant?.evolutionInstance || null,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -381,6 +418,9 @@ export async function loadCycle({ appUserId, email }) {
     memories,
     deals,
     conversations: inbox?.conversations || [],
+    connections: inbox?.connections || [],
+    whatsappPhone: inbox?.whatsappPhone || profile.phone || null,
+    evolutionInstance: inbox?.evolutionInstance || profile.evolution_instance || null,
     inbox,
   };
 }

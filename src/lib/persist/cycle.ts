@@ -17,6 +17,10 @@ function cycleOf(c: Contact) {
 }
 
 export function cycleSnapshot(db: DB, user: User) {
+  const wa =
+    (db.connections || []).find((c) => c.status === "online" && c.phone)
+    || (db.connections || []).find((c) => /info tech|helena/i.test(c.name) && c.phone)
+    || (db.connections || []).find((c) => c.phone);
   return {
     tenant: {
       appUserId: user.id,
@@ -27,8 +31,9 @@ export function cycleSnapshot(db: DB, user: User) {
       organizationId: user.organizationId,
       orgSlug: user.organizationId,
       plan: user.planId || "trial",
-      phone: user.phone,
-      evolutionInstance: user.evolutionInstance,
+      phone: wa?.phone || user.phone,
+      whatsappPhone: wa?.phone || user.phone || "",
+      evolutionInstance: user.evolutionInstance || "helena",
     },
     companies: db.companies.slice(0, 1000).map((c) => ({
       id: c.id,
@@ -164,6 +169,36 @@ export function cycleSnapshot(db: DB, user: User) {
 }
 
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
+let hooksInstalled = false;
+
+/** Grava no Supabase agora (WhatsApp + CRM). Usar após conectar o chip. */
+export async function flushCyclePush(): Promise<{ ok: boolean; error?: string }> {
+  if (skipPersist()) return { ok: true };
+  const db = getDB();
+  const user = currentUser(db);
+  if (!user) return { ok: false, error: "sem usuário" };
+  clearTimeout(pushTimer);
+  const token = typeof window !== "undefined" ? window.localStorage.getItem("helena-backend-token") : "";
+  const body = JSON.stringify(cycleSnapshot(getDB(), user));
+  try {
+    const res = await fetch("/api/helena/cycle", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body,
+      keepalive: true,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) {
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "falha de rede" };
+  }
+}
 
 export function scheduleCyclePush() {
   if (skipPersist()) return;
@@ -172,16 +207,44 @@ export function scheduleCyclePush() {
   if (!user) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
-    const token = typeof window !== "undefined" ? window.localStorage.getItem("helena-backend-token") : "";
+    void flushCyclePush();
+  }, 400);
+}
+
+/** Ao fechar/trocar aba: manda snapshot pro Supabase (não perde WhatsApp/número). */
+export function installCyclePersistHooks() {
+  if (skipPersist() || hooksInstalled || typeof window === "undefined") return;
+  hooksInstalled = true;
+  const kick = () => {
+    const db = getDB();
+    const user = currentUser(db);
+    if (!user) return;
+    const token = window.localStorage.getItem("helena-backend-token") || "";
+    const body = JSON.stringify(cycleSnapshot(db, user));
+    try {
+      if (navigator.sendBeacon) {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon("/api/helena/cycle", blob);
+        return;
+      }
+    } catch {
+      /* fallback fetch */
+    }
     void fetch("/api/helena/cycle", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(cycleSnapshot(getDB(), user)),
-    }).catch(() => { /* servidor local/Render pode estar frio */ });
-  }, 800);
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  };
+  window.addEventListener("pagehide", kick);
+  window.addEventListener("beforeunload", kick);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") kick();
+  });
 }
 
 function mergeConversations(d: DB, rows: any[]) {
@@ -311,31 +374,37 @@ export async function pullCycleIntoStore() {
         });
       }
       const snap = data.inbox || {};
+      const savedPhone = String(data.whatsappPhone || data.profile?.phone || snap.whatsappPhone || "").trim();
       for (const row of data.connections || snap.connections || []) {
         if (!row?.id) continue;
         const existing = d.connections.find((c) => c.id === row.id);
         if (existing) {
           existing.name = row.name || existing.name;
-          existing.phone = row.phone || existing.phone;
+          // Número gravado no Supabase nunca some no refresh.
+          existing.phone = row.phone || existing.phone || savedPhone;
           if (row.status === "online" || row.status === "offline" || row.status === "conectando") {
             existing.status = row.status;
           }
           if (row.lastSyncAt) existing.lastSyncAt = row.lastSyncAt;
-          if (Number.isFinite(Number(row.dailyLimit))) existing.dailyLimit = Number(row.dailyLimit);
+          if (Number.isFinite(Number(row.dailyLimit))) existing.dailyLimit = Math.max(Number(row.dailyLimit) || 0, 1000);
         } else {
           d.connections.push({
             id: row.id,
             organizationId: d.organization.id,
             name: row.name || "WhatsApp",
-            phone: row.phone || "",
+            phone: row.phone || savedPhone || "",
             type: row.type || "cloud_api",
             status: row.status === "online" ? "online" : "offline",
             queue: Number(row.queue) || 0,
             sentToday: Number(row.sentToday) || 0,
-            dailyLimit: Number(row.dailyLimit) || 1000,
+            dailyLimit: Math.max(Number(row.dailyLimit) || 0, 1000),
             lastSyncAt: row.lastSyncAt || new Date().toISOString(),
           });
         }
+      }
+      if (savedPhone) {
+        const agency = d.connections.find((c) => c.id === "wa_agency" || /info tech|helena/i.test(c.name)) || d.connections[0];
+        if (agency && !agency.phone) agency.phone = savedPhone;
       }
       if (Array.isArray(snap.companies)) {
         for (const row of snap.companies) {
@@ -355,7 +424,7 @@ export async function pullCycleIntoStore() {
         }
       }
     });
-    // Reconfirma Evolution de verdade (sessão no servidor) pra não marcar online à toa.
+    // Sessão Evolution: atualiza status, mas NUNCA apaga o número salvo.
     void import("@/lib/evolution/evolutionapi").then(async ({ getEvolutionStatus }) => {
       const st = await getEvolutionStatus().catch(() => null);
       if (!st) return;
@@ -363,10 +432,12 @@ export async function pullCycleIntoStore() {
         const conn = d.connections.find((c) => c.status === "online" || c.status === "conectando" || /info tech|helena/i.test(c.name))
           ?? d.connections[0];
         if (!conn) return;
+        const keptPhone = conn.phone;
         conn.status = st.connected ? "online" : conn.status === "conectando" ? "conectando" : "offline";
-        if (st.number) conn.phone = st.number;
+        conn.phone = st.number || keptPhone;
         conn.lastSyncAt = new Date().toISOString();
       });
+      if (st.connected || st.number) void flushCyclePush();
     });
   } catch {
     /* offline */

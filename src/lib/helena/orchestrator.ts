@@ -466,18 +466,21 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
-  // RPA multi-nicho / 1000 leads / Brasil: NÃO deixa o Time Dev roubar com 8 prévias fake.
+  // RPA multi-nicho / 1000 leads / Brasil (não só SP/Campinas).
   if (
     /\brpa\b/.test(n)
     || /expediente\s*(rpa|automat|multi)/.test(n)
     || /onda\s*(rpa|comercial|multi)/.test(n)
-    || (/(1000|mil)\s*leads?/.test(n) && /(prospect|prospecc|cacar|caçar|varr|busca|rpa|nichos)/.test(n))
+    || /diversos?\s*nichos?|varios\s*nichos?|multi[\s-]?nicho|todos?\s*os\s*nichos|time\s*inteiro|nao\s*somente|nao\s*so\s*(em\s*)?(sao|campinas|restaurante)/.test(n)
+    || /(1000|mil)\s*leads?/.test(n)
+    || /brasil\s*(inteiro|todinho|todo)/.test(n)
   ) {
     const nums = [...n.matchAll(/(\d{1,4})/g)].map((m) => Number(m[1])).filter((x) => x >= 10 && x <= 1000);
-    const limit = Math.min(nums.find((x) => x >= 80) ?? nums[0] ?? 120, 1000);
-    const nationwide = /brasil|nacional|todinho|país|pais/.test(n);
-    const multi = /diversos|varios|multi|onda|todos?\s*os\s*nichos|nichos|profisso|profiss|1000|mil leads|\brpa\b/.test(n)
-      || !/dentista|advog|restaurante|clinic|barbear/.test(n);
+    const wantsMil = /(1000|mil)\s*leads?|brasil\s*(inteiro|todinho)|diversos?\s*nichos?|time\s*inteiro/.test(n);
+    const limit = Math.min(nums.find((x) => x >= 80) ?? (wantsMil ? 1000 : nums[0]) ?? 1000, 1000);
+    // "não só SP/Campinas" + mil leads = Brasil inteiro por padrão.
+    const nationwide = /brasil|nacional|todinho|país|pais|nao\s*somente|nao\s*so|diversos?\s*nichos?|time\s*inteiro|(1000|mil)\s*leads?/.test(n);
+    const multi = true;
     if (multi) {
       const goalMatch = n.match(/(?:fechar|meta|faturar|bater)\s*(?:de\s*)?(?:r\$\s*)?(\d{3,5})/);
       const actions = [
@@ -485,21 +488,22 @@ export function interpret(text: string): Reply[] {
           "prospect.scan_maps",
           {
             segment: "diversos nichos locais",
-            city: nationwide ? "Brasil" : "São Paulo, Campinas, Araçatuba, Andradina, Bauru, Rio Preto",
-            nationwide,
-            state: nationwide ? "TODOS" : "SP",
+            city: "Brasil",
+            nationwide: true,
+            state: "TODOS",
             limit,
             wave: true,
           },
-          `RPA multi-nicho · até ${limit} leads${nationwide ? " · Brasil" : ""}`,
+          `RPA multi-nicho · até ${limit} leads · Brasil inteiro`,
           [
             { label: "Modo", value: "RPA · diversos nichos e profissões" },
             { label: "Nichos", value: "Dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias, oficinas, academias…" },
-            { label: "Escopo", value: nationwide ? "Brasil (hubs nacionais + SP)" : "SP + interior (Maps → Pipeline → Inbox → WhatsApp)" },
+            { label: "Escopo", value: "Brasil inteiro (capitais + hubs) — não só SP/Campinas" },
+            { label: "Meta", value: `Até ${limit} WhatsApp válidos sem site` },
             { label: "Times", value: "Comercial + Closer ativos · Dev quando Máquina" },
             { label: "Disparo", value: "Evolution · só com WhatsApp online" },
           ],
-          `RPA multi-nicho ligado: até ${limit} leads sem site/cardápio${nationwide ? " no Brasil" : " em SP + interior"}, Pipeline/Inbox e WhatsApp. Time Comercial + Closer no jogo. Te aviso quando a onda terminar.`,
+          `RPA multi-nicho no Brasil inteiro: até ${limit} leads sem site/cardápio em vários nichos. Pipeline + Inbox + WhatsApp. Te aviso quando a onda terminar.`,
         ),
       ];
       if (goalMatch) {
@@ -527,14 +531,14 @@ export function interpret(text: string): Reply[] {
           "Time Comercial e Closer ativos pra abordar e fechar.",
         ),
       );
-      if (canUseDevTeam(currentUser(getDB())) && (/time\s*dev|designer|cardapio|previa|site/.test(n))) {
+      if (canUseDevTeam(currentUser(getDB())) && (/time\s*dev|designer|cardapio|previa|site|time\s*inteiro/.test(n))) {
         actions.push(
           perform(
             "dev.build_presence",
-            { segment: "restaurantes e clínicas", city: nationwide ? "Brasil" : "São Paulo", nationwide, limit: Math.min(30, limit) },
+            { segment: "diversos nichos locais", city: "Brasil", nationwide: true, limit: Math.min(80, limit) },
             "Time Dev + Designer · prévias Vercel",
             [{ label: "Dev", value: "Sofia + Caio + Diego · cardápio/site na Vercel" }],
-            "Time Dev em paralelo: prévias bonitas na Vercel pro comercial mandar link clicável.",
+            "Time Dev em paralelo: prévias na Vercel pro comercial mandar link clicável.",
           ),
         );
       }
@@ -581,32 +585,35 @@ export function interpret(text: string): Reply[] {
     const segment = weak ? "Dentistas" : intent.segment;
     const nationwide = intent.nationwide;
     const city = intent.city;
-    const limit = Math.min(Number(n.match(/(\d{1,4})/)?.[1] ?? 10), 1000);
-    const wave = weak || limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|1000|diversos nichos|varios nichos|\brpa\b/.test(n);
+    const nums = [...n.matchAll(/(\d{1,4})/g)].map((m) => Number(m[1])).filter((x) => x >= 10 && x <= 1000);
+    const asked = nums.find((x) => x >= 80) ?? nums[0] ?? 10;
+    const wave = weak || asked >= 80 || /onda|1000|mil leads|diversos nichos|varios nichos|\brpa\b|brasil/.test(n);
+    const limit = Math.min(wave ? (nums.find((x) => x >= 80) ?? 1000) : asked, 1000);
+    const br = nationwide || wave;
 
     return [
       perform(
         "prospect.scan_maps",
         {
           segment: wave ? "vários nichos locais" : segment,
-          city: wave ? "São Paulo, Campinas, Araçatuba, Andradina" : city,
-          nationwide: wave ? false : nationwide,
-          state: wave ? "SP" : nationwide ? "TODOS" : undefined,
+          city: br ? "Brasil" : city,
+          nationwide: br,
+          state: br ? "TODOS" : undefined,
           limit,
           wave,
           noWhatsAppAi: intent.noWhatsAppAi,
         },
-        `Varredura Maps: ${wave ? "onda multi-nicho" : segment} · ${wave ? "SP + interior" : nationwide ? "Brasil inteiro" : city}`,
+        `Varredura Maps: ${wave ? "onda multi-nicho" : segment} · ${br ? "Brasil inteiro" : city}`,
         [
           { label: "Nicho", value: wave ? "RPA diversos nichos (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias…)" : segment },
-          { label: "Escopo", value: wave ? "São Paulo, Campinas, Araçatuba, Andradina, Bauru e próximas" : nationwide ? "Brasil inteiro" : city },
+          { label: "Escopo", value: br ? "Brasil inteiro — não só SP/Campinas" : city },
           { label: "Critério", value: intent.noWhatsAppAi ? "WhatsApp válido · sem rastros públicos de IA/chatbot no atendimento (heurística)" : "Sem site + WhatsApp celular válido · sem inventar número" },
-          { label: "CRM", value: "Pipeline → Novo lead · Inbox · Contatos" },
-          { label: "WhatsApp", value: "Evolution (chip conectado) · intervalo 8s" },
+          { label: "CRM", value: "Pipeline → Qualificado · Inbox · Contatos" },
+          { label: "WhatsApp", value: "Evolution (chip conectado)" },
         ],
         wave
-          ? `RPA multi-nicho em andamento (até ${limit} WhatsApp válidos em SP + interior). Quando achar, preenche Pipeline, Inbox e dispara. Te aviso ao terminar.`
-          : `Varredura de ${segment} em ${nationwide ? "Brasil" : city} iniciada. Leads → Pipeline + Inbox + WhatsApp. Te aviso ao terminar.`,
+          ? `RPA multi-nicho no Brasil (até ${limit} WhatsApp válidos). Pipeline + Inbox + disparo. Te aviso ao terminar.`
+          : `Varredura de ${segment} em ${br ? "Brasil" : city} iniciada. Leads → Pipeline + Inbox + WhatsApp. Te aviso ao terminar.`,
       ),
     ];
   }
@@ -926,12 +933,13 @@ export function interpret(text: string): Reply[] {
   }
 
   return [{
-    text: "Eu ensino o sistema e administro a operação. Ainda não mapeei esse pedido — diga de outra forma ou escolha:",
+    text: "Diz de outro jeito ou escolhe uma ação pronta:",
     card: { type: "list", title: "Eu cuido de", items: [
+      { label: "RPA 1000 leads diversos nichos no Brasil inteiro" },
+      { label: "Ativa Time Dev + Comercial + Closer" },
       { label: "Me ensina a usar o sistema" },
       { label: "Cuida dos follow-ups" },
-      { label: "Gere 20 leads de dentistas em Campinas" },
-      { label: "Monte prévia de restaurantes sem cardápio" },
+      { label: "Monte prévia de negócios sem site" },
       { label: "Como está o comercial?" },
       { label: "Quem está esperando resposta?" },
       { label: "Assume o comercial e cuida de tudo" },

@@ -50,7 +50,7 @@ export function coachSteps(db: DB): CoachStep[] {
       id: "prospectar",
       title: "Caçar leads no mapa",
       why: "Eu varro o Maps, mando pro Pipeline e o Time Comercial aborda.",
-      sayToHelena: "Helena, gere 20 leads de dentistas em Campinas",
+      sayToHelena: "Helena, RPA 1000 leads diversos nichos no Brasil inteiro",
       href: "/prospeccao/buscar",
       done: hasLeads,
     },
