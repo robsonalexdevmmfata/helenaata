@@ -1042,11 +1042,16 @@ const handlers: Record<string, Handler> = {
     if (!isTest && p.simulate !== true) {
       const limitLive = Math.min(quota.allowed, 150);
       // Onda só se pedida de propósito — pedido "300 restaurantes em BC" NÃO vira advogado em SP.
-      const wave = p.wave === true || /varios nichos|onda multi/i.test(segment);
-      import("@/lib/prospect/runProspecting").then(({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
+      const wave = p.wave === true || /varios nichos|diversos nichos|onda multi|rpa multi/i.test(segment);
+      import("@/lib/prospect/runProspecting").then(async ({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
         activateCommercialTeam();
+        const { WAVE_NICHES } = await import("@/lib/prospect/mapsSearch");
         const job = wave
-          ? runWaveProspecting({ limit: limitLive, organizationId: getDB().organization.id })
+          ? runWaveProspecting({
+            limit: limitLive,
+            organizationId: getDB().organization.id,
+            niches: Array.isArray(p.niches) ? p.niches.map(String) : WAVE_NICHES,
+          })
           : runRealProspecting({
             segment,
             city,
@@ -1065,7 +1070,7 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `${wave ? "Onda multi-nicho SP" : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? `RPA multi-nicho (${WAVE_NICHES.length} nichos) SP` : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
@@ -1075,24 +1080,24 @@ const handlers: Record<string, Handler> = {
           const convs = getDB().conversations.filter((c) => c.flow?.origin === "prospeccao").length;
           if (r.found > 0) {
             pushHelenaMessage(
-              `Varredura concluída: ${r.found} leads com WhatsApp no CRM · ${deals} no Pipeline (Novo lead) · ${convs} conversas no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). Abra CRM → Pipeline e Atendimento → Inbox.`,
-              { type: "result", ok: true, title: "Prospecção Maps", detail: `${r.found} leads · ${r.sent} enviados` },
+              `RPA ${wave ? "multi-nicho" : segment} concluído: ${r.found} leads com WhatsApp · ${deals} no Pipeline · ${convs} no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). CRM → Pipeline e Atendimento → Inbox.`,
+              { type: "result", ok: true, title: "RPA Maps", detail: `${r.found} leads · ${r.sent} enviados` },
             );
           } else {
             pushHelenaMessage(
               "A varredura terminou sem achar WhatsApp celular válido nesse momento (mapa/OSM). Nada entrou no Pipeline. Tente de novo com nicho + cidade (ex.: “30 clínicas em Campinas”).",
-              { type: "result", ok: false, title: "Prospecção Maps", detail: "0 leads" },
+              { type: "result", ok: false, title: "RPA Maps", detail: "0 leads" },
             );
           }
         }).catch((err) => {
           pushHelenaMessage(
             `A varredura falhou: ${err instanceof Error ? err.message : "erro de mapa/rede"}. Pipeline continua vazio até a próxima tentativa.`,
-            { type: "result", ok: false, title: "Prospecção Maps", detail: "falha" },
+            { type: "result", ok: false, title: "RPA Maps", detail: "falha" },
           );
         });
       });
       return ok(wave
-        ? `Onda comercial em andamento: até ${limitLive} WhatsApp válidos em SP + interior, vários nichos. Quando achar leads, entram no Pipeline (Novo lead), Inbox e disparo Evolution. Te aviso ao terminar.`
+        ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos em SP + interior (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
         : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Quando achar leads, entram no Pipeline, Inbox e WhatsApp. Te aviso ao terminar — ainda não é “já abordou”.`);
     }
     const limit = Math.min(quota.allowed, 150);
@@ -1546,8 +1551,32 @@ const handlers: Record<string, Handler> = {
     if (mustSubscribe(user)) return fail("Assine Impulso ou Máquina para o expediente RPA voltar.");
     const segment = String(p.segment || p.nicho || "").trim();
     const city = String(p.city || p.cidade || user.companyName || "Brasil");
-    if (segment) {
-      runTool("prospect.scan_maps", { segment, city, limit: Math.min(Number(p.limit) || 8, 20), simulate: p.simulate === true }, ctx);
+    const wave =
+      p.wave === true ||
+      /varios nichos|diversos nichos|multi.?nicho|onda/i.test(segment) ||
+      (!segment && p.multi !== false);
+    if (wave || segment) {
+      const scan = runTool(
+        "prospect.scan_maps",
+        {
+          segment: wave ? "diversos nichos locais" : segment,
+          city: wave ? "São Paulo, Campinas, Araçatuba, Andradina, Bauru" : city,
+          state: wave ? "SP" : undefined,
+          limit: Math.min(Number(p.limit) || (wave ? 60 : 12), 150),
+          wave: Boolean(wave),
+          simulate: p.simulate === true,
+        },
+        ctx,
+      );
+      // Onda multi-nicho é assíncrona: não exige leads na hora (Maps ainda está buscando).
+      if (wave) {
+        return ok(
+          scan.ok
+            ? `RPA multi-nicho iniciado. ${scan.message} Quando os leads entrarem, o Time Comercial aborda no WhatsApp.`
+            : scan.message,
+          { wave: true, scan: scan.message },
+        );
+      }
     }
     const after = getDB();
     const leads = pickRpaLeads(after, Number(p.maxLeads) || 3);

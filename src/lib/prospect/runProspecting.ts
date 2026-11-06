@@ -222,13 +222,14 @@ export async function sendOpeningNow(phone: string, contactName: string, company
   return evolutionSendText(phone, text);
 }
 
-export async function runWaveProspecting(opts: { limit?: number; organizationId: string; operationId?: string }) {
+export async function runWaveProspecting(opts: { limit?: number; organizationId: string; operationId?: string; niches?: string[] }) {
   activateCommercialTeam();
   const target = Math.min(Math.max(opts.limit ?? 150, 1), 150);
-  // Meta pequena (trial): menos cidades/nichos, para preencher Pipeline rápido.
-  const hubs = WAVE_CITIES.slice(0, target <= 30 ? 2 : 4);
-  const niches = WAVE_NICHES.slice(0, target <= 30 ? 4 : 6);
-  const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 4), 12);
+  // Diversos nichos de verdade: cobre a grade WAVE_NICHES (ou lista pedida).
+  const hubs = WAVE_CITIES.slice(0, target <= 40 ? 3 : target <= 80 ? 5 : WAVE_CITIES.length);
+  const pool = (opts.niches?.length ? opts.niches : WAVE_NICHES).filter(Boolean);
+  const niches = pool.slice(0, target <= 40 ? Math.min(8, pool.length) : target <= 80 ? Math.min(12, pool.length) : pool.length);
+  const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 3), 10);
   const seen = new Set<string>();
   const bag: { place: MapPlace; segment: string }[] = [];
   for (const city of hubs) {

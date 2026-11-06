@@ -466,6 +466,35 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
+  // RPA multi-nicho: "quero rpa diversos nichos", "onda RPA", "expediente multi nicho"
+  if (/\brpa\b/.test(n) || /expediente\s*(rpa|automat|multi)/.test(n) || /onda\s*(rpa|comercial|multi)/.test(n)) {
+    const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 60), 150);
+    const multi = /diversos|varios|multi|onda|todos?\s*os\s*nichos|nichos/.test(n) || !/dentista|advog|restaurante|clinic|barbear/.test(n);
+    if (multi) {
+      return [
+        perform(
+          "prospect.scan_maps",
+          {
+            segment: "diversos nichos locais",
+            city: "São Paulo, Campinas, Araçatuba, Andradina, Bauru",
+            nationwide: false,
+            state: "SP",
+            limit,
+            wave: true,
+          },
+          `RPA multi-nicho · até ${limit} leads`,
+          [
+            { label: "Modo", value: "RPA · diversos nichos" },
+            { label: "Nichos", value: "Dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias, oficinas, academias…" },
+            { label: "Escopo", value: "SP + interior (Maps → Pipeline → Inbox → WhatsApp)" },
+            { label: "Disparo", value: "Evolution · só após confirmação real" },
+          ],
+          `RPA multi-nicho ligado: varro vários nichos em SP + interior (até ${limit}), jogo no Pipeline/Inbox e disparo no WhatsApp da agência. Te aviso quando a onda terminar.`,
+        ),
+      ];
+    }
+  }
+
   // Time Dev IA: só na conta admin. Cliente cai na prospecção comercial abaixo.
   if (isPresenceIntent(text) && canUseDevTeam(currentUser(getDB()))) {
     const intent = extractProspectIntent(text);
@@ -500,7 +529,7 @@ export function interpret(text: string): Reply[] {
     const nationwide = intent.nationwide;
     const city = intent.city;
     const limit = Math.min(Number(n.match(/(\d{1,3})/)?.[1] ?? 10), 150);
-    const wave = weak || limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|150 pessoas|diversos nichos/.test(n);
+    const wave = weak || limit >= 80 || (/andradina/.test(n) && /aracatuba/.test(n)) || /onda|150 pessoas|diversos nichos|varios nichos|\brpa\b/.test(n);
 
     return [
       perform(
@@ -516,14 +545,14 @@ export function interpret(text: string): Reply[] {
         },
         `Varredura Maps: ${wave ? "onda multi-nicho" : segment} · ${wave ? "SP + interior" : nationwide ? "Brasil inteiro" : city}`,
         [
-          { label: "Nicho", value: wave ? "Dentistas, clínicas, estética, advogados, restaurantes, barbearias" : segment },
-          { label: "Escopo", value: wave ? "São Paulo, Campinas, Araçatuba, Andradina e próximas" : nationwide ? "Brasil inteiro" : city },
+          { label: "Nicho", value: wave ? "RPA diversos nichos (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias…)" : segment },
+          { label: "Escopo", value: wave ? "São Paulo, Campinas, Araçatuba, Andradina, Bauru e próximas" : nationwide ? "Brasil inteiro" : city },
           { label: "Critério", value: intent.noWhatsAppAi ? "WhatsApp válido · sem rastros públicos de IA/chatbot no atendimento (heurística)" : "Sem site + WhatsApp celular válido · sem inventar número" },
           { label: "CRM", value: "Pipeline → Novo lead · Inbox · Contatos" },
           { label: "WhatsApp", value: "Evolution (chip conectado) · intervalo 8s" },
         ],
         wave
-          ? `Varredura multi-nicho em andamento (até ${limit} WhatsApp válidos em SP + interior). Quando achar, preenche Pipeline, Inbox e dispara. Te aviso ao terminar.`
+          ? `RPA multi-nicho em andamento (até ${limit} WhatsApp válidos em SP + interior). Quando achar, preenche Pipeline, Inbox e dispara. Te aviso ao terminar.`
           : `Varredura de ${segment} em ${nationwide ? "Brasil" : city} iniciada. Leads → Pipeline + Inbox + WhatsApp. Te aviso ao terminar.`,
       ),
     ];

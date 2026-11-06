@@ -43,15 +43,26 @@ export const WAVE_CITIES = [
   "São José do Rio Preto, SP",
 ];
 
+/** Nichos da onda RPA comercial (Maps → CRM → WhatsApp). */
 export const WAVE_NICHES = [
   "Dentistas",
   "Clínicas Médicas",
   "Clínicas de estética",
   "Advogados",
   "Restaurantes",
+  "Pizzarias",
   "Barbearias",
+  "Salões de beleza",
   "Oficinas mecânicas",
   "Imobiliárias",
+  "Pet shops",
+  "Veterinários",
+  "Academias",
+  "Padarias",
+  "Contadores",
+  "Arquitetos",
+  "Fotógrafos",
+  "Escolas de idiomas",
 ];
 
 export const NATIONAL_HUBS = [
@@ -109,7 +120,11 @@ export function queryForSegment(segment: string) {
   if (/estetica|beleza/.test(n)) return `nwr["shop"~"beauty|hairdresser"]`;
   if (/restaurante|pizzaria|lanchonete|churrasc/.test(n)) return `nwr["amenity"="restaurant"]`;
   if (/padaria|cafeteria/.test(n)) return `nwr["shop"="bakery"]\n      nwr["amenity"="cafe"]`;
-  if (/barbearia/.test(n)) return `nwr["shop"="hairdresser"]`;
+  if (/barbearia|salao|salão/.test(n)) return `nwr["shop"="hairdresser"]`;
+  if (/contab|contador/.test(n)) return `nwr["office"="accountant"]`;
+  if (/arquitet/.test(n)) return `nwr["office"="architect"]`;
+  if (/fotograf/.test(n)) return `nwr["craft"="photographer"]\n      nwr["shop"="photo"]`;
+  if (/idioma|ingles|english|curso/.test(n)) return `nwr["amenity"="language_school"]\n      nwr["amenity"="school"]["name"~"idioma|ingles|english",i]`;
   if (/comercio|loja/.test(n)) return `nwr["shop"]`;
   if (/agencia/.test(n)) return `nwr["office"]`;
   return `nwr["name"]["phone"]`;
