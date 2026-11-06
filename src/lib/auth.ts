@@ -2,6 +2,7 @@
 // o admin ainda pega token. Sem servidor, o site segue em modo demonstração.
 import { authenticateBackend, BackendError, clearBackendToken } from "./backend";
 import { activateWorkspaceForUser, getDB, listAccounts, update, upsertAccount } from "./store";
+// getDB used after elevatePrivilegedAccount on session start
 import { passwordMatches } from "@/lib/security/secrets";
 
 const SESSION_KEY = "helena-session";
@@ -9,6 +10,8 @@ const SESSION_KEY = "helena-session";
 export const DEMO_USERNAME = "admin";
 export const DEMO_PASSWORD = "320809eu";
 export const ADMIN_EMAIL = "robsonalexdev@gmail.com";
+/** Alias Manu — mesma liberação total. */
+export const ADMIN_EMAIL_ALT = "robsonalexmmfata@gmail.com";
 export const CUSTOMER_USERNAME = "demo";
 export const CUSTOMER_PASSWORD = "123456";
 
@@ -32,6 +35,10 @@ export function startSession(userId: string) {
     d.currentUserId = userId;
     const u = d.users.find((x) => x.id === userId);
     if (u) u.lastSeen = new Date().toISOString();
+  });
+  void import("@/lib/saas").then(({ elevatePrivilegedAccount }) => {
+    const u = getDB().users.find((x) => x.id === userId);
+    if (u) elevatePrivilegedAccount(u);
   });
   void import("@/lib/persist/cycle").then(({ pullCycleIntoStore }) => pullCycleIntoStore());
 }
@@ -66,7 +73,10 @@ export async function loginWithServer(username: string, password: string) {
     const user = await authenticateBackend(username, password);
     upsertAccount(user);
     startSession(user.id);
-    void import("@/lib/saas").then(({ syncPaidPlanFromCakto }) => syncPaidPlanFromCakto(user));
+    void import("@/lib/saas").then(({ elevatePrivilegedAccount, syncPaidPlanFromCakto }) => {
+      elevatePrivilegedAccount(user);
+      syncPaidPlanFromCakto(user);
+    });
     void import("@/lib/evolution/provision").then(({ provisionEvolutionInstance }) => provisionEvolutionInstance(user, { remote: false }));
     return true;
   } catch (error) {

@@ -43,6 +43,8 @@ export type FollowupDecision =
   | { action: "esfriou" };
 
 const WATCHED: FlowState[] = ["abordado", "visualizou", "closer"];
+/** Tempo curto depois do ✓✓ azul: continuidade da prospecção / prévia. */
+export const READ_CONTINUITY_HOURS = 2;
 
 /** Quantas mensagens do time estão empilhadas sem o cliente ter falado. */
 export function unansweredAgentStreak(conv: Pick<Conversation, "messages">): number {
@@ -254,6 +256,7 @@ export function menuProposalFollowupText(contactName: string, offerName: string,
 
 export const FLOW_STATE_LABEL: Record<FlowState, string> = {
   abordado: "Abordado",
+  novo: "Aguardando disparo",
   visualizou: "Visualizou",
   respondeu: "Respondeu",
   aguardando_aprovacao: "Aguardando aprovação",

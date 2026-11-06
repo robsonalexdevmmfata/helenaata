@@ -69,6 +69,13 @@ export function previewToHtml(p) {
     .map((r) => `<blockquote><strong>${esc(r.author)}</strong> · ${esc(r.rating)} ★<br/>${esc(r.text)}</blockquote>`)
     .join("");
 
+  const logo = p.logoUrl
+    ? `<img class="logo" src="${esc(p.logoUrl)}" alt="${esc(p.name)}" width="72" height="72" />`
+    : "";
+  const ratingLine = p.rating
+    ? `<p class="rating">${esc(String(p.rating))} ★ · ${esc(String(p.reviewCount || 0))} avaliações no mapa</p>`
+    : "";
+
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -79,6 +86,7 @@ export function previewToHtml(p) {
     body{margin:0;font-family:Georgia,serif;background:${esc(pal.bg)};color:${esc(pal.fg)};}
     header{position:relative;min-height:42vh;padding:4rem 1.25rem 3rem;overflow:hidden}
     header img.cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35}
+    .logo{position:relative;border-radius:1rem;border:2px solid #fff4;margin-bottom:.75rem;object-fit:cover}
     .wrap{position:relative;max-width:42rem;margin:0 auto;padding:0 1.25rem 5rem}
     a.btn{display:inline-block;margin:.4rem .4rem 0 0;padding:.7rem 1.1rem;border-radius:999px;background:${esc(pal.accent)};color:${esc(pal.bg)};text-decoration:none;font-family:system-ui,sans-serif;font-size:.9rem}
     a.ghost{background:transparent;color:${esc(pal.fg)};border:1px solid #fff3}
@@ -88,6 +96,7 @@ export function previewToHtml(p) {
     h1{font-size:2.2rem;margin:.4rem 0}
     h2{font-size:.75rem;letter-spacing:.16em;text-transform:uppercase;opacity:.7}
     p,dd{opacity:.9;line-height:1.5}
+    .rating{font-family:system-ui,sans-serif;font-size:.9rem;opacity:.85}
     blockquote{margin:1rem 0;padding-left:1rem;border-left:3px solid ${esc(pal.accent)};opacity:.9}
   </style>
 </head>
@@ -95,8 +104,10 @@ export function previewToHtml(p) {
   <header>
     ${photos[0] ? `<img class="cover" src="${esc(photos[0])}" alt="" />` : ""}
     <div class="wrap">
+      ${logo}
       <p>${esc(p.segment)} · ${esc(p.city)}</p>
       <h1>${esc(p.name)}</h1>
+      ${ratingLine}
       <p>${esc(p.tagline)}</p>
       <a class="btn" href="${esc(waLink)}">Pedir no WhatsApp</a>
       <a class="btn ghost" href="${esc(p.mapsUrl)}" target="_blank" rel="noreferrer">Ver no mapa</a>
@@ -109,7 +120,7 @@ export function previewToHtml(p) {
     ${photosHtml ? `<div class="grid">${photosHtml}</div>` : ""}
     ${menuHtml ? `<h2>Cardápio online</h2>${menuHtml}` : ""}
     ${servicesHtml ? `<h2>Serviços</h2>${servicesHtml}` : ""}
-    ${reviewsHtml ? `<h2>Avaliações</h2>${reviewsHtml}` : ""}
+    ${reviewsHtml ? `<h2>Avaliações (Google Maps)</h2>${reviewsHtml}` : ""}
   </div>
 </body>
 </html>`;

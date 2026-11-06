@@ -213,10 +213,17 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
       })
       .filter(Boolean) as typeof c.messages;
     for (const m of mapped) {
-      if (!existing.has(m.id)) {
-        c.messages.push(m);
-        existing.add(m.id);
-      }
+      if (existing.has(m.id)) continue;
+      // Evita duplicar a mesma abertura já gravada no disparo local.
+      const dup = c.messages.some(
+        (x) =>
+          x.from === m.from &&
+          x.text.slice(0, 80) === m.text.slice(0, 80) &&
+          Math.abs(+new Date(x.at) - +new Date(m.at)) < 15 * 60_000,
+      );
+      if (dup) continue;
+      c.messages.push(m);
+      existing.add(m.id);
     }
     c.messages.sort((a, b) => +new Date(a.at) - +new Date(b.at));
     const last = c.messages.at(-1);

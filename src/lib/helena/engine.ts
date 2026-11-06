@@ -868,14 +868,25 @@ const handlers: Record<string, Handler> = {
     if (closer.status === "pausado" || closer.status === "erro") return fail(`${closer.name} está ${closer.status === "erro" ? "com erro" : "pausada"}`);
     const problem = connectionCheck(db, conv.connectionId ?? s.sharedConnectionId);
     if (problem) return fail(problem);
-    if (shouldHoldOutbound(conv) || unansweredAgentStreak(conv) >= 2) {
-      return fail("este número já foi abordado; a Closer só entra depois de 48h sem resposta, e uma vez só");
-    }
     const contact = db.contacts.find((c) => c.id === conv.contactId);
     const reason: FollowupReason = p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : (conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt ? "visualizou_sem_responder" : "sem_resposta");
+    // Visualizou (azul): espera curta. Sem resposta: 48h. Não bloquear a continuidade do ✓✓.
+    const waitH = reason === "visualizou_sem_responder" ? Math.max(1, s.readNoReplyHours || 2) : Math.max(24, s.noReplyHours || 48);
+    if (shouldHoldOutbound(conv, new Date(), waitH) || unansweredAgentStreak(conv) >= 2) {
+      return fail(reason === "visualizou_sem_responder"
+        ? `Ainda dentro da janela de ${waitH}h após o visualizado — a continuidade entra depois.`
+        : "Este número já foi abordado; a Closer só entra depois de 48h sem resposta, e uma vez só");
+    }
+    const preview = db.sitePreviews?.find((x) => x.contactId === conv.contactId);
+    const previewUrlLive = preview?.vercelUrl || (preview ? `https://helenaata.vercel.app/v/${preview.slug}` : "");
     const attempt = conv.flow.closerAttempts + 1;
     const slots = suggestSlots(db.meetings ?? [], closer.id, new Date(), s, 6);
-    const text = formatForWhatsApp(closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots }));
+    const baseText = closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots });
+    const text = formatForWhatsApp(
+      previewUrlLive && reason === "visualizou_sem_responder"
+        ? `${baseText}\n\nDeixei a prévia do site pronta pra você ver no celular: ${previewUrlLive}`
+        : baseText,
+    );
     const previous = ownerName(db, conv.handlerId);
 
     update((d) => {
@@ -941,10 +952,29 @@ const handlers: Record<string, Handler> = {
         const c = d.conversations.find((x) => x.id === conv.id);
         if (c?.flow) {
           c.flow.readAt = nowISO();
-          if (c.flow.state === "abordado") c.flow.state = "visualizou";
+          if (c.flow.state === "abordado" || c.flow.state === "novo") c.flow.state = "visualizou";
         }
+        const ct = d.contacts.find((x) => x.id === conv.contactId);
+        if (ct) ct.tags = setCycleTag(ct.tags || [], "visualizou");
+        d.activities.unshift({
+          id: uid("ac_"),
+          organizationId: d.organization.id,
+          contactId: conv.contactId,
+          type: "whatsapp",
+          text: `${contact?.name ?? "Cliente"} visualizou a mensagem (✓✓ azul). Helena agenda continuidade.`,
+          actor: "Helena",
+          createdAt: nowISO(),
+        });
       });
-      return ok(`${contact?.name ?? "Cliente"} visualizou a mensagem`);
+      // Continuidade: enfileira follow-up pós-visualização (Closer / prévia).
+      if (conv.flow?.origin === "prospeccao" && contact) {
+        runTool(
+          "rpa.followup_schedule",
+          { contactId: contact.id, kind: "silence", fact: "visualizou_sem_responder · continuidade pós ✓✓ azul" },
+          { actor: "Helena", actorType: "helena", requestedBy: ctx.actor },
+        );
+      }
+      return ok(`${contact?.name ?? "Cliente"} visualizou (azul). Continuidade de prospecção agendada.`);
     }
     if (p.event !== "reply") return fail("evento desconhecido");
     const text = String(p.text ?? "").trim();
@@ -1003,7 +1033,8 @@ const handlers: Record<string, Handler> = {
     const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
     if (!isTest && p.simulate !== true) {
       const limitLive = Math.min(quota.allowed, 150);
-      const wave = p.wave === true || limitLive >= 80 || /negocios locais|sem site|empresas|leads/i.test(segment);
+      // Onda só se pedida de propósito — pedido "300 restaurantes em BC" NÃO vira advogado em SP.
+      const wave = p.wave === true || /varios nichos|onda multi/i.test(segment);
       import("@/lib/prospect/runProspecting").then(({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
         activateCommercialTeam();
         const job = wave
@@ -2148,10 +2179,11 @@ let lastCloserHuntAt = 0;
  */
 export function tickSalesFlow(now = new Date()) {
   const db = getDB();
-  if (db.salesFlow && (db.salesFlow.noReplyHours < 24 || db.salesFlow.maxCloserAttempts > 1)) {
+  if (db.salesFlow && (db.salesFlow.noReplyHours < 24 || db.salesFlow.readNoReplyHours > 6 || db.salesFlow.maxCloserAttempts > 1)) {
     update((d) => {
       d.salesFlow.noReplyHours = 48;
-      d.salesFlow.readNoReplyHours = 24;
+      // ✓✓ azul: continuidade em ~2h (não esperar 1 dia).
+      d.salesFlow.readNoReplyHours = 2;
       d.salesFlow.respectBusinessHours = true;
       d.salesFlow.maxCloserAttempts = 1;
       d.agents.forEach((a) => {

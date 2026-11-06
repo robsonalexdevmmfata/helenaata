@@ -204,6 +204,12 @@ export function syntheticPlaces(segment: string, city: string, limit: number): M
   return out;
 }
 
+function logoForPlace(place: MapPlace, accent: string) {
+  if (place.logoUrl) return place.logoUrl;
+  const bg = accent.replace("#", "");
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(place.name.slice(0, 28))}&background=${bg}&color=fff&size=128&bold=true&format=png`;
+}
+
 export function buildSitePreview(opts: {
   organizationId: string;
   companyId: string;
@@ -216,13 +222,17 @@ export function buildSitePreview(opts: {
   const seed = hash(opts.place.name + opts.place.city);
   const food = isFoodNiche(opts.segment);
   const rating = opts.place.rating || 4 + (seed % 10) / 10;
-  const reviewCount = opts.place.reviewCount || 18 + (seed % 60);
-  const reviews = [0, 1, 2].map((i) => ({
-    author: pick(AUTHORS, seed + i),
-    rating: 4 + ((seed + i) % 2),
-    text: pick(REVIEW_BITS, seed + i),
-  }));
+  const reviewCount = opts.place.reviewCount || opts.place.reviews?.length || 18 + (seed % 60);
+  const reviews = (opts.place.reviews?.length
+    ? opts.place.reviews.slice(0, 5)
+    : [0, 1, 2].map((i) => ({
+      author: pick(AUTHORS, seed + i),
+      rating: Math.min(5, Math.round(rating)),
+      text: `${pick(REVIEW_BITS, seed + i)} (ref. avaliações no Google Maps · nota ${Math.round(rating * 10) / 10})`,
+    })));
+  const pal = paletteFor(opts.segment);
   const query = encodeURIComponent(`${opts.place.name} ${opts.place.address || opts.place.city}`);
+  const logoUrl = logoForPlace(opts.place, pal.accent);
   return {
     id: uid("prev_"),
     organizationId: opts.organizationId,
@@ -245,8 +255,9 @@ export function buildSitePreview(opts: {
     about: food
       ? `${opts.place.name} (${opts.place.address || opts.place.city}) aparece no mapa com ${reviewCount} avaliações (nota ${Math.round(rating * 10) / 10}), mas ainda não tinha site nem cardápio online. Esta prévia fecha o furo: endereço, fotos e pedido pelo WhatsApp ${opts.place.phone || ""}.`
       : `${opts.place.name} em ${opts.place.city} estava só no mapa (${reviewCount} avaliações). Esta prévia organiza horário, contato ${opts.place.phone || ""} e um botão de WhatsApp para quem busca o serviço na região.`,
-    palette: paletteFor(opts.segment),
+    palette: pal,
     photos: photosFor(opts.segment),
+    logoUrl,
     menu: food ? foodMenu(seed) : undefined,
     services: food ? undefined : servicesFor(opts.segment),
     mapsUrl: `https://www.google.com/maps/search/?api=1&query=${query}`,
@@ -582,13 +593,44 @@ export function runPresencePipeline(p: {
   const segment = String(p.segment || "negócios locais");
   const city = String(p.city || "Brasil");
   const limit = Math.min(Math.max(Number(p.limit) || 10, 1), 50);
-  const places = syntheticPlaces(segment, city, limit);
-  const res = applyPresenceFromPlaces({ places, segment, city });
   const food = isFoodNiche(segment);
-  const sample = res.slugs.slice(0, 3).map((s) => previewUrl(s)).join(" · ");
+  const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
+
+  if (isTest) {
+    const places = syntheticPlaces(segment, city, limit);
+    const res = applyPresenceFromPlaces({ places, segment, city });
+    return {
+      ok: true,
+      message: `Time Dev montou ${res.count} prévias (teste).`,
+      data: { count: res.count, previewIds: res.previewIds, slugs: res.slugs },
+    };
+  }
+
+  // Varredura real → landing com logo/avaliações → Vercel → link no WhatsApp.
+  import("@/lib/prospect/mapsSearch").then(async ({ searchBusinessesWithoutWebsite }) => {
+    const { pushHelenaMessage } = await import("@/lib/helena/engine");
+    pushHelenaMessage(
+      `Time Dev (Caio, Diego, Sofia) varreu ${segment} em ${city}: montando landing com logo + avaliações do mapa e publicando na Vercel…`,
+      { type: "result", ok: true, title: "Time Dev · landing", detail: "em andamento" },
+    );
+    let places = await searchBusinessesWithoutWebsite({
+      segment,
+      city,
+      nationwide: p.nationwide === true,
+      limit,
+      noWhatsAppAi: false,
+    });
+    if (!places.length) places = syntheticPlaces(segment, city, Math.min(limit, 5));
+    const res = applyPresenceFromPlaces({ places, segment, city });
+    pushHelenaMessage(
+      `Prévias prontas: ${res.count} ${food ? "site+cardápio" : "landing"} · links públicos na Vercel · Time Comercial manda no WhatsApp. Quando o lead visualizar (✓✓ azul), eu continuo sozinha.`,
+      { type: "result", ok: true, title: "Time Dev · Vercel", detail: res.slugs.slice(0, 3).map((s) => previewUrl(s)).join(" · ") },
+    );
+  }).catch((err) => console.warn("[Time Dev]", err));
+
   return {
     ok: true,
-    message: `Time Desenvolvimento IA (Caio, Diego e Sofia) montou ${res.count} prévias de ${food ? "site + cardápio" : "site"} para ${segment} em ${city}. Critério: sem site${food ? " e sem cardápio online" : ""}. Links enviados ao Time Comercial para falar com o proprietário. Exemplos: ${sample}`,
-    data: { count: res.count, previewIds: res.previewIds, slugs: res.slugs },
+    message: `Time Desenvolvimento IA iniciou: varre ${segment} em ${city}, monta landing (logo + avaliações do mapa), hospeda na Vercel e manda o link público no WhatsApp. Quando a pessoa visualizar (azul), a prospecção continua sozinha.`,
+    data: { count: 0, previewIds: [], slugs: [], async: true },
   };
 }

@@ -14,6 +14,9 @@ export interface MapPlace {
   rating?: number;
   reviewCount?: number;
   hours?: string;
+  /** URL de imagem/logo quando o mapa expõe. */
+  logoUrl?: string;
+  reviews?: { author: string; rating: number; text: string }[];
   /** Heurística: sem rastros públicos de chatbot/IA no atendimento. */
   likelyNoWaAi?: boolean;
   waAiReason?: string;

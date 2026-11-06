@@ -69,9 +69,58 @@ function similarText(a: string, b: string) {
 const STOP_CHAT =
   /somente para vendas|s[oó] (pra|para) venda|contato acima|n[uú]mero errado|whatsapp (errado|s[oó] (de|pra|para))|n[aã]o sou (o|a) respons|pare de (mandar|enviar)|n[aã]o tenho interesse|n[aã]o me ligue|remover|opt.?out/i;
 
+/** ✓✓ azul / READ da Evolution → continuidade da prospecção. */
+function handleReadReceipt(raw: any): WebhookProcessResult | null {
+  const event = String(raw?.event || raw?.type || "").toLowerCase();
+  const data = raw?.data ?? raw;
+  const isUpdate = /messages\.update|message-receipt|messages_update|receipt/i.test(event);
+  if (!isUpdate && data?.message == null) {
+    // Evolution às vezes manda status numérico sem event name claro
+    const st = data?.status ?? data?.key?.status ?? data?.update?.status;
+    if (st == null) return null;
+  }
+  const status = data?.status ?? data?.update?.status ?? data?.key?.status ?? data?.receipts?.[0]?.receiptTimestamp;
+  // 3 = READ, 4 = PLAYED (algumas builds); string "READ"
+  const read =
+    status === 3 ||
+    status === 4 ||
+    status === "READ" ||
+    status === "read" ||
+    status === "PLAYED" ||
+    /read|played/i.test(String(status ?? ""));
+  if (!isUpdate && !read) return null;
+  if (!read && isUpdate) {
+    const st2 = data?.update?.status ?? data?.status;
+    if (!(st2 === 3 || st2 === 4 || /read|played/i.test(String(st2 ?? "")))) return null;
+  }
+
+  const remoteJid = String(
+    data?.key?.remoteJid ||
+      data?.remoteJid ||
+      data?.message?.key?.remoteJid ||
+      data?.id?.remoteJid ||
+      "",
+  );
+  if (!remoteJid || remoteJid.endsWith("@g.us")) return null;
+  const db = getDB();
+  const conv = db.conversations.find((c) => c.remoteJid === remoteJid)
+    ?? db.conversations.find((c) => remoteJid.startsWith((c.remoteJid || "").replace(/@.*/, "")));
+  if (!conv) return { handled: false, action: "skipped" };
+  const res = runTool("messages.register_event", { conversationId: conv.id, event: "read" }, {
+    actor: "Helena",
+    actorType: "helena",
+    requestedBy: "webhook · ✓✓ azul",
+  });
+  return { handled: res.ok, action: res.ok ? "new_message" : "skipped" };
+}
+
 export async function processEvolutionWebhook(
   rawPayload: unknown
 ): Promise<WebhookProcessResult> {
+  // 0. Recibo de leitura (mensagem azul) → continuidade
+  const readResult = handleReadReceipt(rawPayload as any);
+  if (readResult) return readResult;
+
   // 1. Parseia o payload
   const incoming = parseEvolutionWebhook(rawPayload);
   if (!incoming) {

@@ -105,10 +105,40 @@ export function workspaceDisplayName(user?: User | null, orgName?: string) {
   return institution || fallback;
 }
 
+/** Contas com tudo liberado (admin + RPA + Time Dev + cota alta). */
+export const PRIVILEGED_EMAILS = [
+  "robsonalexdev@gmail.com",
+  "robsonalexmmfata@gmail.com",
+  "robsonalexdevmmfata@gmail.com",
+].map((e) => e.toLowerCase());
+
+export function isPrivilegedEmail(email?: string | null) {
+  return Boolean(email && PRIVILEGED_EMAILS.includes(email.trim().toLowerCase()));
+}
+
 export function isPlatformAdmin(user?: User | null) {
   if (!user) return false;
   if (user.kind === "platform") return true;
+  if (isPrivilegedEmail(user.email)) return true;
   return user.role === "owner" && user.id === "u1";
+}
+
+/** Manu / Robson: libera Máquina, vitalício, Dev, RPA e reseta cota do dia. */
+export function elevatePrivilegedAccount(user?: User | null) {
+  if (!user || !isPrivilegedEmail(user.email)) return user;
+  patchUserEverywhere(user.id, (u) => {
+    u.kind = "platform";
+    u.role = "owner";
+    u.status = "ativo";
+    u.planId = "maquina";
+    u.lifetimeAccess = true;
+    u.dailyProspectLimit = 9_999;
+    u.dailyProspectUsed = 0;
+    u.dailyProspectDate = todayKey();
+    u.trialEndsAt = new Date(Date.now() + 100 * 365 * 86_400_000).toISOString();
+  });
+  syncDevTeamForAccount(user.id);
+  return getDB().users.find((x) => x.id === user.id) ?? user;
 }
 
 export function canUseDevTeam(user?: User | null) {

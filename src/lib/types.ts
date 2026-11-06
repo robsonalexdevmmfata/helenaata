@@ -408,12 +408,13 @@ export interface Conversation {
 }
 
 /** Estado da conversa iniciada pela prospecção no número compartilhado. */
-export type FlowState = "abordado" | "visualizou" | "respondeu" | "aguardando_aprovacao" | "closer" | "reuniao_agendada" | "esfriou";
+export type FlowState = "novo" | "abordado" | "visualizou" | "respondeu" | "aguardando_aprovacao" | "closer" | "reuniao_agendada" | "esfriou";
 
 export interface ConversationFlow {
   origin: "prospeccao" | "inbound";
   state: FlowState;
   campaignId?: ID;
+  /** Preenchido no primeiro disparo real. */
   lastOutboundAt: string;
   readAt?: string;
   repliedAt?: string;
@@ -959,6 +960,8 @@ export interface SitePreview {
   about: string;
   palette: { bg: string; fg: string; accent: string };
   photos: string[];
+  /** Logo / avatar do negócio (Maps ou gerado). */
+  logoUrl?: string;
   menu?: { category: string; items: SitePreviewItem[] }[];
   services?: { name: string; description: string }[];
   mapsUrl: string;

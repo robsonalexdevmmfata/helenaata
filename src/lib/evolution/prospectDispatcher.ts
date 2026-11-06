@@ -82,13 +82,21 @@ export async function dispatchProspectMessages(
     const dbNow = getDB();
     const already = dbNow.contacts.find((c) => c.phone.replace(/\D/g, "").slice(-10) === cleanPhone.slice(-10));
     const existingConv = already ? dbNow.conversations.find((cv) => cv.contactId === already.id) : undefined;
+    // Já abordado sem resposta → não reenvia (corta mensagem repetida).
     if (existingConv && unansweredAgentStreak(existingConv) >= 1) {
-      const lastOut = existingConv.flow?.lastOutboundAt ?? existingConv.messages.at(-1)?.at;
-      const age = lastOut ? Date.now() - new Date(lastOut).getTime() : 0;
-      if (age > 10 * 60_000) {
-        result.skipped++;
-        continue;
-      }
+      result.skipped++;
+      continue;
+    }
+    const recentSend = dbNow.executions.some(
+      (e) =>
+        e.action.includes("evolution.sendText") &&
+        e.result === "sucesso" &&
+        e.description.includes(cleanPhone) &&
+        Date.now() - new Date(e.at).getTime() < 6 * 60 * 60_000,
+    );
+    if (recentSend) {
+      result.skipped++;
+      continue;
     }
 
     const text = formatForWhatsApp(messageFactory(contact));
@@ -112,6 +120,27 @@ export async function dispatchProspectMessages(
           requestedBy: "Helena",
           durationMs: 0,
         });
+        // Grava a mensagem no Inbox só depois do envio real (evita duplicar com eco Evolution).
+        const conv = already
+          ? d.conversations.find((cv) => cv.contactId === already.id)
+          : d.conversations.find((cv) => cv.contactId === contact.contactId);
+        if (conv && !conv.messages.some((m) => m.from === "agent" && m.text === text)) {
+          conv.messages.push({
+            id: uid("m_"),
+            from: "agent",
+            authorName: contact.agentName,
+            text,
+            at: nowISO(),
+            kind: "text",
+          });
+          conv.lastMessageAt = nowISO();
+          conv.flow = {
+            origin: conv.flow?.origin ?? "prospeccao",
+            state: "abordado",
+            lastOutboundAt: nowISO(),
+            closerAttempts: conv.flow?.closerAttempts ?? 0,
+          };
+        }
         const wa = d.connections.find((c) => c.id === "wa_agency")
           ?? d.connections.find((c) => /info tech|helena/i.test(c.name))
           ?? d.connections.find((c) => c.status === "online");

@@ -129,6 +129,7 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
       }
       list.count += 1;
       bumpAutomation(d, "lead_criado");
+      // Conversa vazia até o disparo Evolution — evita mensagem duplicada no Inbox.
       d.conversations.unshift({
         id: uid("conv_"),
         organizationId: d.organization.id,
@@ -142,15 +143,8 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
         sentiment: "neutro",
         lastMessageAt: nowISO(),
         remoteJid: `${(() => { const n = digits(place.phone); return n.startsWith("55") ? n : `55${n}`; })()}@s.whatsapp.net`,
-        flow: { origin: "prospeccao", state: "abordado", lastOutboundAt: nowISO(), closerAttempts: 0 },
-        messages: [{
-          id: uid("m_"),
-          from: "agent",
-          authorName: owner.name,
-          text: formatForWhatsApp(buildCatalogOpening(place.contactName, place.name, d.serviceOffers ?? [])),
-          at: nowISO(),
-          kind: "text",
-        }],
+        flow: { origin: "prospeccao", state: "novo", lastOutboundAt: "", closerAttempts: 0 },
+        messages: [],
       });
     });
     syncLiveCommercial(d);
@@ -197,8 +191,8 @@ export async function runRealProspecting(opts: {
   noWhatsAppAi?: boolean;
 }) {
   activateCommercialTeam();
-  // Pedido genérico ("gere N leads"): onda multi-nicho já traz WhatsApp válido + deals no pipeline.
-  if (isWeakSegment(opts.segment)) {
+  // Só onda multi-nicho quando o pedido é genérico — nunca troca "restaurantes em X" por advogado em SP.
+  if (isWeakSegment(opts.segment) && !opts.city?.trim()) {
     return runWaveProspecting({
       limit: opts.limit,
       organizationId: opts.organizationId,
@@ -206,30 +200,17 @@ export async function runRealProspecting(opts: {
     });
   }
 
-  let places = await searchBusinessesWithoutWebsite({
-    segment: opts.segment,
+  const places = await searchBusinessesWithoutWebsite({
+    segment: isWeakSegment(opts.segment) ? "Restaurantes" : opts.segment,
     city: opts.city,
     state: opts.state,
     nationwide: opts.nationwide,
     limit: opts.limit,
     noWhatsAppAi: opts.noWhatsAppAi,
   });
-  // Zero hit no nicho pedido → ainda assim completa o ciclo com onda SP.
-  if (!places.length) {
-    return runWaveProspecting({
-      limit: opts.limit,
-      organizationId: opts.organizationId,
-      operationId: opts.operationId,
-    });
-  }
+  if (!places.length) return { found: 0, sent: 0, failed: 0, skipped: 0 };
   const ids = insertPlacesAsLeads(places, opts.segment);
-  if (!ids.length) {
-    return runWaveProspecting({
-      limit: opts.limit,
-      organizationId: opts.organizationId,
-      operationId: opts.operationId,
-    });
-  }
+  if (!ids.length) return { found: places.length, sent: 0, failed: 0, skipped: places.length };
   const contacts = contactsForDispatch(ids);
   if (!canDispatchWhatsApp()) return { found: places.length, sent: 0, failed: 0, skipped: contacts.length };
   const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
