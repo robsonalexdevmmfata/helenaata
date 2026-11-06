@@ -71,25 +71,26 @@ const FALLBACK_DISH = [
 ];
 
 function nicheKey(p) {
-  const n = String(`${p?.segment || ""} ${p?.name || ""}`).toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const hasMenu = Array.isArray(p?.menu) && p.menu.length > 0;
-  if (hasMenu || /restaurante|pizzaria|lanchonete|hamburguer|churrasc/.test(n)) return "food";
-  if (/sorvet|gelat|acai/.test(n)) return "ice";
+  const name = String(p?.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const seg = String(p?.segment || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Nome do lugar vence: chaveiro nunca é food.
+  if (/chaveir|eletricit|oficina|mecanica|dentista|advog|barbear|auto\s*eletr/.test(name)) return "site";
+  if (/sorvet|gelat|acai/.test(name) || /sorvet|gelat|acai/.test(seg)) return "ice";
+  if (/restaurante|pizzaria|lanchonete|hamburguer|churrasc/.test(name)) return "food";
+  if (/restaurante|pizzaria|lanchonete|hamburguer|churrasc/.test(seg) && Array.isArray(p?.menu) && p.menu.length) return "food";
+  if (Array.isArray(p?.menu) && p.menu.length && !/chaveir|sorvet|oficina/.test(name)) return "food";
   return "site";
 }
 
 function padPhotos(photos, kind = "site") {
   const pool = kind === "food" ? FALLBACK_FOOD : kind === "ice" ? FALLBACK_ICE : FALLBACK_SITE;
-  const out = [...(Array.isArray(photos) ? photos : [])];
-  // Nunca completa site/sorvete com foto de restaurante.
-  const banned = kind === "food" ? [] : FALLBACK_FOOD;
-  const cleaned = out.filter((src) => !banned.includes(src));
+  // Serviço: começa limpo (não herda foto de restaurante antiga).
+  const out = kind === "food" ? [...(Array.isArray(photos) ? photos : [])] : [];
   for (const src of pool) {
-    if (cleaned.length >= 8) break;
-    if (!cleaned.includes(src)) cleaned.push(src);
+    if (out.length >= 8) break;
+    if (!out.includes(src)) out.push(src);
   }
-  return cleaned;
+  return out;
 }
 
 function withDishImages(menu) {

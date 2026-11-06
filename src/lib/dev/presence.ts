@@ -303,12 +303,40 @@ function foodMenu(seed: number, placeName = "", segment = ""): NonNullable<SiteP
       },
     ];
   }
-  const mains = ["Prato do dia", "Especial da casa", "Grelhado da semana", "Massa da chef"];
+  const n = normalize(`${placeName} ${segment}`);
+  if (/lanchonete|hamburguer|burger|lanche/.test(n)) {
+    return [
+      {
+        category: "Lanches",
+        items: [
+          { name: "X-Burger", description: "Pão, carne, salada e molho da casa.", price: 22 + (seed % 6), image: dishImage(DISH_PHOTOS.prato, seed, 0) },
+          { name: "X-Bacon", description: "Pão, carne, bacon, salada e batata palha.", price: 26 + (seed % 5), image: dishImage(DISH_PHOTOS.prato, seed, 1) },
+          { name: "X-Tudo", description: "Completo: carne, ovo, bacon, queijo e salada.", price: 30 + (seed % 8), image: dishImage(DISH_PHOTOS.prato, seed, 2) },
+          { name: "Triplo", description: "Três carnes, queijo e molho especial.", price: 34 + (seed % 6), image: dishImage(DISH_PHOTOS.prato, seed, 3) },
+        ],
+      },
+      {
+        category: "Porções",
+        items: [
+          { name: "Batata frita", description: "Porção individual crocante.", price: 18 + (seed % 4), image: dishImage(DISH_PHOTOS.entrada, seed, 0) },
+          { name: "Onion rings", description: "Anéis empanados.", price: 20 + (seed % 4), image: dishImage(DISH_PHOTOS.entrada, seed, 1) },
+        ],
+      },
+      {
+        category: "Bebidas",
+        items: [
+          { name: "Refrigerante lata", description: "350 ml.", price: 7, image: dishImage(DISH_PHOTOS.bebida, seed, 1) },
+          { name: "Suco natural", description: "Copo 400 ml.", price: 12, image: dishImage(DISH_PHOTOS.bebida, seed, 0) },
+          { name: "Água", description: "Sem gás.", price: 5, image: dishImage(DISH_PHOTOS.bebida, seed, 3) },
+        ],
+      },
+    ];
+  }
   return [
     {
       category: "Entradas",
       items: [
-        { name: "Porção da casa", description: "Para compartilhar, do jeito que o salão sempre serviu.", price: 38 + (seed % 12), image: dishImage(DISH_PHOTOS.entrada, seed, 0) },
+        { name: "Porção da casa", description: "Para compartilhar.", price: 38 + (seed % 12), image: dishImage(DISH_PHOTOS.entrada, seed, 0) },
         { name: "Salada da estação", description: "Folhas, legumes e molho da casa.", price: 24 + (seed % 8), image: dishImage(DISH_PHOTOS.entrada, seed, 1) },
         { name: "Bruschetta", description: "Pão tostado com tomate e manjericão.", price: 28 + (seed % 6), image: dishImage(DISH_PHOTOS.entrada, seed, 2) },
       ],
@@ -316,10 +344,9 @@ function foodMenu(seed: number, placeName = "", segment = ""): NonNullable<SiteP
     {
       category: "Pratos",
       items: [
-        { name: pick(mains, seed), description: "Montado com o que o Google já mostra que o público pede.", price: 42 + (seed % 20), image: dishImage(DISH_PHOTOS.prato, seed, 0) },
+        { name: "Especial da casa", description: "O mais pedido no salão.", price: 48 + (seed % 14), image: dishImage(DISH_PHOTOS.prato, seed, 0) },
         { name: "Executivo", description: "Almoço rápido com acompanhamento.", price: 32 + (seed % 10), image: dishImage(DISH_PHOTOS.prato, seed, 1) },
-        { name: "Opção da casa", description: "Receita assinada do estabelecimento.", price: 48 + (seed % 14), image: dishImage(DISH_PHOTOS.prato, seed, 2) },
-        { name: "Grelhado especial", description: "Acompanha arroz e salada.", price: 56 + (seed % 12), image: dishImage(DISH_PHOTOS.prato, seed, 3) },
+        { name: "Grelhado especial", description: "Acompanha arroz e salada.", price: 56 + (seed % 12), image: dishImage(DISH_PHOTOS.prato, seed, 2) },
       ],
     },
     {
@@ -327,7 +354,6 @@ function foodMenu(seed: number, placeName = "", segment = ""): NonNullable<SiteP
       items: [
         { name: "Suco natural", description: "Frutas da estação.", price: 12, image: dishImage(DISH_PHOTOS.bebida, seed, 0) },
         { name: "Refrigerante", description: "Lata.", price: 8, image: dishImage(DISH_PHOTOS.bebida, seed, 1) },
-        { name: "Café", description: "Passado na hora.", price: 6, image: dishImage(DISH_PHOTOS.bebida, seed, 2) },
         { name: "Água com gás", description: "Garrafa 500 ml.", price: 7, image: dishImage(DISH_PHOTOS.bebida, seed, 3) },
       ],
     },
@@ -348,13 +374,8 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
   const food = kind.food;
   const segment = kind.segment;
   const pool = photosFor(segment, preview.name);
-  // Remove fotos de restaurante grudadas em prévia errada (ex.: chaveiro com prato).
-  let photos = [...(preview.photos || [])];
-  if (!food) {
-    // Tira foto de prato/restaurante grudada — mantém gelato/padaria/serviço.
-    const foodSet = new Set([...FOOD_PHOTOS, ...SEAFOOD_PHOTOS, ...Object.values(DISH_PHOTOS).flat()]);
-    photos = photos.filter((src) => !foodSet.has(src));
-  }
+  // Serviço / sorvete: descarta galeria de restaurante inteira (URLs antigas variam).
+  let photos = food ? [...(preview.photos || [])] : [];
   for (const src of pool) {
     if (photos.length >= 8) break;
     if (!photos.includes(src)) photos.push(src);
@@ -362,10 +383,21 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
 
   let menu = preview.menu;
   let services = preview.services;
+  let tagline = preview.tagline;
+  let about = preview.about;
+  let palette = preview.palette;
+
   if (!food) {
     menu = undefined;
-    if (!services?.length) services = servicesFor(segment, preview.name);
+    services = services?.length ? services : servicesFor(segment, preview.name);
+    palette = paletteFor(segment);
+    tagline = `${preview.name} em ${preview.city}: horário, WhatsApp e endereço em site próprio.`;
+    about = `${preview.name} em ${preview.city} (${preview.reviewCount} avaliações · nota ${preview.rating}). Página profissional com serviços, horário e botão de WhatsApp — sem cardápio de restaurante.`;
   } else {
+    services = undefined;
+    palette = paletteFor(segment);
+    tagline = `${preview.name} · pedidos online em ${preview.city}`;
+    about = preview.about;
     const needsRichMenu =
       !menu?.length ||
       menu.every((c) => c.items.every((it) => !it.image)) ||
@@ -400,14 +432,11 @@ export function enrichPreviewMedia(preview: SitePreview): SitePreview {
     ...preview,
     segment,
     photos,
+    palette,
+    tagline,
+    about,
+    hours: food ? preview.hours : (preview.hours?.includes("11:00–22:00") ? "Seg–Sáb, 08:00–18:00" : preview.hours),
     ...(food ? { menu, services: undefined } : { menu: undefined, services }),
-    tagline: food
-      ? preview.tagline?.includes("cardápio")
-        ? preview.tagline
-        : `${preview.name}: nota ${preview.rating} em ${preview.city} — cardápio e pedido no WhatsApp.`
-      : preview.tagline?.includes("cardápio") || preview.tagline?.includes("pedido no WhatsApp")
-        ? `${preview.name} em ${preview.city}: horário, WhatsApp e endereço próprio no Google.`
-        : preview.tagline,
   };
 }
 
