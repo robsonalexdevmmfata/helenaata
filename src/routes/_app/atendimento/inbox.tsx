@@ -196,8 +196,11 @@ function InboxPage() {
                     )}
                   >
                     {m.from !== "contact" && <div className="mb-0.5 text-[10px] font-semibold opacity-70">{m.authorName}</div>}
+                    {(m.kind === "audio" || m.text.startsWith("[Áudio]")) && (
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">Áudio transcrito</div>
+                    )}
                     <div className="whitespace-pre-line break-words">
-                      {linkifyParts(m.text).map((p, i) =>
+                      {linkifyParts(m.text.replace(/^\[Áudio\]\s*/i, "")).map((p, i) =>
                         p.type === "link" ? (
                           <a
                             key={`${m.id}-l-${i}`}

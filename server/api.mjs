@@ -2,7 +2,7 @@
 //  - desenvolvimento: plugin do Vite (vite.config.ts)
 //  - produção / Render: server/index.mjs
 import { adminProfile, adminUser, checkLogin, issueToken, readToken, verifyToken } from "./auth.mjs";
-import { aiProvider, chatCompletion } from "./ai.mjs";
+import { aiProvider, chatCompletion, transcribeAudio } from "./ai.mjs";
 import { evolutionApiKey, handleEvolutionLocal, remoteEvolutionUrl } from "./evolution-bridge.mjs";
 import { loadPreview, savePreview } from "./previews.mjs";
 import { publishClientSite } from "./dev-publish.mjs";
@@ -569,6 +569,12 @@ export async function handleApi(req, res) {
         if (!Array.isArray(body.messages)) return send(res, 400, { error: "Campo messages é obrigatório." }), true;
         const { messages, tools, tool_choice, temperature, max_tokens } = body;
         send(res, 200, await chatCompletion({ messages, tools, tool_choice, temperature, max_tokens }));
+        return true;
+      }
+      case "POST /api/ai/transcribe": {
+        const body = await readJson(req, 8_000_000);
+        if (!body?.base64) return send(res, 400, { error: "Campo base64 é obrigatório." }), true;
+        send(res, 200, await transcribeAudio(body));
         return true;
       }
       default:

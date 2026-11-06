@@ -5,7 +5,7 @@ import { mkdir, rm } from "node:fs/promises";
 import QRCode from "qrcode";
 import pino from "pino";
 import { formatForWhatsApp, nextStage } from "./formatter.mjs";
-import { aiProvider, helenaReply } from "./ai.mjs";
+import { aiProvider, helenaReply, transcribeAudio } from "./ai.mjs";
 
 const AUTH_DIR = path.resolve(process.env.WHATSAPP_AUTH_DIR || "data/whatsapp-auth");
 const MAX_LOG = 200;
@@ -124,8 +124,25 @@ export async function connect() {
     for (const msg of messages) {
       const jid = msg.key?.remoteJid;
       if (!jid || msg.key.fromMe || jid.endsWith("@g.us") || jid === "status@broadcast") continue;
-      const text =
+      let text =
         msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || "";
+      const audio = msg.message?.audioMessage;
+      if (!text.trim() && audio) {
+        try {
+          const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+          const buf = await downloadMediaMessage(msg, "buffer", {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const mime = String(audio.mimetype || "audio/ogg");
+          const tr = await transcribeAudio({
+            base64: Buffer.from(buf).toString("base64"),
+            mimetype: mime,
+            fileName: mime.includes("mpeg") ? "audio.mp3" : "audio.ogg",
+          });
+          text = tr?.text ? `[Áudio] ${tr.text}` : "[Áudio]";
+        } catch (err) {
+          console.warn("[WhatsApp] Áudio sem transcrição:", err?.message || err);
+          text = "[Áudio]";
+        }
+      }
       if (!text.trim()) continue;
       const name = msg.pushName || jidToPhone(jid);
       pushLog({ direction: "in", jid, phone: jidToPhone(msg.key.remoteJidAlt || jid), name, text });

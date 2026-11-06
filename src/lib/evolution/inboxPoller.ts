@@ -5,10 +5,12 @@ import {
   evolutionListAllMessages,
   extractWaText,
   getAgencyConnection,
+  hasWaAudio,
   jidToPhone,
   parseEvolutionWebhook,
   waTimestampISO,
 } from "./evolutionapi";
+import { formatAudioTranscript, transcribeWhatsAppAudio } from "./transcribe";
 import { processEvolutionWebhook } from "./webhookHandler";
 import { getDB, nowISO, uid, update } from "@/lib/store";
 import { sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
@@ -56,6 +58,18 @@ function displayName(pushName: string | undefined, jid: string, phone: string) {
   return jid.replace(/@.*/, "") || "WhatsApp";
 }
 
+async function resolveInboundText(raw: any): Promise<{ text: string; kind: "text" | "audio" }> {
+  const caption = sanitizeChatText(extractWaText(raw));
+  if (caption) return { text: caption, kind: "text" };
+  if (!hasWaAudio(raw)) return { text: "", kind: "text" };
+  try {
+    const transcript = await transcribeWhatsAppAudio(raw);
+    return { text: formatAudioTranscript(transcript), kind: "audio" };
+  } catch {
+    return { text: "[Áudio]", kind: "audio" };
+  }
+}
+
 function upsertFromEvolution(opts: {
   remoteJid: string;
   pushName?: string;
@@ -64,7 +78,9 @@ function upsertFromEvolution(opts: {
   messageId: string;
   at: string;
   unread?: number;
+  kind?: "text" | "audio";
 }) {
+  const kind = opts.kind ?? (opts.text.startsWith("[Áudio]") ? "audio" : "text");
   const db = getDB();
   const user = db.users.find((u) => u.id === db.currentUserId);
   const isPlatform = user?.kind === "platform" || user?.id === "u1";
@@ -145,7 +161,7 @@ function upsertFromEvolution(opts: {
               authorName: opts.fromMe ? (sdr?.name ?? "Helena") : name,
               text: opts.text,
               at: opts.at,
-              kind: "text",
+              kind,
             }]
           : [],
       });
@@ -166,7 +182,7 @@ function upsertFromEvolution(opts: {
         authorName: opts.fromMe ? (sdr?.name ?? "Helena") : name,
         text: opts.text,
         at: opts.at,
-        kind: "text",
+        kind,
       });
       c.messages.sort((a, b) => +new Date(a.at) - +new Date(b.at));
     }
@@ -200,7 +216,9 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
       .map((raw: any) => {
         const key = raw?.key ?? {};
         const id = String(key.id ?? raw?.id ?? "");
-        const text = sanitizeChatText(extractWaText(raw));
+        let text = sanitizeChatText(extractWaText(raw));
+        const audio = hasWaAudio(raw);
+        if (!text && audio) text = "[Áudio]";
         if (!id || !text) return null;
         return {
           id: `evo_${id}`,
@@ -208,7 +226,7 @@ export async function hydrateConversationFromEvolution(conversationId: string) {
           authorName: key.fromMe ? (sdr?.name ?? "Helena") : (raw?.pushName || "Contato"),
           text,
           at: waTimestampISO(raw?.messageTimestamp),
-          kind: "text" as const,
+          kind: (audio || text.startsWith("[Áudio]") ? "audio" : "text") as "audio" | "text",
         };
       })
       .filter(Boolean) as typeof c.messages;
@@ -271,7 +289,9 @@ export async function pollEvolutionInbox(): Promise<number> {
       const key = raw?.key ?? {};
       const jid = String(key.remoteJid ?? "");
       if (skipJid(jid)) continue;
-      const text = sanitizeChatText(extractWaText(raw));
+      let text = sanitizeChatText(extractWaText(raw));
+      const audio = hasWaAudio(raw);
+      if (!text && audio) text = "[Áudio]";
       const id = String(key.id ?? raw?.id ?? "");
       if (!text) continue;
       const fromMe = Boolean(key.fromMe);
@@ -283,6 +303,7 @@ export async function pollEvolutionInbox(): Promise<number> {
         messageId: id || `hist_${jid}`,
         at: waTimestampISO(raw?.messageTimestamp),
         unread: 0,
+        kind: audio ? "audio" : "text",
       });
       if (id) remember(id);
     }
@@ -296,8 +317,19 @@ export async function pollEvolutionInbox(): Promise<number> {
     const last = chat?.lastMessage ?? chat?.message ?? {};
     const key = last?.key ?? chat?.key ?? {};
     const id = String(key.id ?? last?.id ?? "");
-    const text = sanitizeChatText(extractWaText(last));
     const fromMe = Boolean(key.fromMe);
+    const audio = hasWaAudio(last);
+    let text = sanitizeChatText(extractWaText(last));
+    let kind: "text" | "audio" = "text";
+    // Áudio novo inbound: escuta (Whisper) antes de disparar o time.
+    if (!text && audio && !fromMe && id && boot && !known.has(id)) {
+      const resolved = await resolveInboundText(last);
+      text = resolved.text;
+      kind = resolved.kind;
+    } else if (!text && audio) {
+      text = "[Áudio]";
+      kind = "audio";
+    }
     upsertFromEvolution({
       remoteJid: jid,
       pushName: chat?.pushName ?? last?.pushName,
@@ -306,6 +338,7 @@ export async function pollEvolutionInbox(): Promise<number> {
       messageId: id || `chat_${jid}`,
       at: waTimestampISO(last?.messageTimestamp),
       unread: Number(chat?.unreadCount ?? 0),
+      kind,
     });
     if (!id || fromMe || !text) {
       if (id) remember(id);
@@ -326,12 +359,15 @@ export async function pollEvolutionInbox(): Promise<number> {
     const payload = {
       event: "MESSAGES_UPSERT",
       instance: "helena",
+      __transcript: text,
       data: {
         message: {
           key: { ...key, remoteJid: jid, fromMe: false },
           pushName: chat?.pushName ?? last?.pushName,
           messageTimestamp: last?.messageTimestamp ?? Date.now() / 1000,
-          message: { conversation: text },
+          message: audio
+            ? { ...(last?.message || last || {}), conversation: text, audioMessage: last?.message?.audioMessage || last?.audioMessage || {} }
+            : { conversation: text },
         },
       },
     };

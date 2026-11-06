@@ -17,6 +17,10 @@
     "api/ai/chat.js": {
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/ai/transcribe.js": {
+      "memory": 1024,
+      "maxDuration": 45
     }
   },
   "rewrites": [

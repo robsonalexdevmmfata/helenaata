@@ -4,7 +4,7 @@
  */
 
 export const ROBSON_OPENING_SCRIPT =
-  "Olá! Sou o Robson Alex, da Info Tech. Vi vocês no mapa e notei que ainda não têm site na região. Você é o proprietário ou a proprietária do estabelecimento?";
+  "Olá! Sou o Robson Alex, da Info Tech. Vi vocês no mapa com boa reputação, mas ainda sem site próprio — e quem busca o serviço na região cai no concorrente. Você é o proprietário ou a proprietária?";
 
 /** Tools injetadas no prompt/contexto de todo agente de IA. */
 export const AGENT_CALENDAR_TOOLS = [
@@ -20,10 +20,13 @@ export const CALENDAR_TOOL_PROMPT = `Agenda compartilhada (leitura e escrita obr
 - Consulte calendar.list_events antes de marcar para evitar conflito.
 - Atualize o status com calendar.update_event (agendada, confirmada, realizada, cancelada, no_show).`;
 
-export function buildRobsonOpening(contactName?: string, companyName?: string) {
+export function buildRobsonOpening(contactName?: string, companyName?: string, segment?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
   const biz = companyName ? ` a ${companyName}` : " vocês";
-  return `${who} Sou o Robson Alex, da Info Tech. Vi${biz} no mapa e notei que ainda não têm site na região. Você é o proprietário ou a proprietária do estabelecimento?`;
+  if (/advog|jurid|escrit/i.test(String(segment || companyName || ""))) {
+    return `${who} Sou o Robson Alex, da Info Tech. Vi${biz} no Google Maps com ótima reputação — e sem site próprio. Quem busca advogado na região precisa achar o escritório fácil. Você é a responsável?`;
+  }
+  return `${who} Sou o Robson Alex, da Info Tech. Vi${biz} no mapa: boa presença, mas ainda sem site próprio na região. Você é o proprietário ou a proprietária?`;
 }
 
 export interface ParsedMeeting {

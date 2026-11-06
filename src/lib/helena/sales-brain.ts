@@ -248,13 +248,19 @@ export const OBJECTION_MATRIX: ObjectionDef[] = [
   },
   {
     id: "obj_sobrinho",
-    title: "Meu sobrinho / conhecido faz",
-    clientQuote: "Meu sobrinho faz site.",
-    triggerRegex: /(sobrinho|conhecido\s*faz|meu\s*filho\s*faz|faz\s*de\s*gra[cç]a|j[aá]\s*tenho\s*quem\s*fa[cç]a)/i,
-    getAutonomousResponse: ({ clientName }) =>
-      `Ótimo ter alguém próximo, ${clientName}. A pergunta não é quem monta a página, é se você aparece quando a pessoa busca o serviço na cidade. Se hoje não aparece, o site não está trabalhando. Te mostro isso em 10 minutos.`,
+    title: "Amiga / amigo / conhecido vai fazer o site",
+    clientQuote: "Minha amiga vai fazer o site.",
+    triggerRegex:
+      /(sobrinho|conhecida?.{0,24}(fazer|faz|montar)|amiga.{0,40}(fazer|faz|montar)|amigo.{0,40}(fazer|faz|montar)|familiar.{0,24}(fazer|faz)|meu\s*filho\s*faz|faz\s*de\s*gra[cç]a|j[aá]\s*tenho\s*quem\s*fa[cç]a|algu[eé]m.{0,30}(fazer|faz|montar)\s*(o\s*)?site|(vai|ia|iria)\s*(fazer|montar)\s*(o\s*)?site|ofereci.*(amiga|amigo|conhecido))/i,
+    getAutonomousResponse: ({ clientName, niche }) => {
+      const law = /advog|jurid|escrit/i.test(String(niche || ""));
+      if (law) {
+        return `${clientName || "Dra."}, ótimo ter alguém de confiança. O risco não é a amizade — é o tempo. Enquanto o site não sobe e não aparece no Google, quem busca advogado na sua cidade já fecha com quem está online. Eu deixo no ar em dias, com WhatsApp pra captar enquanto você está no fórum. Em 10 minutos te mostro a diferença. Prefere hoje à tarde ou amanhã de manhã?`;
+      }
+      return `Entendo, ${clientName || "oi"}. Ter amiga/amigo pra fazer o site é ótimo. O ponto é outro: enquanto não está no ar e ranqueando, quem te procura no Google já cai no concorrente. Eu entrego rápido, com WhatsApp e presença local. 10 minutos e você decide se faz sentido — sem brigar com a amizade. Prefere hoje ou amanhã?`;
+    },
     actionType: "schedule_direct",
-    actionDescription: "Respeita o conhecido e desloca para resultado no Google.",
+    actionDescription: "Respeita o conhecido, contrapõe prazo/Google e puxa 10 min.",
   },
   {
     id: "obj_depois",
@@ -280,8 +286,9 @@ export const OBJECTION_MATRIX: ObjectionDef[] = [
 
 /** Detecta se o texto do cliente contém uma objeção da matriz */
 export function matchObjection(text: string): ObjectionDef | null {
+  const cleaned = String(text || "").replace(/^\[Áudio\]\s*/i, "");
   for (const obj of OBJECTION_MATRIX) {
-    if (obj.triggerRegex.test(text)) {
+    if (obj.triggerRegex.test(cleaned) || obj.triggerRegex.test(text)) {
       return obj;
     }
   }
@@ -544,8 +551,10 @@ export function getWhatsAppWorkerStatus(db: DB): WhatsAppWorkerStatus {
 // ============================================================================
 
 export const HELENA_EXECUTIVE_SALES_PROMPT = `Você é a HELENA, Tech Leader e Diretora Comercial da agência Info Tech Ltda. Seu objetivo principal é atingir a meta financeira estipulada pelo usuário (R$ 15.000,00). Suas diretrizes de negociação são:
-1. Nunca seja robótica ou formal demais. Fale como uma consultora de negócios executiva humana, direta e empática.
-2. Em prospecções frias, foque 100% na dor da falta de site/sistema (perda de clientes na região que buscam no Google Maps).
+1. Nunca seja robótica ou formal demais. Fale como uma consultora de negócios executiva humana, direta, empática e irresistível.
+2. Em prospecções frias, foque 100% na dor da falta de site/sistema (perda de clientes na região que buscam no Google Maps). Em advocacia: cliente que busca no Google enquanto o escritório está no fórum.
 3. Sempre conduza a conversa terminando com uma pergunta aberta ou sugestão de dois horários para reunião (ex: "hoje às 16h ou amanhã às 10h?").
-4. Quando o cliente demonstrar intenção clara de compra ("quero fechar", "como faço o pagamento"), forneça o link de fechamento com Pix instantâneo ou agende o compromisso no calendário instantaneamente.
-5. Respeite os limites de disparo e mantenha os logs de auditoria imutáveis.`;
+4. Objeção "amiga/amigo vai fazer o site": respeite, contraste prazo e resultado no Google, convide 10 min — nunca ataque a pessoa.
+5. Quando o cliente demonstrar intenção clara de compra ("quero fechar", "como faço o pagamento"), forneça o link de fechamento com Pix instantâneo ou agende o compromisso no calendário instantaneamente.
+6. Escute áudio: se a mensagem tiver [Áudio], responda ao conteúdo falado como se tivesse ouvido.
+7. Respeite os limites de disparo e mantenha os logs de auditoria imutáveis.`;

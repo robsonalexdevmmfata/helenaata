@@ -212,7 +212,7 @@ export async function processEvolutionWebhook(
         authorName: incoming.fromName ?? contact!.name,
         text: incoming.text,
         at: nowISO(),
-        kind: "text",
+        kind: incoming.kind === "audio" || incoming.text.startsWith("[Áudio]") ? "audio" : "text",
       });
       c.lastMessageAt = nowISO();
       c.unread = (c.unread ?? 0) + 1;
@@ -300,8 +300,9 @@ export async function processEvolutionWebhook(
   ) {
     return { handled: true, action: "new_message" };
   }
-  const lastAuto = repliedConvAt.get(conv!.id) ?? (lastAgent ? +new Date(lastAgent.at) : 0);
-  if (lastAuto && Date.now() - lastAuto < 15 * 60_000) {
+  // Só evita disparo duplo do poller — NÃO bloqueia resposta a lead que falou após a abertura.
+  const lastAuto = repliedConvAt.get(conv!.id) ?? 0;
+  if (lastAuto && Date.now() - lastAuto < 45_000) {
     return { handled: true, action: "new_message" };
   }
   if (unansweredAgentStreak(liveConv ?? { messages: [] }) >= 2) {
@@ -428,7 +429,10 @@ async function generateAgentReply(
   );
   const turns = (convHint?.messages ?? conv?.messages ?? []).slice(-10);
   const firstName = clientName.split(/\s+/)[0] ?? clientName;
-  const scripted = nextInboxReply(clientMessage, turns, firstName, db.serviceOffers ?? []);
+  const contact = db.contacts.find((x) => x.phone.replace(/\D/g, "") === clientPhone.replace(/\D/g, ""));
+  const company = contact?.companyId ? db.companies.find((c) => c.id === contact.companyId) : undefined;
+  const niche = company?.segment || contact?.tags?.find((t) => !t.startsWith("#")) || "";
+  const scripted = nextInboxReply(clientMessage, turns, firstName, db.serviceOffers ?? [], niche);
   if (scripted) {
     let text = scripted;
     if (/10 minutos|horario|horário/i.test(scripted) && !/\n1\)/.test(scripted) && db.salesFlow) {
@@ -444,7 +448,8 @@ async function generateAgentReply(
     }
     return formatForWhatsApp(text);
   }
-  const wantsDetail = /\?|quanto|pre[cç]o|como funciona|hor[aá]rio|quando/.test(clientMessage);
+  const spoken = /\[Áudio\]/i.test(clientMessage) || clientMessage.trim().length > 40;
+  const wantsDetail = spoken || /\?|quanto|pre[cç]o|como funciona|hor[aá]rio|quando|amiga|amigo|site|advog|escrit[oó]rio/.test(clientMessage);
   if (!wantsDetail) return null;
 
   const history = turns
@@ -456,8 +461,10 @@ async function generateAgentReply(
 
   const roleHint = agent?.role === "Closer" ? "Closer" : "SDR";
   const groqRes = await callGroqOrchestrator(
-    `Papel: ${roleHint} da Info Tech no WhatsApp. Lead: ${clientName}.
-IGNORE o script longo e o catálogo de preços nesta resposta. Uma ou duas frases. Sem emoji. Não insista.
+    `Papel: ${roleHint} da Info Tech no WhatsApp. Lead: ${clientName}${niche ? ` · nicho ${niche}` : ""}.
+Seja persuasiva e irresistível em 2–3 frases curtas: reconheça o que a pessoa disse, mostre a dor (some no Google da região / perde cliente), ofereça caminho claro (prévia no ar em dias + 10 min) e feche com pergunta de horário.
+Se falar que amigo/amiga/conhecido vai fazer o site: respeite, contraste prazo/resultado e convide 10 min — sem atacar a amizade.
+Preço só se pedirem. Sem emoji. Sem soar robô. Se a mensagem tiver [Áudio], responda ao conteúdo falado.
 Mensagem do cliente: ${clientMessage}`,
     history,
   );

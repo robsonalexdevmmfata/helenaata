@@ -25,7 +25,11 @@ export const IS_OWNER =
   /^(sou |sim[,.]? )?(o |a )?(dono|dona|proprietari[oa]|socio|socia)\b|\bsim\b.*\b(dono|dona|propriet)|eu (que )?(dono|decido|sou o dono|sou a dona)/i;
 
 export function askedIfOwner(history: ChatTurn[]) {
-  return history.some((m) => m.from !== "contact" && /proprietari[oa]|dono ou a dona|dono\(a\)|do estabelecimento/i.test(m.text));
+  return history.some(
+    (m) =>
+      m.from !== "contact" &&
+      /proprietari[oa]|dono ou a dona|dono\(a\)|do estabelecimento|respons[aá]vel pelo escrit[oó]rio|voc[eê] [eé] a respons/i.test(m.text),
+  );
 }
 
 export function agentPitchCount(history: ChatTurn[]) {
@@ -34,41 +38,61 @@ export function agentPitchCount(history: ChatTurn[]) {
   ).length;
 }
 
-export function nextInboxReply(clientText: string, history: ChatTurn[], firstName: string, offers: ServiceOffer[] = []): string | null {
-  const msg = n(clientText);
+export function nextInboxReply(
+  clientText: string,
+  history: ChatTurn[],
+  firstName: string,
+  offers: ServiceOffer[] = [],
+  niche = "",
+): string | null {
+  const spoken = clientText.replace(/^\[Áudio\]\s*/i, "");
+  const msg = n(spoken);
   const name = firstName.replace(/^(dra?\.)\s*/i, "").split(/\s+/)[0] || "";
   const hi = name ? `${name}, ` : "";
+  const law = /advog|jurid|escrit/i.test(niche);
+  const nicheLabel = law ? "advogado" : niche || "seu serviço";
 
-  if (WRONG_NUMBER.test(clientText) || /nao tenho interesse|pode parar|nao me envie|stop/i.test(clientText)) {
+  if (WRONG_NUMBER.test(spoken) || /nao tenho interesse|pode parar|nao me envie|stop/i.test(spoken)) {
     return "Combinado, desculpa o incômodo. Não mando mais neste número. Se puder, me passa o WhatsApp do(a) proprietário(a) que eu falo direto com ele(a).";
   }
 
-  if (askedIfOwner(history) && (NOT_OWNER.test(clientText) || /^(nao|naum|n)\b/.test(msg))) {
+  if (askedIfOwner(history) && (NOT_OWNER.test(spoken) || /^(nao|naum|n)\b/.test(msg))) {
     return "Sem problema. Pode me passar o WhatsApp do proprietário ou da proprietária? Assim eu não te incomodo mais.";
   }
 
-  if (clientAskedPrice(clientText)) {
+  if (clientAskedPrice(spoken)) {
     const quote = quoteEntryPrices(offers);
     if (!askedIfOwner(history)) {
       return `${quote} Antes: você é o proprietário ou a proprietária do estabelecimento?`;
     }
-    return quote;
+    return `${quote} Se quiser, em 10 minutos te mostro o que sobe no ar e como o WhatsApp passa a trabalhar por você.`;
   }
 
-  const objection = matchObjection(clientText);
+  const objection = matchObjection(spoken);
   if (objection && objection.id !== "obj_preco" && objection.id !== "obj_sem_interesse") {
-    return objection.getAutonomousResponse({ clientName: name || "oi", companyName: "vocês", niche: "seu serviço" });
+    return objection.getAutonomousResponse({
+      clientName: name || (law ? "Dra." : "oi"),
+      companyName: "vocês",
+      niche: nicheLabel,
+    });
   }
 
   if (!askedIfOwner(history)) {
-    if (IS_OWNER.test(clientText) || /^(sim|sou|eu mesmo|eu mesma)\b/.test(msg)) {
-      return `${hi}perfeito. Antes de qualquer proposta: você que decide site e divulgação da empresa, certo? Se sim, me diz só se hoje o movimento vem mais de indicação, Instagram ou gente que te busca no Google.`;
+    if (IS_OWNER.test(spoken) || /^(sim|sou|eu mesmo|eu mesma)\b/.test(msg)) {
+      if (law) {
+        return `${hi}perfeito. Enquanto você está no fórum, quem busca advogado na região no Google precisa achar o escritório — não o concorrente. Topa 10 minutos pra eu te mostrar o caminho (site + WhatsApp), sem compromisso?`;
+      }
+      return `${hi}perfeito. Quem te busca na região no Google precisa te achar fácil. Topa 10 minutos pra eu te mostrar o caminho, sem compromisso?`;
     }
-    return `${hi}obrigado pelo retorno. Só para não te tomar tempo à toa: você é o proprietário ou a proprietária do estabelecimento?`;
+    return law
+      ? `${hi}obrigado pelo áudio/retorno. Só pra não te tomar tempo: você é a responsável pelo escritório?`
+      : `${hi}obrigado pelo retorno. Só para não te tomar tempo à toa: você é o proprietário ou a proprietária do estabelecimento?`;
   }
 
-  if (IS_OWNER.test(clientText) || /^(sim|sou|eu mesmo|eu mesma|certo|isso)\b/.test(msg)) {
-    return "Show. Sem enrolação: vocês ainda não aparecem bem quando alguém busca o serviço na região. Topa 10 minutos só para eu te mostrar o caminho, sem compromisso? Pode ser um horário que você escolher.";
+  if (IS_OWNER.test(spoken) || /^(sim|sou|eu mesmo|eu mesma|certo|isso)\b/.test(msg)) {
+    return law
+      ? "Show. Sem enrolação: avaliações boas no mapa sem site próprio é cliente indo pro concorrente. Em 10 minutos te mostro a prévia e o WhatsApp trabalhando. Prefere hoje à tarde ou amanhã de manhã?"
+      : "Show. Sem enrolação: vocês ainda não aparecem bem quando alguém busca o serviço na região. Topa 10 minutos só para eu te mostrar o caminho, sem compromisso? Prefere hoje ou amanhã?";
   }
 
   if (/obrigad|ok\b|blz|beleza|combinado|ta bom|tá bom/.test(msg) && agentPitchCount(history) >= 1) {

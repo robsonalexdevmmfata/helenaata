@@ -48,6 +48,7 @@ export function diagnoseLead(input: {
   const food = /pizzaria|restaurante|lanchonete|padaria|hamburguer|churrasc/.test(niche);
   const clinic = /clinic|dentista|estetic|fisioter|odonto|medico|pet\b/.test(niche);
   const barber = /barbear|cabeleir|salao|salão|barbeiro/.test(niche);
+  const law = /advog|jurid|escritorio|escritório/.test(niche);
   const city = input.city || "a cidade";
 
   if (!website || tags.includes("#sem-site")) {
@@ -91,6 +92,14 @@ export function diagnoseLead(input: {
     });
   }
 
+  if (law && (!website || tags.includes("#sem-site"))) {
+    score += 12;
+    findings.push({
+      code: "advocacia",
+      evidence: `Escritório em ${city}: avaliações no mapa sem site próprio — quem busca advogado na região cai no concorrente enquanto o responsável está no fórum.`,
+    });
+  }
+
   if ((input.photos ?? 2) < 4) {
     score += 6;
     findings.push({ code: "fotos", evidence: "Poucas fotos públicas; presença visual fraca no Google." });
@@ -112,9 +121,13 @@ export function diagnoseLead(input: {
       ? "Site + serviços + agendamento"
       : barber
         ? "Site + catálogo + reservas"
-        : !website || tags.includes("#sem-site")
-          ? "Site institucional + WhatsApp"
-          : "Automação de atendimento no WhatsApp";
-  const recommend_pitch = `${input.name} em ${city}: ${findings.map((f) => f.evidence).slice(0, 3).join(" ")} Oferta: ${recommend_offer}.`;
+        : law
+          ? "Site do escritório + WhatsApp que agenda enquanto você está no fórum"
+          : !website || tags.includes("#sem-site")
+            ? "Site institucional + WhatsApp"
+            : "Automação de atendimento no WhatsApp";
+  const recommend_pitch = law
+    ? `${input.name} em ${city}: nota e presença no mapa sem site próprio. Quem busca advogado na região precisa achar você — não o concorrente. Oferta: ${recommend_offer}.`
+    : `${input.name} em ${city}: ${findings.map((f) => f.evidence).slice(0, 3).join(" ")} Oferta: ${recommend_offer}.`;
   return { score, opportunity, findings, recommend_offer, recommend_pitch };
 }

@@ -115,6 +115,12 @@ export function jidToPhone(jid: string) {
   return id.startsWith("55") ? `+${id}` : `+55${id}`;
 }
 
+/** Detecta áudio / PTT no payload Baileys / Evolution. */
+export function hasWaAudio(raw: any): boolean {
+  const m = raw?.message ?? raw?.data?.message?.message ?? raw?.data?.message ?? raw;
+  return Boolean(m?.audioMessage || m?.pttMessage);
+}
+
 export function extractWaText(raw: any): string {
   const m = raw?.message ?? raw;
   const text = String(
@@ -124,9 +130,43 @@ export function extractWaText(raw: any): string {
       m?.videoMessage?.caption ??
       m?.documentMessage?.caption ??
       m?.buttonsResponseMessage?.selectedDisplayText ??
+      m?.audioMessage?.caption ??
       "",
   );
   return text.replace(/\uFFFD/g, "").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+/**
+ * Baixa mídia (áudio/imagem) como base64 via Evolution.
+ * POST /chat/getBase64FromMediaMessage/{instance}
+ */
+export async function evolutionGetMediaBase64(
+  message: { key?: unknown; message?: unknown } | Record<string, unknown>,
+  cfg?: EvolutionConfig,
+): Promise<{ ok: true; base64: string; mimetype: string; fileName?: string } | { ok: false; error: string }> {
+  const config = cfg ?? getEvolutionConfigUI();
+  const url = evoUrl(`/chat/getBase64FromMediaMessage/${config.instance}`, config);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: headers(config),
+      body: JSON.stringify({ message, convertToMp4: false }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: String(data?.message ?? data?.error ?? `HTTP ${res.status}`) };
+    }
+    const base64 = String(data?.base64 ?? data?.data?.base64 ?? "").replace(/^data:[^;]+;base64,/, "");
+    if (!base64) return { ok: false, error: "Evolution não devolveu base64 do áudio." };
+    return {
+      ok: true,
+      base64,
+      mimetype: String(data?.mimetype ?? data?.mimeType ?? "audio/ogg"),
+      fileName: data?.fileName ? String(data.fileName) : undefined,
+    };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? "Falha ao baixar mídia" };
+  }
 }
 
 export function waTimestampISO(ts: unknown) {
@@ -624,11 +664,14 @@ export async function testEvolutionConnection(
 export interface IncomingWhatsAppMessage {
   from: string;           // Número do remetente (ex: "5518981011186")
   fromName?: string;      // Nome do contato (se disponível)
-  text: string;           // Texto da mensagem
+  text: string;           // Texto da mensagem (ou transcrição de áudio)
   messageId: string;      // ID da mensagem no WhatsApp
   timestamp: number;      // Unix timestamp
   isGroup: boolean;       // Se é mensagem de grupo
   instance: string;       // Nome da instância Evolution
+  kind?: "text" | "audio";
+  /** Payload bruto para download de mídia (áudio). */
+  rawMessage?: Record<string, unknown>;
 }
 
 export function parseEvolutionWebhook(payload: any): IncomingWhatsAppMessage | null {
@@ -652,12 +695,12 @@ export function parseEvolutionWebhook(payload: any): IncomingWhatsAppMessage | n
     const isGroup = jid.endsWith("@g.us");
 
     // Extrai o texto
-    const text =
-      msg?.message?.conversation ??
-      msg?.message?.extendedTextMessage?.text ??
-      msg?.message?.buttonsResponseMessage?.selectedButtonId ??
-      msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId ??
-      "";
+    let text = extractWaText(msg);
+    const audio = hasWaAudio(msg);
+    if (!text.trim() && audio) {
+      // Poller / caller preenche com transcrição; aceita placeholder.
+      text = String(payload?.__transcript || msg?.__transcript || "[Áudio]").trim();
+    }
 
     if (!text.trim()) return null;
 
@@ -669,6 +712,8 @@ export function parseEvolutionWebhook(payload: any): IncomingWhatsAppMessage | n
       timestamp: msg?.messageTimestamp ?? Date.now() / 1000,
       isGroup,
       instance: payload?.instance ?? "helena",
+      kind: audio || /^\[Áudio\]/i.test(text) ? "audio" : "text",
+      rawMessage: msg,
     };
   } catch {
     return null;
