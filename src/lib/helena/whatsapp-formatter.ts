@@ -66,14 +66,48 @@ export function stripMarkdown(text: string): string {
 }
 
 /**
- * Prepara texto para envio pelo WhatsApp:
- * remove emojis e markdown, preserva quebras de linha e bullets naturais.
+ * Garante que URLs fiquem sozinhas na linha — o WhatsApp só vira link azul clicável assim.
  */
-export function formatForWhatsApp(text: string): string {
-  return stripMarkdown(stripEmojis(sanitizeChatText(text)))
-    .replace(/ ([.,!?;:])/g, "$1")
+export function isolateUrls(text: string): string {
+  return text
+    .replace(/(https?:\/\/[^\s<>"']+)/gi, (url) => {
+      const clean = url.replace(/[),.]+$/g, "");
+      const trail = url.slice(clean.length);
+      return `\n${clean}\n${trail}`;
+    })
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * Prepara texto para envio pelo WhatsApp:
+ * remove emojis e markdown, preserva quebras de linha e bullets naturais.
+ * URLs ficam em linha própria para o app transformar em link clicável.
+ */
+export function formatForWhatsApp(text: string): string {
+  return isolateUrls(
+    stripMarkdown(stripEmojis(sanitizeChatText(text)))
+      .replace(/ ([.,!?;:])/g, "$1")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  );
+}
+
+/** Partes de texto + link para renderizar no Inbox. */
+export function linkifyParts(text: string): Array<{ type: "text" | "link"; value: string }> {
+  const raw = sanitizeChatText(text);
+  const re = /(https?:\/\/[^\s<>"']+)/gi;
+  const parts: Array<{ type: "text" | "link"; value: string }> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    if (m.index > last) parts.push({ type: "text", value: raw.slice(last, m.index) });
+    const url = m[1]!.replace(/[),.]+$/g, "");
+    parts.push({ type: "link", value: url });
+    last = m.index + m[0].length - (m[0].length - url.length);
+  }
+  if (last < raw.length) parts.push({ type: "text", value: raw.slice(last) });
+  return parts.length ? parts : [{ type: "text", value: raw }];
 }
 
 /**

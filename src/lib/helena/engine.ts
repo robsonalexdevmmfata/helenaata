@@ -884,7 +884,7 @@ const handlers: Record<string, Handler> = {
     const baseText = closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots });
     const text = formatForWhatsApp(
       previewUrlLive && reason === "visualizou_sem_responder"
-        ? `${baseText}\n\nDeixei a prévia do site pronta pra você ver no celular: ${previewUrlLive}`
+        ? `${baseText}\n\nDeixei a prévia do site pronta pra você ver no celular:\n${previewUrlLive}`
         : baseText,
     );
     const previous = ownerName(db, conv.handlerId);

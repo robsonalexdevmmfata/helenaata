@@ -164,13 +164,20 @@ const AUTHORS = ["Carla M.", "Roberto S.", "Ana P.", "Diego L.", "Fernanda G.", 
 
 export function buildPreviewOpening(contactName: string, companyName: string, url: string, withMenu: boolean, pitch?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
+  const link = String(url || "").trim();
+  // URL sozinha na linha = WhatsApp vira link azul clicável + preview.
   if (pitch) {
-    return `${who} ${pitch} Prévia: ${url}
+    return `${who} ${pitch}
+
+Abre a prévia do site (link público):
+${link}
 
 Você é o proprietário ou a proprietária?`;
   }
   const offer = withMenu ? "site nem cardápio online" : "site";
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. O time montou uma prévia só de front (link público na Vercel) com as informações do mapa para vocês verem: ${url}
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e notei que ainda não têm ${offer}. O time montou uma prévia só de front na Vercel pra você ver:
+
+${link}
 
 Você é o proprietário ou a proprietária?`;
 }

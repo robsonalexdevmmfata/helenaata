@@ -421,7 +421,8 @@ export async function evolutionSendText(
         text,
         // Opcionais Evolution API v2:
         delay: 1200,          // ms entre mensagens (simula digitação humana)
-        linkPreview: false,   // não gera preview de links (menos spammy)
+        // Com URL de prévia Vercel: preview clicável no WhatsApp.
+        linkPreview: /https?:\/\//i.test(text),
       }),
     });
 

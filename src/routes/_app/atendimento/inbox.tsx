@@ -10,7 +10,7 @@ import { userAction } from "@/lib/helena/engine";
 import { openHelena } from "@/lib/helena/orchestrator";
 import { hydrateConversationFromEvolution } from "@/lib/evolution/inboxPoller";
 import { getEvolutionConfigUI } from "@/lib/evolution/evolutionapi";
-import { sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
+import { linkifyParts, sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
 import { fmtTime, timeAgo } from "@/lib/format";
 import { pageHead } from "@/lib/head";
 import { cn } from "@/lib/utils";
@@ -196,7 +196,23 @@ function InboxPage() {
                     )}
                   >
                     {m.from !== "contact" && <div className="mb-0.5 text-[10px] font-semibold opacity-70">{m.authorName}</div>}
-                    <div className="whitespace-pre-line">{sanitizeChatText(m.text)}</div>
+                    <div className="whitespace-pre-line break-words">
+                      {linkifyParts(m.text).map((p, i) =>
+                        p.type === "link" ? (
+                          <a
+                            key={`${m.id}-l-${i}`}
+                            href={p.value}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-helena underline underline-offset-2 break-all"
+                          >
+                            {p.value}
+                          </a>
+                        ) : (
+                          <span key={`${m.id}-t-${i}`}>{p.value}</span>
+                        ),
+                      )}
+                    </div>
                     <div className="mt-0.5 text-right text-[10px] opacity-60">{fmtTime(m.at)}</div>
                   </div>
                 </div>
