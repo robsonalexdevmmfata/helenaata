@@ -182,7 +182,32 @@ export async function flushCyclePush(): Promise<{ ok: boolean; error?: string }>
   if (!user) return { ok: false, error: "sem usuário" };
   clearTimeout(pushTimer);
   const token = typeof window !== "undefined" ? window.localStorage.getItem("helena-backend-token") : "";
-  const body = JSON.stringify(cycleSnapshot(getDB(), user));
+  const snap = cycleSnapshot(getDB(), user);
+  // Garante deals da Pipeline no snapshot top-level E no workspace.
+  if (!snap.deals?.length && getDB().deals?.length) {
+    snap.deals = getDB().deals.slice(0, 800).map((d: Deal) => ({
+      id: d.id,
+      title: d.title,
+      contactId: d.contactId,
+      companyId: d.companyId,
+      pipelineId: d.pipelineId,
+      stageId: d.stageId,
+      value: d.value,
+      status: d.status,
+      source: d.source,
+      tags: d.tags,
+      ownerId: d.ownerId,
+      ownerType: d.ownerType,
+      probability: d.probability,
+      expectedClose: d.expectedClose,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    }));
+  }
+  if (snap.workspace && typeof snap.workspace === "object" && Array.isArray(snap.deals)) {
+    (snap.workspace as { deals?: unknown }).deals = snap.deals;
+  }
+  const body = JSON.stringify(snap);
   try {
     const res = await fetch("/api/helena/cycle", {
       method: "POST",
@@ -194,8 +219,9 @@ export async function flushCyclePush(): Promise<{ ok: boolean; error?: string }>
       keepalive: true,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.ok === false) {
-      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    if (!res.ok || data?.ok === false || data?.skipped) {
+      console.warn("[Helena] Pipeline/ciclo NÃO gravou:", data?.error || data?.skipped || res.status);
+      return { ok: false, error: data?.error || (data?.skipped ? "ciclo ignorado" : `HTTP ${res.status}`) };
     }
     return { ok: true };
   } catch (err) {
@@ -346,45 +372,56 @@ export async function pullCycleIntoStore() {
       }
       if (Array.isArray(data.conversations)) mergeConversations(d, data.conversations);
       if (Array.isArray(data.inbox?.conversations)) mergeConversations(d, data.inbox.conversations);
-      for (const row of data.deals || data.inbox?.deals || []) {
-        const id = row.id || row.app_id;
-        if (!id) continue;
-        const existing = d.deals.find((x) => x.id === id);
+      // NÃO usar `data.deals || inbox` — array vazio do SQL é truthy e engolia o snapshot.
+      const dealRows = [
+        ...(Array.isArray(data.inbox?.deals) ? data.inbox.deals : []),
+        ...(Array.isArray(data.inbox?.workspace?.deals) ? data.inbox.workspace.deals : []),
+        ...(Array.isArray(data.workspace?.deals) ? data.workspace.deals : []),
+        ...(Array.isArray(data.deals) ? data.deals : []),
+      ];
+      const seenDeal = new Set<string>();
+      for (const row of dealRows) {
+        const dealId = row.id || row.app_id;
+        if (!dealId || seenDeal.has(dealId)) continue;
+        seenDeal.add(dealId);
+        const stageId = row.stageId || row.stage_id;
+        const existing = d.deals.find((x) => x.id === dealId);
         if (existing) {
-          // Sync etapa da abordagem (servidor/outro device) sem perder o card.
-          const remoteAt = row.updatedAt ? new Date(row.updatedAt).getTime() : 0;
+          const remoteAt = row.updatedAt || row.updated_at
+            ? new Date(row.updatedAt || row.updated_at).getTime()
+            : 0;
           const localAt = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
           if (remoteAt >= localAt) {
-            if (row.stageId) existing.stageId = row.stageId;
+            if (stageId) existing.stageId = stageId;
             if (row.probability != null) existing.probability = Number(row.probability) || existing.probability;
             if (row.status) existing.status = row.status;
-            if (row.ownerId) existing.ownerId = row.ownerId;
-            if (row.ownerType) existing.ownerType = row.ownerType;
+            if (row.ownerId || row.owner_id) existing.ownerId = row.ownerId || row.owner_id;
+            if (row.ownerType || row.owner_type) existing.ownerType = row.ownerType || row.owner_type;
             if (row.tags) existing.tags = row.tags;
-            existing.updatedAt = row.updatedAt || existing.updatedAt;
+            existing.updatedAt = row.updatedAt || row.updated_at || existing.updatedAt;
           }
           continue;
         }
         const pipeline = d.pipelines[0];
         const stage = pipeline?.stages[0];
         d.deals.unshift({
-          id,
+          id: dealId,
           organizationId: d.organization.id,
-          pipelineId: row.pipelineId || pipeline?.id || "pl1",
-          stageId: row.stageId || stage?.id || "s1",
+          pipelineId: row.pipelineId || row.pipeline_id || pipeline?.id || "pl_com",
+          stageId: stageId || stage?.id || "st_novo",
           title: row.title || "Lead",
-          contactId: row.contactId,
-          companyId: row.companyId,
+          contactId: row.contactId || row.contact_id,
+          companyId: row.companyId || row.company_id,
           value: Number(row.value) || 100,
           probability: Number(row.probability) || 10,
-          expectedClose: row.expectedClose || new Date(Date.now() + 20 * 86_400_000).toISOString(),
-          ownerId: row.ownerId || d.currentUserId,
-          ownerType: row.ownerType || "agent",
+          expectedClose: row.expectedClose || row.expected_close || new Date(Date.now() + 20 * 86_400_000).toISOString(),
+          ownerId: row.ownerId || row.owner_id || d.currentUserId,
+          ownerType: row.ownerType || row.owner_type || "agent",
           source: row.source || "Prospecção",
           status: row.status || "aberto",
           tags: row.tags || [],
-          createdAt: row.createdAt || new Date().toISOString(),
-          updatedAt: row.updatedAt || new Date().toISOString(),
+          createdAt: row.createdAt || row.created_at || new Date().toISOString(),
+          updatedAt: row.updatedAt || row.updated_at || new Date().toISOString(),
         } as Deal);
       }
       for (const row of data.executions || []) {

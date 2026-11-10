@@ -350,9 +350,22 @@ export async function saveCycle(payload) {
     );
   }
 
-  // Snapshot durable: leads + conversas (evita Inbox temporário e reabordagem).
-  const appOrg = String(payload.tenant?.organizationId || payload.tenant?.orgSlug || tenant.orgSlug || "");
-  if (appOrg) {
+  // Snapshot durable: Pipeline/deals + conversas. A chave TEM que ser a mesma do loadCycle.
+  let accountOrg = "";
+  try {
+    if (tenant.appUserId) {
+      const acc = await q(
+        "select app_organization_id from app_accounts where app_user_id = $1 limit 1",
+        [tenant.appUserId],
+      );
+      accountOrg = String(acc.rows[0]?.app_organization_id || "");
+    }
+  } catch {
+    accountOrg = "";
+  }
+  const tenantOrg = String(payload.tenant?.organizationId || payload.tenant?.orgSlug || tenant.orgSlug || "");
+  const appOrgKeys = [...new Set([accountOrg, tenantOrg].filter(Boolean))];
+  if (appOrgKeys.length) {
     const inbox = {
       conversations: Array.isArray(payload.conversations) ? payload.conversations.slice(0, 800) : [],
       deals: Array.isArray(payload.deals) ? payload.deals.slice(0, 800) : [],
@@ -371,19 +384,24 @@ export async function saveCycle(payload) {
       workspace: payload.workspace && typeof payload.workspace === "object" ? payload.workspace : null,
       savedAt: new Date().toISOString(),
     };
-    try {
-      await q(
-        `insert into workspace_snapshots (app_organization_id, payload, revision, updated_at)
-         values ($1, $2::jsonb, 1, now())
-         on conflict (app_organization_id) do update set
-           payload = excluded.payload,
-           revision = workspace_snapshots.revision + 1,
-           updated_at = now()`,
-        [appOrg, JSON.stringify(inbox)],
-      );
-    } catch (err) {
-      console.warn("[helena-db] workspace_snapshots:", err?.message || err);
+    const body = JSON.stringify(inbox);
+    for (const appOrg of appOrgKeys) {
+      try {
+        await q(
+          `insert into workspace_snapshots (app_organization_id, payload, revision, updated_at)
+           values ($1, $2::jsonb, 1, now())
+           on conflict (app_organization_id) do update set
+             payload = excluded.payload,
+             revision = workspace_snapshots.revision + 1,
+             updated_at = now()`,
+          [appOrg, body],
+        );
+      } catch (err) {
+        console.warn("[helena-db] workspace_snapshots:", appOrg, err?.message || err);
+      }
     }
+  } else {
+    console.warn("[helena-db] saveCycle: sem app_organization_id — Pipeline NÃO foi gravada.");
   }
 
   // Prévias públicas /v/:slug — durable no Supabase (disco do Render some no redeploy).
@@ -462,20 +480,45 @@ export async function loadCycle({ appUserId, email }) {
   const executions = (await q("select * from executions where organization_id = $1 order by created_at desc limit 200", [oid])).rows;
   const diagnoses = (await q("select * from lead_diagnoses where organization_id = $1", [oid])).rows;
   const memories = (await q("select * from commercial_memory where organization_id = $1 order by created_at desc limit 200", [oid])).rows;
-  const deals = (await q("select * from deals where organization_id = $1 limit 800", [oid])).rows;
+  const dealsSql = (await q("select * from deals where organization_id = $1 limit 800", [oid])).rows;
   let inbox = null;
   try {
     const acc = profile.app_user_id
       ? await q("select app_organization_id from app_accounts where app_user_id = $1 limit 1", [profile.app_user_id])
       : { rows: [] };
-    const appOrg = String(acc.rows[0]?.app_organization_id || profile.app_organization_id || "");
-    const snap = appOrg
-      ? await q("select payload from workspace_snapshots where app_organization_id = $1 limit 1", [appOrg])
-      : { rows: [] };
-    inbox = snap.rows[0]?.payload || null;
+    const orgRow = await q(
+      "select app_slug, slug from organizations where id = $1 limit 1",
+      [oid],
+    ).catch(() => ({ rows: [] }));
+    const keys = [
+      acc.rows[0]?.app_organization_id,
+      profile.app_organization_id,
+      orgRow.rows[0]?.app_slug,
+      orgRow.rows[0]?.slug,
+    ]
+      .map((x) => String(x || "").trim())
+      .filter(Boolean);
+    for (const appOrg of [...new Set(keys)]) {
+      const snap = await q(
+        "select payload from workspace_snapshots where app_organization_id = $1 limit 1",
+        [appOrg],
+      );
+      if (snap.rows[0]?.payload) {
+        inbox = snap.rows[0].payload;
+        break;
+      }
+    }
   } catch {
     inbox = null;
   }
+  // Pipeline real vive no snapshot — SQL deals quase sempre vazio neste SaaS.
+  const dealsFromInbox = Array.isArray(inbox?.deals) ? inbox.deals : [];
+  const dealsFromWorkspace = Array.isArray(inbox?.workspace?.deals) ? inbox.workspace.deals : [];
+  const deals = dealsFromInbox.length
+    ? dealsFromInbox
+    : dealsFromWorkspace.length
+      ? dealsFromWorkspace
+      : dealsSql;
   return {
     ok: true,
     profile,
@@ -485,8 +528,8 @@ export async function loadCycle({ appUserId, email }) {
     diagnoses,
     memories,
     deals,
-    conversations: inbox?.conversations || [],
-    connections: inbox?.connections || [],
+    conversations: inbox?.conversations || inbox?.workspace?.conversations || [],
+    connections: inbox?.connections || inbox?.workspace?.connections || [],
     helenaMessages: inbox?.helenaMessages || inbox?.workspace?.helenaMessages || [],
     whatsappPhone: inbox?.whatsappPhone || profile.phone || null,
     evolutionInstance: inbox?.evolutionInstance || profile.evolution_instance || null,

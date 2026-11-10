@@ -161,6 +161,10 @@ export function insertPlacesAsLeads(places: MapPlace[], segment: string) {
     });
     syncLiveCommercial(d);
   });
+  // Pipeline no Supabase na hora — senão some no refresh.
+  if (createdContactIds.length) {
+    void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush()).catch(() => {});
+  }
   return createdContactIds;
 }
 

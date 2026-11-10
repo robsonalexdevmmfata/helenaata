@@ -126,6 +126,44 @@ function mergeById<T extends { id: string }>(local: T[], remote: T[]): T[] {
   return Array.from(map.values());
 }
 
+/** Deals/Pipeline: o mais recente em updatedAt ganha (não zera etapa no refresh). */
+function mergeDealsByUpdatedAt(local: DB["deals"], remote: DB["deals"]): DB["deals"] {
+  if (!remote?.length) return local || [];
+  if (!local?.length) return remote;
+  const map = new Map<string, DB["deals"][number]>();
+  for (const row of local) {
+    if (row?.id) map.set(row.id, row);
+  }
+  for (const row of remote) {
+    if (!row?.id) continue;
+    const prev = map.get(row.id);
+    if (!prev) {
+      map.set(row.id, row);
+      continue;
+    }
+    const remoteAt = row.updatedAt ? new Date(row.updatedAt).getTime() : 0;
+    const localAt = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+    if (remoteAt >= localAt) {
+      map.set(row.id, {
+        ...prev,
+        ...row,
+        stageId: row.stageId || prev.stageId,
+        probability: row.probability ?? prev.probability,
+        status: row.status || prev.status,
+        tags: row.tags?.length ? row.tags : prev.tags,
+      });
+    } else {
+      map.set(row.id, {
+        ...row,
+        ...prev,
+        stageId: prev.stageId || row.stageId,
+        updatedAt: prev.updatedAt || row.updatedAt,
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
 /**
  * Aplica snapshot do Supabase no draft do store.
  * Preferência: nuvem ganha em settings; arrays mesclam por id (nuvem atualiza campos).
@@ -250,6 +288,12 @@ export function applyWorkspaceCloud(draft: DB, cloud: Record<string, unknown> | 
             lastSyncAt: c.lastSyncAt || local?.lastSyncAt,
           };
         });
+        touched += 1;
+        continue;
+      }
+      // Pipeline: nunca perde deal nem volta etapa por snapshot antigo.
+      if (key === "deals") {
+        draft.deals = mergeDealsByUpdatedAt(localArr as DB["deals"], remote as DB["deals"]);
         touched += 1;
         continue;
       }

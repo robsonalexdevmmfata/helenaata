@@ -14,7 +14,7 @@ import { buildCatalogOpening } from "@/lib/catalog";
 import { getDB, update, uid, nowISO } from "@/lib/store";
 import { unansweredAgentStreak, wasDeliveredOutbound } from "@/lib/helena/sales-flow";
 import { phoneDedupeKey } from "@/lib/prospect/runProspecting";
-import { scheduleCyclePush } from "@/lib/persist/cycle";
+import { flushCyclePush, scheduleCyclePush } from "@/lib/persist/cycle";
 import { advanceDealOnApproach } from "@/lib/crm/pipelineStages";
 
 // ── Configurações de disparo seguro ──────────────────────────────────────────
@@ -268,6 +268,7 @@ export async function dispatchProspectMessages(
   }
 
   scheduleCyclePush();
+  void flushCyclePush();
   return result;
 }
 

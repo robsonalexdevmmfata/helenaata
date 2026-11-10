@@ -378,6 +378,8 @@ const handlers: Record<string, Handler> = {
       x.updatedAt = nowISO();
       d.activities.unshift({ id: uid("ac_"), organizationId: d.organization.id, contactId: x.contactId, dealId: x.id, type: "etapa", text: `Movido para ${stage.name}`, actor: ctx.actor, createdAt: nowISO() });
     });
+    // Grava Pipeline na hora no Supabase (não espera o debounce).
+    void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush()).catch(() => {});
     return ok(`${deal.title} movida para ${stage.name}`);
   },
   "crm.assign_lead": (p, ctx) => {
