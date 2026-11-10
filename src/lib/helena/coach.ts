@@ -81,7 +81,7 @@ export function coachSteps(db: DB): CoachStep[] {
     {
       id: "dev_preview",
       title: "Prévia de site/cardápio (R$ 100/mês)",
-      why: "Time Dev sobe front na Vercel; comercial manda o link pro dono.",
+      why: "Time Dev monta; admin revisa e aprova em Prévia de sites; só então o WhatsApp manda o link.",
       sayToHelena: "Helena, monte prévia de 5 restaurantes sem cardápio em São Paulo",
       href: "/ia/previews",
       done: hasPreview,

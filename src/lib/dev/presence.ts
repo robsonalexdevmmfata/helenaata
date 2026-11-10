@@ -630,7 +630,7 @@ export function buildSitePreview(opts: {
     services: food ? undefined : servicesFor(segment, opts.place.name),
     mapsUrl: `https://www.google.com/maps/search/?api=1&query=${query}`,
     previewPath: `/v/${opts.slug}`,
-    status: "enviada",
+    status: "pronta",
     createdBy: "Time Dev · Sofia Designer Gráfico",
     createdAt: nowISO(),
   };
@@ -737,8 +737,6 @@ export function applyPresenceFromPlaces(opts: {
   const previewIds: string[] = [];
   const slugs: string[] = [];
   const published: SitePreview[] = [];
-  const createdContactIds: string[] = [];
-  const dispatchMeta: { contactId: string; withMenu: boolean; slug: string }[] = [];
   const anyFood = opts.places.some((p) => resolvePreviewKind(p.name, opts.segment).food);
 
   update((d) => {
@@ -750,7 +748,7 @@ export function applyPresenceFromPlaces(opts: {
       if (a.id === DEV_FE_ID) { a.status = "trabalhando"; a.currentTask = "Caio · páginas na Vercel"; a.metrics.tasks += opts.places.length; }
       if (a.id === DEV_BE_ID) { a.status = "trabalhando"; a.currentTask = anyFood ? "Diego · dados do cardápio + deploy" : "Diego · dados + deploy"; a.metrics.tasks += opts.places.length; }
       if (a.id === DEV_DS_ID) { a.status = "trabalhando"; a.currentTask = anyFood ? "Sofia · arte do cardápio digital" : "Sofia · identidade visual do site"; a.metrics.tasks += opts.places.length; }
-      if (a.teamId === "t_com" && a.role === "SDR") { a.status = "trabalhando"; a.currentTask = "Abordar dono com link da prévia"; }
+      if (a.teamId === "t_com" && a.role === "SDR") { a.status = "trabalhando"; a.currentTask = "Aguardar admin aprovar prévia"; }
     });
     const devTeam = d.teams.find((t) => t.id === DEV_TEAM_ID);
     if (devTeam) {
@@ -817,7 +815,6 @@ export function applyPresenceFromPlaces(opts: {
         createdAt: nowISO(),
         lastContactAt: nowISO(),
       });
-      createdContactIds.push(contactId);
       const dealTags = food ? ["#sem-site", "#sem-cardapio", "prévia"] : ["#sem-site", "prévia"];
       const stage = stageForNewProspect(pipeline, dealTags) || pipeline?.stages[0];
       if (stage && pipeline) {
@@ -856,7 +853,6 @@ export function applyPresenceFromPlaces(opts: {
       previewIds.push(preview.id);
       slugs.push(slug);
       published.push(preview);
-      dispatchMeta.push({ contactId, withMenu: food, slug });
       const url = previewUrl(slug);
       // Conversa pronta no CRM — o texto só entra no Inbox depois do envio real na Evolution
       // (senão o WhatsApp Web fica sem o chat e o dispatcher acha que já mandou).
@@ -877,7 +873,7 @@ export function applyPresenceFromPlaces(opts: {
           id: uid("m_"),
           from: "system",
           authorName: "Helena",
-          text: `Prévia pronta (${url}). Aguardando envio real no WhatsApp da agência (+55 18 98101-1186).`,
+          text: `Prévia montada (${url}). Aguardando revisão do admin em IA → Prévia de sites. Só depois do “Aprovar” o WhatsApp dispara.`,
           at: nowISO(),
           kind: "event",
         }],
@@ -888,7 +884,7 @@ export function applyPresenceFromPlaces(opts: {
         contactId,
         dealId,
         type: "ia",
-        text: `Sofia (Designer Gráfico) + Time Dev publicaram a prévia ${url}. Comercial manda o link clicável no WhatsApp.`,
+        text: `Sofia + Time Dev montaram a prévia ${url}. Admin revisa e aprova antes do envio comercial.`,
         actor: "Helena",
         createdAt: nowISO(),
       });
@@ -915,14 +911,15 @@ export function applyPresenceFromPlaces(opts: {
         { id: "s2", label: anyFood ? "Diego · cardápio e dados" : "Diego · catálogo e dados", status: "done" },
         { id: "s3", label: "Caio · páginas + hospedagem Vercel", status: "done" },
         { id: "s4", label: "Link público clicável", status: "done" },
-        { id: "s5", label: "Handoff ao Time Comercial (WhatsApp)", status: "done" },
+        { id: "s5", label: "Aguardando revisão do admin", status: "running" },
+        { id: "s6", label: "Envio WhatsApp (após aprovar)", status: "pending" },
       ],
       events: [
         { at: nowISO(), text: `Helena acionou o Time Dev + Designer Gráfico para ${opts.segment} em ${opts.city}`, kind: "info" },
-        { at: nowISO(), text: `${opts.places.length} prévias com arte na Vercel · links clicáveis pro comercial`, kind: "success" },
+        { at: nowISO(), text: `${opts.places.length} prévias no ar · admin revisa em IA → Prévia de sites antes do WhatsApp`, kind: "success" },
       ],
       createdAt: nowISO(),
-      result: `${opts.places.length} links Vercel prontos`,
+      result: `${opts.places.length} prévias aguardando aprovação`,
     });
     bumpAutomation(d, "lead_criado", opts.places.length);
   });
@@ -931,48 +928,112 @@ export function applyPresenceFromPlaces(opts: {
     return { count: previewIds.length, previewIds, slugs };
   }
 
+  // Publica no /v/… pra admin revisar — WhatsApp SÓ depois de aprovar na dashboard.
   import("@/lib/dev/previewPublish").then(async ({ publishSitePreviews }) => {
-    const deployed = await publishSitePreviews(published);
-    const db2 = getDB();
-    const contacts = createdContactIds.map((cid) => {
-      const c = db2.contacts.find((x) => x.id === cid);
-      const comp = db2.companies.find((x) => x.id === c?.companyId);
-      const meta = dispatchMeta.find((m) => m.contactId === cid);
-      return c && meta ? {
-        phone: c.phone,
-        name: c.name,
-        companyName: comp?.name ?? "empresa",
-        contactId: c.id,
-        agentName: "Robson Alex",
-        withMenu: meta.withMenu,
-        slug: meta.slug,
-      } : null;
-    }).filter(Boolean) as Array<{ phone: string; name: string; companyName: string; contactId: string; agentName: string; withMenu: boolean; slug: string }>;
-    if (!contacts.length) return;
-    const { dispatchProspectMessages } = await import("@/lib/evolution/prospectDispatcher");
-    await dispatchProspectMessages(
-      contacts,
-      (ct) => {
-        const row = contacts.find((x) => x.contactId === ct.contactId);
-        const live = row ? deployed[row.slug]?.vercelUrl : undefined;
-        const url = live || previewUrl(row?.slug ?? "preview");
-        const lead = db2.contacts.find((x) => x.id === ct.contactId);
-        const pitch = (lead?.tags || []).includes("#dx-cardapio") || (lead?.tags || []).includes("#dx-sem_site")
-          ? diagnoseLead({
-            name: ct.companyName,
-            segment: db2.companies.find((c) => c.id === lead?.companyId)?.segment,
-            city: db2.companies.find((c) => c.id === lead?.companyId)?.city,
-            tags: lead?.tags,
-            hasWhatsApp: true,
-          }).recommend_pitch
-          : undefined;
-        return formatForWhatsApp(buildPreviewOpening(ct.name, ct.companyName, url, Boolean(row?.withMenu), pitch));
-      },
-      db2.organization.id,
+    await publishSitePreviews(published);
+    const { pushHelenaMessage } = await import("@/lib/helena/engine");
+    pushHelenaMessage(
+      `${published.length} prévia(s) no ar aguardando sua revisão em IA → Prévia de sites. Aprove as que estão boas pra liberar o envio no WhatsApp.`,
+      { type: "result", ok: true, title: "Revisão de layout · admin", detail: published.slice(0, 3).map((p) => previewUrl(p.slug)).join(" · ") },
     );
   }).catch((err) => console.warn("[Time Dev deploy]", err));
 
   return { count: previewIds.length, previewIds, slugs };
+}
+
+export function reviewSitePreview(
+  previewId: string,
+  decision: "aprovada" | "rejeitada",
+  opts?: { note?: string; reviewer?: string },
+) {
+  let ok = false;
+  update((d) => {
+    const row = d.sitePreviews.find((p) => p.id === previewId);
+    if (!row) return;
+    if (row.status === "enviada" || row.status === "aprovada_cliente") return;
+    row.status = decision;
+    row.reviewedAt = nowISO();
+    row.reviewedBy = opts?.reviewer || "Admin";
+    if (opts?.note) row.reviewNote = opts.note;
+    ok = true;
+    const conv = d.conversations.find((c) => c.contactId === row.contactId);
+    conv?.messages.unshift({
+      id: uid("m_"),
+      from: "system",
+      authorName: "Admin",
+      text: decision === "aprovada"
+        ? `Layout aprovado (${previewUrl(row.slug)}). Liberado para envio no WhatsApp.`
+        : `Layout rejeitado — Time Dev/Designer refaz. ${opts?.note || ""}`.trim(),
+      at: nowISO(),
+      kind: "event",
+    });
+  });
+  return ok;
+}
+
+/** Dispara WhatsApp só das prévias aprovadas (ou ids filtrados). */
+export async function sendApprovedPreviews(previewIds?: string[]) {
+  const db = getDB();
+  const pool = (db.sitePreviews || []).filter((p) => {
+    if (p.status !== "aprovada") return false;
+    if (previewIds?.length) return previewIds.includes(p.id);
+    return true;
+  });
+  if (!pool.length) return { sent: 0, message: "Nenhuma prévia aprovada para enviar." };
+
+  const { publishSitePreviews } = await import("@/lib/dev/previewPublish");
+  const deployed = await publishSitePreviews(pool);
+  const contacts = pool.map((p) => {
+    const c = db.contacts.find((x) => x.id === p.contactId);
+    const comp = db.companies.find((x) => x.id === p.companyId);
+    if (!c) return null;
+    return {
+      phone: c.phone,
+      name: c.name,
+      companyName: comp?.name ?? p.name,
+      contactId: c.id,
+      agentName: "Robson Alex",
+      withMenu: Boolean(p.menu?.length),
+      slug: p.slug,
+      previewId: p.id,
+    };
+  }).filter(Boolean) as Array<{
+    phone: string; name: string; companyName: string; contactId: string;
+    agentName: string; withMenu: boolean; slug: string; previewId: string;
+  }>;
+
+  if (!contacts.length) return { sent: 0, message: "Contatos das prévias não encontrados." };
+
+  const { dispatchProspectMessages } = await import("@/lib/evolution/prospectDispatcher");
+  await dispatchProspectMessages(
+    contacts,
+    (ct) => {
+      const row = contacts.find((x) => x.contactId === ct.contactId);
+      const live = row ? deployed[row.slug]?.vercelUrl : undefined;
+      const url = live || previewUrl(row?.slug ?? "preview");
+      const lead = db.contacts.find((x) => x.id === ct.contactId);
+      const pitch = (lead?.tags || []).includes("#dx-cardapio") || (lead?.tags || []).includes("#dx-sem_site")
+        ? diagnoseLead({
+          name: ct.companyName,
+          segment: db.companies.find((c) => c.id === lead?.companyId)?.segment,
+          city: db.companies.find((c) => c.id === lead?.companyId)?.city,
+          tags: lead?.tags,
+          hasWhatsApp: true,
+        }).recommend_pitch
+        : undefined;
+      return formatForWhatsApp(buildPreviewOpening(ct.name, ct.companyName, url, Boolean(row?.withMenu), pitch));
+    },
+    db.organization.id,
+  );
+
+  update((d) => {
+    for (const ct of contacts) {
+      const row = d.sitePreviews.find((p) => p.id === ct.previewId);
+      if (row) row.status = "enviada";
+    }
+  });
+
+  return { sent: contacts.length, message: `${contacts.length} prévia(s) enviadas no WhatsApp.` };
 }
 
 export function runPresencePipeline(p: {

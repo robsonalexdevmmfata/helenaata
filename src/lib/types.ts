@@ -968,12 +968,17 @@ export interface SitePreview {
   services?: { name: string; description: string }[];
   mapsUrl: string;
   previewPath: string;
-  status: "pronta" | "enviada" | "aprovada_cliente";
+  /** pronta = aguarda admin; aprovada = liberada p/ envio; rejeitada = refazer; enviada = WhatsApp mandou */
+  status: "pronta" | "aprovada" | "rejeitada" | "enviada" | "aprovada_cliente";
   createdBy: string;
   createdAt: string;
   githubUrl?: string;
   vercelUrl?: string;
   deployError?: string;
+  /** Nota do admin ao aprovar/rejeitar layout. */
+  reviewNote?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
 }
 
 export type ServiceBilling = "unico" | "mensal" | "campanha" | "a_partir";

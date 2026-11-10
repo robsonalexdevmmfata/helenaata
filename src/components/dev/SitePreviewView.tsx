@@ -89,16 +89,16 @@ function PreviewShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Faixa que fala com o DONO — “isso foi feito pra você”. */
+/** Faixa que fala com o DONO — presença de produto, não template. */
 function OwnerRibbon({ name, kind }: { name: string; kind: "cardapio" | "site" }) {
   return (
-    <div className="relative z-30 border-b border-white/10 bg-zinc-950 text-white">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5 text-[11px] sm:text-xs">
+    <div className="relative z-30 border-b border-white/10 bg-[linear-gradient(90deg,#09090b,#18181b_50%,#09090b)] text-white">
+      <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3 text-[11px] sm:text-xs">
         <p className="font-semibold tracking-tight">
-          Feito sob medida para <span className="text-amber-300">{name}</span>
+          Experiência digital exclusiva · <span className="bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">{name}</span>
         </p>
-        <p className="hidden shrink-0 text-zinc-400 sm:block">
-          {kind === "cardapio" ? "Seus clientes vão querer pedir agora" : "Seus clientes vão querer te chamar agora"}
+        <p className="hidden shrink-0 font-medium text-zinc-400 sm:block">
+          {kind === "cardapio" ? "Cardápio pronto pra receber pedido" : "Site pronto pra receber cliente"}
         </p>
       </div>
     </div>
@@ -135,19 +135,18 @@ function CloseSellBlock({
       <div className="hp-shine pointer-events-none absolute inset-0 opacity-35" />
       <div className="hp-float absolute -right-8 -top-8 size-36 rounded-full opacity-30" style={{ background: accent }} />
       <div className="hp-float absolute -bottom-10 -left-6 size-28 rounded-full opacity-20" style={{ background: accent, animationDelay: "1s" }} />
-      <p className="hp-syne relative text-[11px] font-bold uppercase tracking-[0.24em] opacity-55">Já no ar · com a cara da {name}</p>
-      <h2 className="hp-display relative mt-3 text-[clamp(1.85rem,5.5vw,2.75rem)] font-bold leading-[1.05] tracking-tight">
+      <p className="hp-syne relative text-[11px] font-bold uppercase tracking-[0.24em] opacity-55">Produto final · {name}</p>
+      <h2 className="hp-display relative mt-3 text-[clamp(1.9rem,5.5vw,2.85rem)] font-bold leading-[1.05] tracking-tight">
         {kind === "cardapio"
-          ? "Seu cliente abre, escolhe e pede — sem app, sem comissão"
-          : "Seu cliente chega, confia e chama no WhatsApp"}
+          ? "Do olhar ao pedido — em segundos"
+          : "Do primeiro olhar à mensagem no WhatsApp"}
       </h2>
       <p className="relative mx-auto mt-4 max-w-md text-[15px] leading-relaxed opacity-80">
-        Foi montado pensando em quem compra de você — e em você, dono, que quer parecer grande sem parecer genérico.
-        Um toque e a conversa começa.
+        Visual de estúdio, prova social do mapa e WhatsApp em um toque. É assim que o cliente decide — e é assim que o dono fecha.
       </p>
       <a
         href={wa}
-        className="hp-pulse relative mt-8 inline-flex rounded-2xl px-8 py-4 text-sm font-bold tracking-tight shadow-xl transition hover:-translate-y-0.5"
+        className="hp-pulse relative mt-8 inline-flex rounded-2xl px-9 py-4 text-sm font-bold tracking-tight shadow-xl transition hover:-translate-y-0.5"
         style={{ background: accent, color: accentFg }}
       >
         Quero isso no meu negócio
@@ -245,18 +244,18 @@ function DeliveryStorefront({ view, product }: { view: SitePreview; product: Nic
       <OwnerRibbon name={view.name} kind="cardapio" />
 
       {/* Hero cheio — o cliente já “sente” o cheiro */}
-      <header className="relative h-[42svh] min-h-[240px] max-h-[380px] overflow-hidden sm:h-[48svh]">
+      <header className="relative h-[46svh] min-h-[260px] max-h-[420px] overflow-hidden sm:h-[52svh]">
         {heroImg && <img src={heroImg} alt="" className="hp-ken absolute inset-0 size-full object-cover" />}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#f4efe8] via-black/35 to-black/50" />
-        <div className="absolute inset-x-0 bottom-0 px-4 pb-16 pt-20">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,rgba(0,0,0,.15),transparent_55%),linear-gradient(to_top,#f4efe8_0%,rgba(0,0,0,.45)_42%,rgba(0,0,0,.62)_100%)]" />
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-16 pt-24">
           <div className="mx-auto max-w-lg">
-            <p className="hp-rise text-[11px] font-bold uppercase tracking-[0.2em] text-amber-200/90">
+            <p className="hp-rise text-[11px] font-bold uppercase tracking-[0.22em] text-amber-200/95">
               Delivery · pedido em 1 toque
             </p>
-            <h1 className="hp-syne hp-rise-2 mt-2 text-[clamp(2rem,8vw,2.85rem)] font-extrabold leading-[0.98] tracking-tight text-white drop-shadow-lg">
+            <h1 className="hp-syne hp-rise-2 mt-2 text-[clamp(2.15rem,8.5vw,3.1rem)] font-extrabold leading-[0.96] tracking-tight text-white drop-shadow-[0_8px_32px_rgba(0,0,0,.45)]">
               {view.name}
             </h1>
-            <p className="hp-rise-3 mt-2 max-w-sm text-sm leading-relaxed text-white/85">
+            <p className="hp-rise-3 mt-3 max-w-md text-[15px] leading-relaxed text-white/88">
               {product.headlineHook}
             </p>
           </div>
@@ -689,10 +688,10 @@ function NicheStorefront({ view, product }: { view: SitePreview; product: NicheP
             )}
           </div>
           <p className="hp-rise mt-5 text-[11px] font-bold uppercase tracking-[0.28em] opacity-65">{product.eyebrow}</p>
-          <h1 className={`hp-rise-2 mt-3 text-[clamp(3rem,10vw,4.75rem)] font-bold leading-[0.94] tracking-[-0.04em] ${displayClass}`}>
+          <h1 className={`hp-rise-2 mt-3 text-[clamp(3.1rem,10.5vw,5rem)] font-bold leading-[0.92] tracking-[-0.045em] ${displayClass}`}>
             {view.name}
           </h1>
-          <p className="hp-rise-3 mt-5 max-w-lg text-[1.1rem] leading-relaxed opacity-90 sm:text-lg">
+          <p className="hp-rise-3 mt-6 max-w-xl text-[1.12rem] leading-relaxed opacity-92 sm:text-[1.2rem]">
             {product.headlineHook}
           </p>
           <div className="hp-rise-3 mt-5 flex flex-wrap items-center gap-3 text-sm">

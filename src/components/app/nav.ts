@@ -95,10 +95,11 @@ export function settingsNavFor(isAdmin: boolean): NavGroup {
   };
 }
 
-export function navGroupsFor(isAdmin: boolean, allowDev = isAdmin): NavGroup[] {
+export function navGroupsFor(isAdmin: boolean, _allowDev = isAdmin): NavGroup[] {
   return NAV_GROUPS.map((g) => {
     if (g.label !== "IA") return g;
-    return { ...g, items: allowDev ? g.items : g.items.filter((i) => i.to !== "/ia/previews") };
+    // Prévia de sites = só admin da plataforma (revisão + aprovação antes do envio).
+    return { ...g, items: isAdmin ? g.items : g.items.filter((i) => i.to !== "/ia/previews") };
   });
 }
 
@@ -109,10 +110,10 @@ export function integrationNavFor(isAdmin: boolean): NavGroup[] {
   }));
 }
 
-export function allNavFor(isAdmin: boolean, allowDev = isAdmin): NavItem[] {
+export function allNavFor(isAdmin: boolean, _allowDev = isAdmin): NavItem[] {
   return ALL_NAV.filter((n) => {
     if (!isAdmin && n.to === "/configuracoes/usuarios") return false;
-    if (!allowDev && n.to === "/ia/previews") return false;
+    if (!isAdmin && n.to === "/ia/previews") return false;
     if (!isAdmin && (n.to === "/integracoes/webhooks" || n.to === "/integracoes/api" || n.to === "/integracoes/provedores")) return false;
     return true;
   });
