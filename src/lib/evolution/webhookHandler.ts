@@ -36,7 +36,7 @@ import { bumpAutomation, getDB, update, uid, nowISO } from "@/lib/store";
 import { evaluateHandoff } from "@/lib/helena/whatsapp-formatter";
 import type { HandoffStage } from "@/lib/helena/whatsapp-formatter";
 import { extractMeetingFromText } from "@/lib/helena/calendar";
-import { nextInboxReply } from "@/lib/helena/inbox-brain";
+import { nextInboxReply, previewCtxForContact } from "@/lib/helena/inbox-brain";
 import { formatSlotMenu, pickProposedSlot, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
 import { runTool } from "@/lib/helena/engine";
 import { syncLiveCommercial } from "@/lib/analytics";
@@ -432,7 +432,8 @@ async function generateAgentReply(
   const contact = db.contacts.find((x) => x.phone.replace(/\D/g, "") === clientPhone.replace(/\D/g, ""));
   const company = contact?.companyId ? db.companies.find((c) => c.id === contact.companyId) : undefined;
   const niche = company?.segment || contact?.tags?.find((t) => !t.startsWith("#")) || "";
-  const scripted = nextInboxReply(clientMessage, turns, firstName, db.serviceOffers ?? [], niche);
+  const preview = contact ? previewCtxForContact(contact.id, company?.name) : undefined;
+  const scripted = nextInboxReply(clientMessage, turns, firstName, db.serviceOffers ?? [], niche, preview);
   if (scripted) {
     let text = scripted;
     if (/10 minutos|horario|horário/i.test(scripted) && !/\n1\)/.test(scripted) && db.salesFlow) {

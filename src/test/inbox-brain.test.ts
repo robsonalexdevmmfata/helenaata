@@ -31,8 +31,30 @@ describe("inbox conversation brain", () => {
     const history = [{ from: "agent", text: "Você é o proprietário ou a proprietária do estabelecimento?" }];
     const silent = nextInboxReply("Sou a dona", history, "Ana", offers);
     expect(silent).not.toMatch(/R\$|297|547/);
+    expect(silent).toMatch(/site|10 minutos|link/i);
     const quoted = nextInboxReply("Quanto custa?", history, "Ana", offers);
-    expect(quoted).toMatch(/297|99|landing/i);
+    expect(quoted).toMatch(/R\$|100|site|cardápio/i);
+  });
+
+  it("depois que confirma dono, manda oferta com link público", () => {
+    const history = [{ from: "agent", text: "Você é o proprietário, a proprietária ou a pessoa responsável?" }];
+    const reply = nextInboxReply("Sim, sou o dono", history, "João", offers, "Restaurantes", {
+      url: "https://helenaata.vercel.app/v/cantina",
+      withMenu: true,
+      companyName: "Cantina",
+    });
+    expect(reply).toMatch(/helenaata\.vercel\.app\/v\/cantina/);
+    expect(reply).toMatch(/cardápio|site/i);
+  });
+
+  it("áudio após pergunta de dono também recebe o link", () => {
+    const history = [{ from: "agent", text: "Você é o proprietário ou a proprietária?" }];
+    const reply = nextInboxReply("[Áudio] sou o responsável sim", history, "Pedro", offers, "Barbearia", {
+      url: "https://helenaata.vercel.app/v/barba",
+      withMenu: false,
+      companyName: "Studio Navalha",
+    });
+    expect(reply).toMatch(/\/v\/barba/);
   });
 
   it("quebra objeção de Instagram sem soltar preço", () => {

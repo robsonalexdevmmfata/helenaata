@@ -17,11 +17,20 @@ function cycleOf(c: Contact) {
   return tag ? tag.slice(7) : c.score > 0 ? "diagnosticado" : "novo";
 }
 
-export function cycleSnapshot(db: DB, user: User) {
+export function realPhone(phone?: string | null) {
+  const p = String(phone || "").trim();
+  if (!p || /aguardando|qr|pending/i.test(p)) return "";
+  return p;
+}
+
+function cycleSnapshot(db: DB, user: User) {
   const wa =
-    (db.connections || []).find((c) => c.status === "online" && c.phone)
-    || (db.connections || []).find((c) => /info tech|helena/i.test(c.name) && c.phone)
-    || (db.connections || []).find((c) => c.phone);
+    (db.connections || []).find((c) => c.status === "online" && realPhone(c.phone))
+    || (db.connections || []).find((c) => /info tech|helena/i.test(c.name) && realPhone(c.phone))
+    || (db.connections || []).find((c) => realPhone(c.phone));
+  const instanceFromConn = wa?.id?.startsWith("wa_") && wa.id !== "wa_agency"
+    ? wa.id.slice(3)
+    : undefined;
   return {
     tenant: {
       appUserId: user.id,
@@ -32,9 +41,9 @@ export function cycleSnapshot(db: DB, user: User) {
       organizationId: user.organizationId,
       orgSlug: user.organizationId,
       plan: user.planId || "trial",
-      phone: wa?.phone || user.phone,
-      whatsappPhone: wa?.phone || user.phone || "",
-      evolutionInstance: user.evolutionInstance || "helena",
+      phone: realPhone(wa?.phone) || realPhone(user.phone) || "",
+      whatsappPhone: realPhone(wa?.phone) || realPhone(user.phone) || "",
+      evolutionInstance: user.evolutionInstance || instanceFromConn || "helena",
     },
     companies: db.companies.slice(0, 1000).map((c) => ({
       id: c.id,
@@ -135,12 +144,12 @@ export function cycleSnapshot(db: DB, user: User) {
     connections: (db.connections || []).slice(0, 20).map((c) => ({
       id: c.id,
       name: c.name,
-      phone: c.phone,
+      phone: realPhone(c.phone) || realPhone(wa?.phone) || "",
       type: c.type,
-      status: c.status,
+      status: c.status === "online" || realPhone(c.phone) ? (c.status === "conectando" && !realPhone(c.phone) ? "conectando" : c.status) : c.status,
       queue: c.queue,
       sentToday: c.sentToday,
-      dailyLimit: c.dailyLimit,
+      dailyLimit: Math.max(c.dailyLimit || 0, 1000),
       lastSyncAt: c.lastSyncAt,
     })),
     // Payload completo — o /v/:slug e o upsert no Supabase precisam de menu/fotos/tagline.

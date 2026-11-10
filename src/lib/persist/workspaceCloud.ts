@@ -220,15 +220,22 @@ export function applyWorkspaceCloud(draft: DB, cloud: Record<string, unknown> | 
         touched += 1;
         continue;
       }
-      // Connections: nunca perde telefone
+      // Connections: nunca perde telefone nem “online” sem motivo
       if (key === "connections") {
         const merged = mergeById(localArr as DB["connections"], remote as DB["connections"]);
         draft.connections = merged.map((c) => {
           const local = (localArr as DB["connections"]).find((x) => x.id === c.id);
+          const phone = c.phone || local?.phone || "";
+          const status =
+            local?.status === "online" && !c.phone && !/offline/i.test(String(c.status || ""))
+              ? "online"
+              : c.status || local?.status || "offline";
           return {
             ...c,
-            phone: c.phone || local?.phone || "",
+            phone,
+            status,
             dailyLimit: Math.max(c.dailyLimit || 0, local?.dailyLimit || 0, 1000),
+            lastSyncAt: c.lastSyncAt || local?.lastSyncAt,
           };
         });
         touched += 1;

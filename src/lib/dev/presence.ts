@@ -514,27 +514,32 @@ const REVIEW_BITS = [
 ];
 const AUTHORS = ["Carla M.", "Roberto S.", "Ana P.", "Diego L.", "Fernanda G.", "Paulo H."];
 
-export function buildPreviewOpening(contactName: string, companyName: string, url: string, withMenu: boolean, pitch?: string) {
+/** 1ª mensagem: só confirma se é dono/responsável. Link público vem na resposta seguinte. */
+export function buildPreviewOpening(contactName: string, companyName: string, _url: string, withMenu: boolean, pitch?: string) {
   const who = contactName ? `Olá ${contactName}!` : "Olá!";
-  const link = String(url || "").trim();
-  // URL sozinha na linha = WhatsApp vira link azul clicável + preview de página.
-  const product = withMenu
-    ? "um cardápio digital onde o cliente escolhe, monta a sacola e pede no WhatsApp"
-    : "um site profissional onde o cliente confia e te chama no WhatsApp em 1 toque";
+  const product = withMenu ? "cardápio digital + pedidos no WhatsApp" : "site profissional com WhatsApp";
   if (pitch) {
     return `${who} ${pitch}
 
-Montei ${product} sob medida pra ${companyName} — já no ar, com a cara do seu negócio. Abre e imagina seus clientes usando isso agora:
-
-${link}
-
-Se gostar, a gente publica oficial ainda esta semana. Você é o dono(a)?`;
+Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e preparei ${product} sob medida. Antes de te mandar o link: você é o proprietário, a proprietária ou a pessoa responsável?`;
   }
-  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa e preparei ${product} pra vocês — visual de produto final, já hospedado. Abre o link e sente como o cliente vê o seu negócio:
+  return `${who} Sou o Robson Alex, da Info Tech. Vi a ${companyName} no mapa com boa presença, mas ainda sem ${withMenu ? "cardápio online" : "site próprio"}.
+
+Antes de te mostrar o que já está pronto: você é o proprietário, a proprietária ou a pessoa responsável?`;
+}
+
+/** 2ª mensagem (após dono/áudio responder): oferece site/cardápio + link público. */
+export function buildPreviewOffer(contactName: string, companyName: string, url: string, withMenu: boolean) {
+  const who = contactName ? `${contactName.split(/\s+/)[0]}, ` : "";
+  const link = String(url || "").trim();
+  const product = withMenu
+    ? "um cardápio digital onde o cliente escolhe, monta a sacola e pede no WhatsApp"
+    : "um site profissional onde o cliente confia e te chama no WhatsApp em 1 toque";
+  return `${who}perfeito. Montei ${product} pra ${companyName} — já no ar, com a cara do negócio. Abre o link (é clicável):
 
 ${link}
 
-Se fizer sentido, a gente deixa oficial ainda esta semana. Você é o proprietário ou a proprietária?`;
+Se gostar, a gente publica oficial ainda esta semana. Topa 10 minutos pra eu te mostrar?`;
 }
 
 export function syntheticPlaces(segment: string, city: string, limit: number): MapPlace[] {

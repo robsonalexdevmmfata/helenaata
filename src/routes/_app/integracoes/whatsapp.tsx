@@ -81,14 +81,14 @@ function EvolutionPanel() {
     setConnectionStatus(result);
     setTesting(false);
     if (result.connected) {
-      // Sincroniza o número no store se encontrado
       if (result.number) {
         update((d) => {
+          const phone = result.number!.replace(/\D/g, "").replace(/^55/, "+55 ");
           const conn = d.connections.find((c) => /info tech/i.test(c.name) || c.id === "wa_agency") ?? d.connections[0];
           if (conn) {
             conn.status = "online";
             conn.name = "agência info tech";
-            conn.phone = result.number!.replace(/\D/g, "").replace(/^55/, "+55 ");
+            conn.phone = phone;
             conn.lastSyncAt = nowISO();
           } else {
             d.connections.unshift({
@@ -104,9 +104,12 @@ function EvolutionPanel() {
               lastSyncAt: nowISO(),
             });
           }
+          const me = d.users.find((u) => u.id === d.currentUserId);
+          if (me && phone) me.phone = phone;
         });
       }
       toast.success("Evolution API conectada! Número sincronizado.");
+      void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush());
     } else {
       toast.error(result.message);
     }
@@ -443,12 +446,26 @@ function CustomerWhatsAppConnect() {
     setStatus(`Conectado${number ? ` · ${number}` : ""}`);
     toast.success("WhatsApp conectado.");
     update((d) => {
+      const phone = number
+        ? (number.startsWith("+") ? number : number.replace(/\D/g, "").replace(/^55/, "+55 "))
+        : "";
       const conn = d.connections.find((c) => c.id === `wa_${previewInstance}`) ?? d.connections.find((c) => c.status === "conectando");
       if (conn) {
         conn.status = "online";
-        if (number) conn.phone = number;
+        if (phone) conn.phone = phone;
+        conn.dailyLimit = Math.max(conn.dailyLimit || 0, 1000);
         conn.lastSyncAt = nowISO();
       }
+      const me = d.users.find((u) => u.id === d.currentUserId);
+      if (me) {
+        me.evolutionInstance = previewInstance || me.evolutionInstance;
+        if (phone) me.phone = phone;
+      }
+    });
+    void import("@/lib/persist/cycle").then(async ({ flushCyclePush }) => {
+      const out = await flushCyclePush();
+      if (out.ok) toast.success("Número e instância salvos no Supabase.");
+      else toast.error(out.error || "Não gravou no banco — tenta Sincronizar.");
     });
   });
 
@@ -544,6 +561,7 @@ function WhatsAppPage() {
           }
         });
         toast.success("WhatsApp já estava conectado.");
+        void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush());
         return;
       }
       if (pair.qr) {
