@@ -41,10 +41,11 @@ function advanceDeal(deal, event) {
 }
 
 function isBusinessTime(d = new Date()) {
+  // Campanha 24/7: dia comercial + noite food (sem madrugada 0h–7h).
   const day = d.getDay();
-  if (day === 0 || day === 6) return false;
+  if (day === 0) return false; // domingo off
   const h = d.getHours() + d.getMinutes() / 60;
-  return h >= 8 && h < 19;
+  return h >= 8 && h < 24;
 }
 
 function followupText(name) {

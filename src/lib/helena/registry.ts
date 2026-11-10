@@ -32,6 +32,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "campaigns.create", label: "Criar campanha", description: "Cria uma campanha de prospecção em rascunho.", category: "Campanhas", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "campaigns.start", label: "Iniciar campanha", description: "Inicia o envio em massa de uma campanha.", category: "Campanhas", defaultRisk: "alto", permission: "campaigns.send" },
   { name: "campaigns.pause", label: "Pausar campanha", description: "Pausa uma campanha em andamento.", category: "Campanhas", defaultRisk: "medio", permission: "prospect.manage" },
+  { name: "campaigns.activate_month", label: "Campanha mensal 24/7", description: "Meta do mês com radar dia (vários nichos) e noite (food noturno). Ativa times e follow-up.", category: "Campanhas", defaultRisk: "alto", permission: "campaigns.send" },
   { name: "operations.start", label: "Iniciar operação", description: "Cria e inicia uma operação com agentes e contato externo.", category: "Operações", defaultRisk: "alto", permission: "campaigns.send" },
   { name: "operations.pause", label: "Pausar operação", description: "Pausa uma operação em andamento.", category: "Operações", defaultRisk: "medio", permission: "prospect.manage" },
   { name: "operations.resume", label: "Retomar operação", description: "Retoma uma operação pausada.", category: "Operações", defaultRisk: "medio", permission: "prospect.manage" },

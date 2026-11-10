@@ -51,6 +51,10 @@ export const WAVE_NICHES = [
   "Advogados",
   "Restaurantes",
   "Pizzarias",
+  "Sorveterias",
+  "Açaí",
+  "Lanchonetes",
+  "Hamburguerias",
   "Barbearias",
   "Salões de beleza",
   "Oficinas mecânicas",
@@ -120,7 +124,14 @@ export function queryForSegment(segment: string) {
     return `nwr["amenity"~"clinic|doctors|hospital"]`;
   }
   if (/estetica|beleza/.test(n)) return `nwr["shop"~"beauty|hairdresser"]`;
-  if (/restaurante|pizzaria|lanchonete|churrasc/.test(n)) return `nwr["amenity"="restaurant"]`;
+  if (/sorvet|sorvete|gelato|ice.?cream/.test(n)) {
+    return `nwr["amenity"="ice_cream"]\n      nwr["shop"="ice_cream"]\n      nwr["name"~"sorvet|gelato",i]`;
+  }
+  if (/acai|açaí/.test(n)) return `nwr["amenity"="cafe"]["name"~"acai|açaí",i]\n      nwr["name"~"acai|açaí",i]`;
+  if (/hamburgu|burger|pastel/.test(n)) {
+    return `nwr["amenity"="fast_food"]\n      nwr["cuisine"~"burger|pastel",i]\n      nwr["name"~"hamburgu|burger|pastel",i]`;
+  }
+  if (/restaurante|pizzaria|lanchonete|churrasc/.test(n)) return `nwr["amenity"="restaurant"]\n      nwr["amenity"="fast_food"]`;
   if (/padaria|cafeteria/.test(n)) return `nwr["shop"="bakery"]\n      nwr["amenity"="cafe"]`;
   if (/barbearia|salao|salão/.test(n)) return `nwr["shop"="hairdresser"]`;
   if (/contab|contador/.test(n)) return `nwr["office"="accountant"]`;
@@ -211,7 +222,13 @@ export function extractProspectIntent(text: string) {
     [/advog|escritorio de advoc/, "Advogados"],
     [/clinic|medico/, "Clínicas Médicas"],
     [/estetica/, "Clínicas de estética"],
-    [/restaurante|pizzaria|lanchonete/, "Restaurantes"],
+    [/sorvet|gelato/, "Sorveterias"],
+    [/acai/, "Açaí"],
+    [/hamburgu|burger/, "Hamburguerias"],
+    [/pastel/, "Pastelarias"],
+    [/pizzaria/, "Pizzarias"],
+    [/lanchonete/, "Lanchonetes"],
+    [/restaurante/, "Restaurantes"],
     [/padaria|cafeteria/, "Padarias e cafeterias"],
     [/barbearia/, "Barbearias"],
     [/imobili/, "Imobiliárias"],

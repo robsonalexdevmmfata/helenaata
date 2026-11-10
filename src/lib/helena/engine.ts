@@ -45,6 +45,7 @@ import { agentBenchmark, autonomyBlocksTool, circuitBreaker, integrationHealth, 
 import { createMissionFromObjective, pauseMission, startMission, tickMissions } from "@/lib/helena/mission-engine";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
 import { advanceContactDeal, advanceDealOnApproach, meetingStage, stageForNewProspect } from "@/lib/crm/pipelineStages";
+import { activateMonthCampaign, currentShift, monthPlan, nichesForShift } from "@/lib/helena/month-campaign";
 
 export interface ToolContext {
   actor: string;
@@ -686,6 +687,42 @@ const handlers: Record<string, Handler> = {
       });
     });
     return ok(`Campanha ${p.name} criada em rascunho`, { id });
+  },
+  "campaigns.activate_month": (p, ctx) => {
+    const user = currentUser(getDB());
+    if (mustSubscribe(user)) return fail("Assine Impulso ou Máquina para a campanha 24/7.");
+    const goal = Math.max(500, Math.min(Number(p.goal) || 3000, 50_000));
+    const city = String(p.city || "Brasil");
+    const activated = activateMonthCampaign({ goal, city, nationwide: p.nationwide !== false });
+    const plan = monthPlan(goal);
+    const shift = currentShift();
+    const niches = nichesForShift(shift);
+    const scan = runTool(
+      "prospect.scan_maps",
+      {
+        segment: niches[0],
+        city,
+        nationwide: /brasil/i.test(city),
+        limit: Math.min(Math.max(Math.ceil(plan.leads / 30), 40), 120),
+        wave: true,
+        niches,
+      },
+      ctx,
+    );
+    runTool("teams.activate", { teamId: "t_com" }, ctx);
+    return ok(
+      `Campanha meta R$ ${goal.toLocaleString("pt-BR")}/mês ligada. Precisa de ~${plan.sales} fechamentos (ticket R$ 100) · ${plan.meetings} reuniões · ~${plan.leads} abordagens no mês. Agora é turno ${shift === "night" ? "noite (food)" : "dia (vários nichos)"}. ${scan.message}`,
+      {
+        goal,
+        sales: plan.sales,
+        meetings: plan.meetings,
+        leads: plan.leads,
+        shift,
+        campaignIds: activated.campaignIds,
+        missionId: activated.missionId,
+        scan: scan.message,
+      },
+    );
   },
   "campaigns.start": (p, ctx) => {
     const db = getDB();

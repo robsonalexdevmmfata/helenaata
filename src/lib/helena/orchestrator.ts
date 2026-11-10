@@ -678,37 +678,36 @@ export function interpret(text: string): Reply[] {
     ];
   }
 
-  // Revenue goal (Jarvis executiva): "precisamos faturar R$ 15.000 esta semana"
+  // Meta mensal / campanha 24/7: "quero fazer 3 mil no mês"
   const revenueGoal = parseRevenueGoal(text);
-  if (revenueGoal) {
-    const plan = computeRevenuePlan(revenueGoal, {}, parseDeadline(text));
-    const sdrNames = sdrs.map((a) => a.name).join(" e ") || "Marina Costa e Camila Alves";
-    const perSdr = Math.ceil(plan.leads / Math.max(1, sdrs.length));
-    return planOperation({
-      intro: `${greeting()}, ${first}. Meta recebida: ${brl(plan.goal)} ${plan.deadline}.\n\nMatemática de vendas da ${db.organization.name}:\n• Ticket médio site/sistema: ${brl(plan.ticket)} → ${plan.sales} clientes fechados\n• Conversão do Closer: ${Math.round(plan.closeRate * 100)}% → ${plan.meetings} reuniões agendadas\n• Agendamento dos SDRs: ${Math.round(plan.meetingRate * 100)}% → ${plan.leads} leads abordados`,
-      title: `Meta ${brl(plan.goal)} · ${plan.deadline}`,
-      objective: `Faturar ${brl(plan.goal)} ${plan.deadline}: abordar ${plan.leads} leads sem site, agendar ${plan.meetings} reuniões e fechar ${plan.sales} vendas.`,
-      total: plan.leads,
-      listId: "l2",
-      agentIds: [...sdrs.map((a) => a.id), "a_qual", "a_closer", "a_supcom"],
-      suggestions: [
-        `Caçador / Scraper: filtrar ${plan.leads} leads da região sem site no Google Maps (#sem-site)`,
-        `${sdrNames}: disparar abordagens pelo WhatsApp de forma espaçada (~${perSdr} por SDR, evitando bloqueios)`,
-        `Rafael Mendes: de prontidão para agendar no Google Calendar / Cal.com assim que o dono responder "Sim, quero ver a demonstração"`,
-        `André Lima: conduzir as ${plan.meetings} reuniões com meta de ${plan.sales} fechamentos`,
-        "Marcos Rivera: acompanhar o funil e me alertar se a taxa de resposta cair",
-      ],
-    });
+  if (revenueGoal || /campanha\s*24|operar\s*24|24\s*\/\s*7|sorveter|acai|açaí|lanchonete.*noite|pizzaria.*noite/.test(n) && /meta|faturar|fazer|mil|3000|3\s*mil/.test(n)) {
+    const goal = revenueGoal || 3000;
+    const deadline = parseDeadline(text);
+    return [
+      perform(
+        "campaigns.activate_month",
+        { goal, city: "Brasil", nationwide: true },
+        `Campanha 24/7 · meta ${brl(goal)} ${deadline.includes("mês") ? deadline : "este mês"}`,
+        [
+          { label: "Meta", value: `${brl(goal)} / mês` },
+          { label: "Ticket", value: "R$ 100/mês (site/cardápio)" },
+          { label: "Noite (18h–00h)", value: "Sorveterias, açaí, lanchonetes, pizzarias, hambúrguer…" },
+          { label: "Dia (8h–18h)", value: "Dentistas, clínicas, advogados, barbearias, imobiliárias…" },
+          { label: "Times", value: "Comercial + Closer ativos · Pipeline automático · follow-up ✓✓" },
+        ],
+        `Campanha ligada: meta ${brl(goal)} este mês. De noite o radar pega food noturno (sorvete, açaí, lanche, pizza). De dia, outros nichos. Helena e os agentes operam 24/7 — Pipeline e follow-up sem você precisar clicar.`,
+      ),
+    ];
   }
 
-  // 1. Gestão Dinâmica da Meta de R$ 15.000,00 (Dynamic Cadence)
-  if (/15\s*k|15000|15\.000|cadencia dinamica|ritmo de vendas|meta financeira/.test(n)) {
+  // 1. Gestão Dinâmica da Meta mensal (Dynamic Cadence)
+  if (/15\s*k|15000|15\.000|3\s*mil|3000|cadencia dinamica|ritmo de vendas|meta financeira|meta do mes/.test(n)) {
     const cad = computeDynamicCadence(db);
     return [{
-      text: `📊 Gestão Dinâmica da Meta de R$ 15.000,00 (Info Tech Ltda):\n\n• Faturamento acumulado: ${brl(cad.achieved)} de ${brl(cad.goal)} (${cad.percent}% da meta)\n• Pipeline em aberto: ${brl(cad.openPipelineValue)}\n• Ritmo Atual: ${cad.pacingStatus === "turbo" ? "⚡ TURBO (Acelerado automaticamente para recuperar ritmo)" : "✅ NORMAL (Ritmo sustentável)"}\n• Cadência Diária Recomendada: ${cad.dailyTargetCadence} abordagens/dia por SDR\n• Oportunidades paradas > 48h: ${cad.staleDealsCount} leads\n\n${cad.pacingStatus === "turbo" ? "Como o faturamento está abaixo da meta semanal, dobrei a cadência diária dos SDRs de 30 para 60 abordagens/dia para garantir o atingimento dos R$ 15.000,00!" : "Estamos no caminho certo para fechar os R$ 15.000,00 do mês!"}`,
+      text: `Gestão da meta ${brl(cad.goal)}/mês:\n• Faturado: ${brl(cad.achieved)} (${cad.percent}%)\n• Pipeline aberto: ${brl(cad.openPipelineValue)}\n• Ritmo: ${cad.pacingStatus === "turbo" ? "TURBO" : cad.pacingStatus === "meta_batida" ? "META BATIDA" : "NORMAL"} · ${cad.dailyTargetCadence} abordagens/dia\n• Parados >48h: ${cad.staleDealsCount}\n\nNoite = food (sorvete, açaí, lanche, pizza). Dia = outros nichos. Pipeline e follow-up 24/7.`,
       card: {
         type: "stats",
-        title: "Cadência Dinâmica · Meta R$ 15.000,00",
+        title: `Cadência · Meta ${brl(cad.goal)}`,
         items: [
           { label: "Meta Mensal", value: brl(cad.goal) },
           { label: "Faturado Ganho", value: brl(cad.achieved), hint: `${cad.percent}% alcançado` },

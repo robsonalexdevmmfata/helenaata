@@ -3,7 +3,7 @@
 import { normalize } from "@/lib/format";
 
 export const REVENUE_DEFAULTS = {
-  ticket: 3000, // ticket médio site/sistema
+  ticket: 100, // site/cardápio oficial R$ 100/mês
   closeRate: 0.25, // reuniões -> vendas (Closer)
   meetingRate: 0.1, // leads abordados -> reuniões (SDRs)
 };
@@ -22,11 +22,11 @@ export interface RevenuePlan {
 /** Extracts the BRL amount from a revenue-goal command, or null when the text is not one. */
 export function parseRevenueGoal(text: string): number | null {
   const n = normalize(text);
-  if (!/(faturar|faturamento|faturem|receita|bater\s+r\$|vender\s+r\$|fechar\s+(?:r\$\s*)?\d|meta\s+(?:de\s+)?(?:r\$\s*)?\d|projetos?\s+fechad)/.test(n)) {
+  if (!/(faturar|faturamento|faturem|receita|bater\s+r\$|vender\s+r\$|fechar\s+(?:r\$\s*)?\d|meta\s+(?:de\s+)?(?:r\$\s*)?\d|projetos?\s+fechad|fazer\s+(?:r\$\s*)?\d|preciso\s+(?:fazer|faturar|bater)|campanha\s+(?:de\s+)?(?:r\$\s*)?\d|3\s*mil\s*(reais)?\s*(no|por|\/)?\s*mes)/.test(n)) {
     return null;
   }
   const m =
-    n.match(/(?:fechar|meta|faturar|bater|vender)\s*(?:de\s*)?(?:r\$\s*)?([\d.]+(?:,\d+)?)\s*(mil|k)?/)
+    n.match(/(?:fechar|meta|faturar|bater|vender|fazer)\s*(?:de\s*)?(?:r\$\s*)?([\d.]+(?:,\d+)?)\s*(mil|k)?/)
     ?? n.match(/r\$\s*([\d.]+(?:,\d+)?)\s*(mil|k)?/)
     ?? n.match(/([\d.]+(?:,\d+)?)\s*(mil|k)\b/);
   if (!m) return null;

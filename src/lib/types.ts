@@ -106,6 +106,12 @@ export interface RadarSchedule {
   limit: number;
   active: boolean;
   lastRunAt?: string;
+  /** Turno 24/7: dia (vários nichos) vs noite (food noturno). */
+  shift?: "day" | "night";
+  windowStart?: number;
+  windowEnd?: number;
+  niches?: string[];
+  lastNicheIndex?: number;
 }
 
 export interface CommercialProposal {
@@ -898,6 +904,8 @@ export interface HelenaSettings {
   monthlyBudget: number;
   alertAt: number;
   blockAtLimit: boolean;
+  /** Meta de faturamento mensal (ex.: 3000) — campanha 24/7. */
+  monthlyGoal?: number;
 }
 
 export interface LgpdRequest {

@@ -225,18 +225,33 @@ export function draftProposal(contact: Contact): CommercialProposal {
   return row;
 }
 
-export function upsertRadarSchedule(input: { segment: string; city: string; hour?: number; limit?: number }) {
+export function upsertRadarSchedule(input: {
+  segment: string;
+  city: string;
+  hour?: number;
+  limit?: number;
+  shift?: "day" | "night";
+  windowStart?: number;
+  windowEnd?: number;
+  niches?: string[];
+}) {
   const db = getDB();
   let saved: RadarSchedule | undefined;
   update((d) => {
     ensureRpaCollections(d);
-    const cur = d.radarSchedules[0];
+    const cur = input.shift
+      ? d.radarSchedules.find((s) => s.shift === input.shift)
+      : d.radarSchedules[0];
     if (cur) {
       cur.segment = input.segment;
       cur.city = input.city;
       cur.hour = input.hour ?? cur.hour;
       cur.limit = input.limit ?? cur.limit;
       cur.active = true;
+      if (input.shift) cur.shift = input.shift;
+      if (input.windowStart != null) cur.windowStart = input.windowStart;
+      if (input.windowEnd != null) cur.windowEnd = input.windowEnd;
+      if (input.niches?.length) cur.niches = input.niches;
       saved = cur;
     } else {
       saved = {
@@ -247,6 +262,11 @@ export function upsertRadarSchedule(input: { segment: string; city: string; hour
         hour: input.hour ?? 9,
         limit: input.limit ?? 8,
         active: true,
+        shift: input.shift,
+        windowStart: input.windowStart,
+        windowEnd: input.windowEnd,
+        niches: input.niches,
+        lastNicheIndex: -1,
       };
       d.radarSchedules.unshift(saved);
     }
@@ -276,24 +296,54 @@ export function claimNextJob(): RpaJob | null {
   return getDB().rpaJobs.find((j) => j.id === job.id) || null;
 }
 
+function radarInWindow(sch: RadarSchedule, hour: number) {
+  const start = sch.windowStart ?? sch.hour ?? 9;
+  const end = sch.windowEnd ?? 24;
+  if (start < end) return hour >= start && hour < end;
+  // janela que cruza meia-noite
+  return hour >= start || hour < end;
+}
+
 export function maybeEnqueueRadar() {
   const db = getDB();
   ensureRpaCollections(db);
-  const sch = db.radarSchedules.find((s) => s.active);
-  if (!sch) return;
   const now = new Date();
-  if (now.getHours() < sch.hour && !isTest()) return;
+  const hour = now.getHours();
   const day = now.toISOString().slice(0, 10);
-  if (sch.lastRunAt && sch.lastRunAt.slice(0, 10) === day) return;
-  enqueueRpa({
-    kind: "scan_maps",
-    idempotencyKey: `radar:${db.organization.id}:${day}`,
-    payload: { segment: sch.segment, city: sch.city, limit: sch.limit },
-  });
-  update((d) => {
-    const s = d.radarSchedules.find((x) => x.id === sch.id);
-    if (s) s.lastRunAt = nowISO();
-  });
+  const active = db.radarSchedules.filter((s) => s.active);
+  for (const sch of active) {
+    if (!isTest() && !radarInWindow(sch, hour)) continue;
+    const keyDay = `${day}:${sch.shift || sch.id}`;
+    if (sch.lastRunAt && sch.lastRunAt.startsWith(day) && sch.shift) {
+      // Turno dia/noite: 1 varredura por turno/dia; re-enfileira se já passou 3h (rotação de nicho).
+      const last = new Date(sch.lastRunAt).getTime();
+      if (Date.now() - last < 3 * 3600_000) continue;
+    } else if (sch.lastRunAt && sch.lastRunAt.slice(0, 10) === day && !sch.shift) {
+      continue;
+    }
+    const niches = sch.niches?.length ? sch.niches : [sch.segment];
+    const nextIdx = ((sch.lastNicheIndex ?? -1) + 1) % Math.max(1, niches.length);
+    const segment = niches[nextIdx] || sch.segment;
+    enqueueRpa({
+      kind: "scan_maps",
+      idempotencyKey: `radar:${db.organization.id}:${keyDay}:${segment}`,
+      payload: {
+        segment,
+        city: sch.city,
+        limit: sch.limit,
+        wave: niches.length > 1,
+        niches: niches.length > 1 ? niches : undefined,
+        nationwide: /brasil/i.test(sch.city),
+      },
+    });
+    update((d) => {
+      const s = d.radarSchedules.find((x) => x.id === sch.id);
+      if (!s) return;
+      s.lastRunAt = nowISO();
+      s.lastNicheIndex = nextIdx;
+      s.segment = segment;
+    });
+  }
 }
 
 /** Follow-up só com visualização (✓✓ azul) sem resposta — não chase silêncio cego. */

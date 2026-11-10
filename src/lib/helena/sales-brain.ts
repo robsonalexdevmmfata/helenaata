@@ -395,7 +395,7 @@ export function generatePixCheckout(amount: number, clientName: string, dealTitl
 // 4. PILAR 3: GESTÃO DINÂMICA DA META DE R$ 15.000,00 (DYNAMIC CADENCE)
 // ============================================================================
 
-export const FINANCIAL_GOAL = 15000; // Meta estipulada pelo usuário
+export const FINANCIAL_GOAL = 3000; // Meta mensal padrão (site/cardápio R$ 100)
 
 export interface DynamicCadenceState {
   goal: number;
@@ -410,17 +410,21 @@ export interface DynamicCadenceState {
 }
 
 export function computeDynamicCadence(db: DB): DynamicCadenceState {
+  const goal =
+    Number(db.helenaSettings?.monthlyGoal) > 0
+      ? Number(db.helenaSettings.monthlyGoal)
+      : FINANCIAL_GOAL;
   const wonDeals = db.deals.filter((d) => d.status === "ganho");
   const achieved = wonDeals.reduce((sum, d) => sum + d.value, 0);
-  const percent = Math.min(Math.round((achieved / FINANCIAL_GOAL) * 100), 100);
-  const remaining = Math.max(0, FINANCIAL_GOAL - achieved);
+  const percent = Math.min(Math.round((achieved / goal) * 100), 100);
+  const remaining = Math.max(0, goal - achieved);
 
   const openDeals = db.deals.filter((d) => d.status === "aberto");
   const openPipelineValue = openDeals.reduce((sum, d) => sum + d.value, 0);
 
   // Calcula se está abaixo da meta (ex: dia da semana vs ritmo)
-  const isGoalReached = achieved >= FINANCIAL_GOAL;
-  const isBelowPace = achieved < FINANCIAL_GOAL * 0.65; // Abaixo de 65% da meta
+  const isGoalReached = achieved >= goal;
+  const isBelowPace = achieved < goal * 0.65; // Abaixo de 65% da meta
 
   const pacingStatus: DynamicCadenceState["pacingStatus"] = isGoalReached
     ? "meta_batida"
@@ -428,8 +432,8 @@ export function computeDynamicCadence(db: DB): DynamicCadenceState {
     ? "turbo"
     : "normal";
 
-  // Se estiver abaixo do ritmo, aumenta a cadência dos SDRs de 30 para 60 abordagens/dia
-  const dailyTargetCadence = pacingStatus === "turbo" ? 60 : 30;
+  // Se estiver abaixo do ritmo, aumenta a cadência dos SDRs
+  const dailyTargetCadence = pacingStatus === "turbo" ? 50 : 35;
 
   // Identifica deals travados no Kanban há mais de 48h
   const now = Date.now();
@@ -441,7 +445,7 @@ export function computeDynamicCadence(db: DB): DynamicCadenceState {
     "Consegui uma condição especial de parcelamento com o time técnico da Info Tech Ltda para liberarmos o seu sistema esta semana. Podemos fechar hoje?";
 
   return {
-    goal: FINANCIAL_GOAL,
+    goal,
     achieved,
     percent,
     remaining,

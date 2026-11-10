@@ -9,13 +9,14 @@ export function alwaysOnTruth() {
       "Retomada da sessão WhatsApp no boot do servidor, se houver creds no disco.",
       "Fila Postgres `rpa_jobs` vencida, quando o ciclo estiver gravado.",
       "Tick comercial 24/7: Pipeline acompanha abordagem + follow-up pós ✓✓ azul (sales-flow no Render).",
+      "Radar dia/noite da campanha mensal (food à noite · outros nichos de dia), quando o ciclo estiver gravado.",
     ],
     needsPanel: [
       "Planejar missão, dossiê, conselho e briefing (store do painel).",
-      "Nova varredura Maps / RPA sob demanda (Helena no chat).",
+      "Ligar a campanha mensal na Helena (ex.: “meta 3 mil no mês”).",
       "Aprovar prévia de site antes do envio (admin).",
     ],
-    note: "Always-on de verdade é o Render + Postgres. Abordagens e etapas do Pipeline sincronizam no ciclo — a aba não precisa ficar aberta pra follow-up.",
+    note: "Always-on = Render + Postgres. Meta R$ 3 mil/mês: noite food, dia outros nichos — Pipeline e follow-up sem a aba aberta.",
   };
 }
 
