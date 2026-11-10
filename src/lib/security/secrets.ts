@@ -55,6 +55,6 @@ export function sanitizeDb(db: DB): DB {
   copy.users = copy.users.map(sanitizeUser);
   copy.apiTokens = (copy.apiTokens || []).map((t) => ({ ...t, prefix: t.prefix?.slice(0, 8) || "tok" }));
   copy.providers = (copy.providers || []).map((p) => ({ ...p, keyMasked: p.keyMasked ? "••••" : "" }));
-  copy.helenaMessages = (copy.helenaMessages || []).slice(0, 80);
+  copy.helenaMessages = (copy.helenaMessages || []).slice(-400);
   return copy;
 }

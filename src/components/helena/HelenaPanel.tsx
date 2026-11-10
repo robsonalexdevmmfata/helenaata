@@ -56,7 +56,14 @@ export function HelenaHeader({ onExpand, onClose }: { onExpand?: () => void; onC
           variant="ghost"
           className="size-8"
           aria-label="Limpar conversa"
-          onClick={() => update((d) => { d.helenaMessages = []; })}
+          onClick={() => {
+            update((d) => {
+              d.helenaMessages = [];
+              void import("@/lib/persist/helenaChat").then(({ clearHelenaChatBackup }) => {
+                clearHelenaChatBackup(d.organization.id);
+              });
+            });
+          }}
           title="Limpar histórico"
         >
           <RotateCcw className="size-3.5" />

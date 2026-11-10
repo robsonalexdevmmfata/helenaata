@@ -133,8 +133,15 @@ export function pushHelenaMessage(text: string, card?: HelenaCard, role: HelenaM
   const id = uid("hm_");
   update((db) => {
     db.helenaMessages.push({ id, role, text, at: nowISO(), card });
-    if (db.helenaMessages.length > 200) db.helenaMessages.splice(0, db.helenaMessages.length - 200);
+    if (db.helenaMessages.length > 400) db.helenaMessages.splice(0, db.helenaMessages.length - 400);
   });
+  // Chat não pode sumir no refresh — backup local + push rápido pro Supabase.
+  void import("@/lib/persist/helenaChat").then(({ persistHelenaChat }) => {
+    persistHelenaChat(getDB());
+  }).catch(() => {});
+  void import("@/lib/persist/cycle").then(({ scheduleCyclePush }) => {
+    scheduleCyclePush();
+  }).catch(() => {});
   return id;
 }
 

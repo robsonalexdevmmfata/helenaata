@@ -138,11 +138,11 @@ function DevStudioChat() {
         </div>
         <form className="flex gap-2" onSubmit={(e) => submit(e)}>
           <Textarea
-            rows={2}
+            rows={5}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Ex.: Sofia, deixa o cardápio com cara de app premium…"
-            className="min-h-[2.75rem] resize-none text-sm"
+            className="min-h-[7.5rem] resize-y text-[15px] leading-relaxed"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

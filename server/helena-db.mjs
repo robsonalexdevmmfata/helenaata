@@ -360,6 +360,11 @@ export async function saveCycle(payload) {
       companies: Array.isArray(payload.companies) ? payload.companies.slice(0, 1000) : [],
       connections: connections.slice(0, 20),
       sitePreviews: Array.isArray(payload.sitePreviews) ? payload.sitePreviews.slice(0, 200) : [],
+      helenaMessages: Array.isArray(payload.helenaMessages)
+        ? payload.helenaMessages.slice(-400)
+        : Array.isArray(payload.workspace?.helenaMessages)
+          ? payload.workspace.helenaMessages.slice(-400)
+          : [],
       whatsappPhone: waPhone || null,
       evolutionInstance: payload.tenant?.evolutionInstance || null,
       // Sistema inteiro: agents, teams, pipelines, RPA, Helena, agenda, etc.
@@ -482,6 +487,7 @@ export async function loadCycle({ appUserId, email }) {
     deals,
     conversations: inbox?.conversations || [],
     connections: inbox?.connections || [],
+    helenaMessages: inbox?.helenaMessages || inbox?.workspace?.helenaMessages || [],
     whatsappPhone: inbox?.whatsappPhone || profile.phone || null,
     evolutionInstance: inbox?.evolutionInstance || profile.evolution_instance || null,
     workspace: inbox?.workspace || null,

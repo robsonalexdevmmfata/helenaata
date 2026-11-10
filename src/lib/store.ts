@@ -7,6 +7,7 @@ import { applyCommercialAgentPrompts, applyHumanTeam, liveServiceOffers } from "
 import { TOOL_REGISTRY, withCalendarTools } from "./helena/registry";
 import { AGENCY_WHATSAPP } from "./evolution/evolutionapi";
 import { hashPw, sanitizeDb, sanitizeUser } from "@/lib/security/secrets";
+import { persistHelenaChat, restoreHelenaChat } from "@/lib/persist/helenaChat";
 
 // Mock data layer. All reads/writes go through this store so it can be swapped
 // for HTTP calls to a real PostgreSQL-backed API without touching the screens.
@@ -129,6 +130,10 @@ export function activateWorkspaceForUser(userId: string) {
     state = loadCustomerWorkspace(user);
     state.currentUserId = userId;
     applyDevTeamGate(state, user.planId, user.kind);
+  }
+  if (state) {
+    restoreHelenaChat(state);
+    persistHelenaChat(state);
   }
   persistNow();
   listeners.forEach((l) => l());

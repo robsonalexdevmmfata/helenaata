@@ -1,6 +1,7 @@
 import type { Contact, Conversation, DB, Deal, Execution, User } from "@/lib/types";
 import { currentUser, getDB, update } from "@/lib/store";
 import { applyWorkspaceCloud, serializeWorkspace } from "@/lib/persist/workspaceCloud";
+import { mergeHelenaMessages, persistHelenaChat, restoreHelenaChat } from "@/lib/persist/helenaChat";
 
 function skipPersist() {
   try {
@@ -163,6 +164,8 @@ function cycleSnapshot(db: DB, user: User) {
         fact: a.text,
         created_by: a.actor,
       })),
+    // Chat Helena no topo — refresh não pode apagar o histórico operacional.
+    helenaMessages: (db.helenaMessages || []).slice(-400),
     // Sistema inteiro (CRM, IA, times, RPA, WhatsApp, agenda, prévias…).
     workspace: serializeWorkspace(db),
   };
@@ -296,9 +299,17 @@ export async function pullCycleIntoStore() {
     const data = await res.json().catch(() => ({}));
     if (!data?.ok) return;
     update((d) => {
+      // 0) Backup local do chat (antes da nuvem) — se o DB veio vazio no refresh.
+      restoreHelenaChat(d);
       // 1) Workspace completo do Supabase (prioridade).
       const cloud = data.inbox?.workspace || data.workspace;
       if (cloud) applyWorkspaceCloud(d, cloud);
+      // 1b) Chat Helena top-level (nunca apaga com array vazio da nuvem).
+      const remoteChat = data.helenaMessages || data.inbox?.helenaMessages;
+      if (Array.isArray(remoteChat) && remoteChat.length) {
+        d.helenaMessages = mergeHelenaMessages(d.helenaMessages || [], remoteChat);
+      }
+      persistHelenaChat(d);
       for (const row of data.contacts ?? []) {
         const id = row.app_id || row.id;
         if (!id) continue;

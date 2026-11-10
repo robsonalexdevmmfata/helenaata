@@ -1,4 +1,5 @@
 import type { DB } from "@/lib/types";
+import { mergeHelenaMessages } from "@/lib/persist/helenaChat";
 
 /** Campos do CRM/IA/WhatsApp/RPA que sobem pro Supabase (sistema inteiro). */
 export const WORKSPACE_CLOUD_KEYS = [
@@ -80,7 +81,7 @@ export function serializeWorkspace(db: DB) {
       continue;
     }
     if (key === "helenaMessages") {
-      out[key] = (db.helenaMessages || []).slice(0, 300);
+      out[key] = (db.helenaMessages || []).slice(-400);
       continue;
     }
     if (key === "executions") {
@@ -217,6 +218,17 @@ export function applyWorkspaceCloud(draft: DB, cloud: Record<string, unknown> | 
           });
         }
         draft.conversations = Array.from(byId.values());
+        touched += 1;
+        continue;
+      }
+      // Chat Helena: nunca zera no refresh; une local + nuvem por id.
+      if (key === "helenaMessages") {
+        const remoteMsgs = remote as DB["helenaMessages"];
+        if (!remoteMsgs.length) {
+          touched += 1;
+          continue;
+        }
+        draft.helenaMessages = mergeHelenaMessages(localArr as DB["helenaMessages"], remoteMsgs);
         touched += 1;
         continue;
       }

@@ -74,6 +74,9 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
       voice.stopSpeaking();
     }
     void sendToHelena(draft);
+    if (inputRef.current) {
+      inputRef.current.style.height = "";
+    }
   };
 
   const briefingCfg = getBriefingConfig();
@@ -201,18 +204,21 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
         )}
       </div>
 
-      <form onSubmit={submit} className={cn("border-t bg-card", variant === "panel" ? "p-3" : "rounded-xl border p-2")}>
-        <div className="flex items-end gap-2 rounded-lg border bg-background px-3 py-2 focus-within:border-helena/50">
+      <form onSubmit={submit} className={cn("border-t bg-card", variant === "panel" ? "p-3" : "rounded-xl border p-3")}>
+        <div className="flex items-end gap-2 rounded-xl border bg-background px-3 py-3 focus-within:border-helena/50">
           <textarea
             ref={inputRef}
-            rows={1}
+            rows={5}
             value={ui.draft}
-            onChange={(e) =>
+            onChange={(e) => {
               helenaUi.set({
                 draft: e.target.value,
                 state: ui.state === "ocioso" ? "ouvindo" : ui.state,
-              })
-            }
+              });
+              const el = e.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
+            }}
             onBlur={() => ui.state === "ouvindo" && helenaUi.set({ state: "ocioso" })}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -220,8 +226,8 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
                 submit();
               }
             }}
-            placeholder={voice.isListening ? "Ouvindo você... fale agora" : "Olá Helena, cheguei / Bom dia..."}
-            className="max-h-32 min-h-6 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={voice.isListening ? "Ouvindo você... fale agora" : "Escreva pra Helena… Shift+Enter pra nova linha"}
+            className="max-h-[280px] min-h-[7.5rem] flex-1 resize-y bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
           />
 
           {/* Voice audio output toggle */}
@@ -288,7 +294,7 @@ export function HelenaChat({ variant = "panel" }: { variant?: "panel" | "page" }
               "Ações de risco alto sempre pedem sua aprovação."
             )}
           </span>
-          <span className="font-mono">Enter ↵</span>
+          <span className="font-mono">Enter envia · Shift+Enter quebra</span>
         </div>
       </form>
     </div>
