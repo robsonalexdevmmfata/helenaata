@@ -87,7 +87,9 @@ export function upsertAccount(user: User) {
 }
 
 function parseDb(raw: DB | null): DB | null {
-  if (!raw || typeof raw.version !== "number" || raw.version < 1 || raw.version > 12) return null;
+  // Aceita versões futuras — o teto antigo (>12) APAGAVA o workspace no refresh
+  // porque hydrate sobe pra 13 e no próximo load parseDb devolvia null → seed vazio.
+  if (!raw || typeof raw.version !== "number" || raw.version < 1 || raw.version > 99) return null;
   return hydrate(raw);
 }
 
@@ -171,14 +173,28 @@ function hydrate(db: DB): DB {
     a.tools = withCalendarTools(a.tools ?? []);
     if (!a.permissions.includes("crm.edit")) a.permissions.push("crm.edit");
     if (!a.permissions.includes("calendar.edit")) a.permissions.push("calendar.edit");
-    a.metrics = { tasks: 0, conversations: 0, responseRate: 0, conversions: 0 };
+    // NÃO zerar métricas no refresh — isso apagava o progresso e ainda ia pro Supabase.
+    if (!a.metrics || typeof a.metrics !== "object") {
+      a.metrics = { tasks: 0, conversations: 0, responseRate: 0, conversions: 0 };
+    } else {
+      a.metrics.tasks = Number(a.metrics.tasks) || 0;
+      a.metrics.conversations = Number(a.metrics.conversations) || 0;
+      a.metrics.responseRate = Number(a.metrics.responseRate) || 0;
+      a.metrics.conversions = Number(a.metrics.conversions) || 0;
+    }
   });
   if (!db.agents?.some((a) => a.id === "a_valentina")) {
     const fromSeed = seed().agents.find((a) => a.id === "a_valentina");
     if (fromSeed) db.agents.push(fromSeed);
   }
   db.teams?.forEach((t) => {
-    t.metrics = { leads: 0, meetings: 0, conversions: 0 };
+    if (!t.metrics || typeof t.metrics !== "object") {
+      t.metrics = { leads: 0, meetings: 0, conversions: 0 };
+    } else {
+      t.metrics.leads = Number(t.metrics.leads) || 0;
+      t.metrics.meetings = Number(t.metrics.meetings) || 0;
+      t.metrics.conversions = Number(t.metrics.conversions) || 0;
+    }
     if (t.id === "t_com" && !t.agentIds.includes("a_valentina")) t.agentIds.push("a_valentina");
   });
   // Funil: Proposta antes de Reunião. Sem site → Qualificado.
@@ -342,6 +358,10 @@ function hydrate(db: DB): DB {
   if (!Array.isArray(db.missionTasks)) db.missionTasks = [];
   if (!Array.isArray(db.missionEvents)) db.missionEvents = [];
   if (!Array.isArray(db.abExperiments)) db.abExperiments = [];
+  if (!Array.isArray(db.invites)) db.invites = [];
+  if (!Array.isArray(db.sessions)) db.sessions = [];
+  if (!Array.isArray(db.rpaJobs)) db.rpaJobs = [];
+  if (!Array.isArray(db.radarSchedules)) db.radarSchedules = [];
   if (typeof db.killSwitchActive !== "boolean") db.killSwitchActive = false;
   if (!Array.isArray(db.dailyReports)) db.dailyReports = [];
   if ((db.version ?? 0) < 12) {

@@ -14,7 +14,7 @@ import { HelenaPanel } from "@/components/helena/HelenaPanel";
 import { CommandPalette } from "@/components/helena/CommandPalette";
 import { ApprovalBlock } from "@/components/helena/HelenaCards";
 import { HelenaOrb } from "@/components/helena/HelenaOrb";
-import { isAuthenticated, logout, syncSessionUser } from "@/lib/auth";
+import { bootstrapCloudPersist, isAuthenticated, logout, syncSessionUser } from "@/lib/auth";
 import { currentUser, getDB, resetDB, update, useDB } from "@/lib/store";
 import { caktoCheckoutUrl, canUseDevTeam, dailyLimitFor, formatTrialLabel, isPlatformAdmin, mustSubscribe, prospectsUsedToday, syncPaidPlanFromCakto, workspaceDisplayName } from "@/lib/saas";
 import { provisionEvolutionInstance } from "@/lib/evolution/provision";
@@ -198,6 +198,9 @@ function AppLayout() {
   const router = useRouter();
   useEffect(() => {
     const me = currentUser(getDB());
+    // Sempre amarra Supabase no layout autenticado (Pipeline/Inbox/WhatsApp).
+    syncSessionUser();
+    bootstrapCloudPersist();
     void syncPaidPlanFromCakto(me);
     if (me) {
       if (mustSubscribe(me)) {

@@ -224,6 +224,9 @@ export async function ensureTenant(input) {
 }
 
 export async function saveCycle(payload) {
+  if (!(await dbReady())) {
+    return { ok: false, error: "postgres_unavailable" };
+  }
   const connections = Array.isArray(payload.connections) ? payload.connections : [];
   const waPhone =
     connections.find((c) => c?.status === "online" && c?.phone)?.phone
@@ -237,7 +240,7 @@ export async function saveCycle(payload) {
     whatsappPhone: waPhone || null,
   };
   const tenant = await ensureTenant(tenantInput);
-  if (!tenant?.organizationId || tenant.skipped) return { ok: false, skipped: true };
+  if (!tenant?.organizationId || tenant.skipped) return { ok: false, skipped: true, error: "tenant_skipped" };
   const oid = tenant.organizationId;
   if (waPhone && tenant.appUserId) {
     await q(

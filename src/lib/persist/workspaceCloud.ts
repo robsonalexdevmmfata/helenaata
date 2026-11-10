@@ -48,6 +48,8 @@ export const WORKSPACE_CLOUD_KEYS = [
   "helenaSettings",
   "rolePermissions",
   "lgpdRequests",
+  "invites",
+  "sessions",
   "invoices",
   "rpaJobs",
   "radarSchedules",

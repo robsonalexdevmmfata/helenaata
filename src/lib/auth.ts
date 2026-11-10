@@ -91,6 +91,7 @@ export async function loginWithServer(username: string, password: string) {
 export function logout() {
   if (typeof window !== "undefined") window.localStorage.removeItem(SESSION_KEY);
   clearBackendToken();
+  cloudBootstrapped = false;
 }
 
 export function isAuthenticated() {
@@ -98,11 +99,29 @@ export function isAuthenticated() {
   return Boolean(window.localStorage.getItem(SESSION_KEY));
 }
 
+let cloudBootstrapped = false;
+
+/** Em todo boot (login OU refresh): puxa Supabase + hooks de persistência. */
+export function bootstrapCloudPersist() {
+  if (typeof window === "undefined") return;
+  void import("@/lib/persist/cycle").then(({ pullCycleIntoStore, installCyclePersistHooks, flushCyclePush }) => {
+    installCyclePersistHooks();
+    void pullCycleIntoStore().then(() => flushCyclePush());
+  });
+}
+
 export function syncSessionUser() {
   const id = readSessionUserId();
   if (!id) return;
   const db = getDB();
-  if (db.currentUserId === id && db.users.some((u) => u.id === id)) return;
-  if (!listAccounts().some((u) => u.id === id)) return;
-  activateWorkspaceForUser(id);
+  const already = db.currentUserId === id && db.users.some((u) => u.id === id);
+  if (!already) {
+    if (!listAccounts().some((u) => u.id === id)) return;
+    activateWorkspaceForUser(id);
+  }
+  // Refresh também precisa do ciclo — senão Pipeline/Inbox somem e o local vira verdade única.
+  if (!cloudBootstrapped) {
+    cloudBootstrapped = true;
+    bootstrapCloudPersist();
+  }
 }
