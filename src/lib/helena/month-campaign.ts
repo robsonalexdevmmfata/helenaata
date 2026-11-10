@@ -7,16 +7,22 @@ import { computeRevenuePlan } from "@/lib/helena/revenue-goal";
 import { nowISO, uid, update, getDB } from "@/lib/store";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
 
-/** Nichos que trabalham à noite / delivery noturno. */
-export const NIGHT_NICHES = [
+/** Food / delivery — campanha principal de abordagem. */
+export const FOOD_NICHES = [
+  "Lanchonetes",
   "Sorveterias",
   "Açaí",
-  "Lanchonetes",
+  "Restaurantes de sushi",
   "Pizzarias",
   "Hamburguerias",
   "Pastelarias",
+  "Churrascarias",
   "Restaurantes",
+  "Padarias e cafeterias",
 ];
+
+/** Nichos que trabalham à noite / delivery noturno. */
+export const NIGHT_NICHES = [...FOOD_NICHES];
 
 /** Nichos de dia — sem overindexar food noturno. */
 export const DAY_NICHES = [
@@ -49,6 +55,54 @@ export function currentShift(now = new Date()): ShiftKind {
 
 export function nichesForShift(shift: ShiftKind): string[] {
   return shift === "night" ? NIGHT_NICHES : DAY_NICHES;
+}
+
+/** Liga campanha food agora: varredura + times + radar. */
+export function activateFoodCampaign(opts: {
+  city?: string;
+  nationwide?: boolean;
+  limit?: number;
+  goal?: number;
+}) {
+  const city = String(opts.city || "Brasil").trim() || "Brasil";
+  const nationwide = opts.nationwide !== false && /brasil/i.test(city);
+  const limit = Math.min(Math.max(Number(opts.limit) || 60, 20), 200);
+  const goal = Number(opts.goal) || getDB().helenaSettings?.monthlyGoal || 3000;
+  // Reusa radars: noite = food completo.
+  activateMonthCampaign({ goal, city, nationwide });
+  update((d) => {
+    const night = d.radarSchedules.find((s) => s.shift === "night");
+    if (night) {
+      night.niches = [...FOOD_NICHES];
+      night.segment = FOOD_NICHES[0] || "Lanchonetes";
+      night.limit = Math.max(night.limit, Math.ceil(limit / 2));
+      night.active = true;
+      night.lastNicheIndex = -1;
+    }
+    d.campaigns.unshift({
+      id: uid("cp_food_"),
+      organizationId: d.organization.id,
+      name: "Campanha Food · lanche, sorvete, sushi e restaurantes",
+      listId: d.lists[0]?.id || "l2",
+      cadenceId: d.cadences[0]?.id || "",
+      agentIds: d.agents.filter((a) => a.teamId === "t_com").map((a) => a.id),
+      channel: "whatsapp",
+      connectionId:
+        d.connections.find((c) => c.status === "online")?.id
+        || d.salesFlow.sharedConnectionId
+        || "wa_agency",
+      status: "ativa",
+      total: limit,
+      sent: 0,
+      replies: 0,
+      interested: 0,
+      meetings: 0,
+      optOuts: 0,
+      createdAt: nowISO(),
+    });
+  });
+  scheduleCyclePush();
+  return { niches: FOOD_NICHES, city, nationwide, limit, goal };
 }
 
 export function pickNicheForSchedule(sch: RadarSchedule, now = new Date()): string {

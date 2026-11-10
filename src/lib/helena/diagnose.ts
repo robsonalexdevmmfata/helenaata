@@ -6,6 +6,7 @@ export type CycleState =
   | "preview"
   | "link_enviado"
   | "respondeu"
+  | "aguardando_dono"
   | "silencio"
   | "reuniao"
   | "resultado";

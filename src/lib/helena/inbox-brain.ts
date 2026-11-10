@@ -34,6 +34,13 @@ export const WRONG_NUMBER =
 export const NOT_OWNER =
   /nao sou (o |a )?(dono|dona|propriet|socio)|sou (funcionari|atendent|secretari|vendedor)|trabalho aqui|nao e comigo|nao decido/i;
 
+/**
+ * “vou passar pro responsável / dono / gerente”, “mando pro proprietário”, etc.
+ * Time acompanha o Inbox e marca follow-up — não encerra a conversa.
+ */
+export const WILL_PASS_TO_OWNER =
+  /(vou|ja|já|posso|vou te|vou (lhe|te)?\s*)?(passar|encaminhar|mandar|avisar|mostrar|falar)\b.{0,40}\b(pro|para o|para a|ao|à|pro|pro\/a)?\s*(dono|dona|propriet|socio|gerente|responsavel|responsável|representante)|quando (o |a )?(dono|dona|responsavel|responsável|gerente|propriet).{0,20}(ver|olhar|chegar|voltar)|ele(a)? (que )?(decide|e o dono|é o dono)|depois (o |a )?(dono|responsavel|responsável)/i;
+
 /** “sou proprietario sim”, “sim sou o dono”, “sou a responsável”, etc. */
 export const IS_OWNER =
   /\b(sou|sim)\b.*\b(o |a )?(dono|dona|proprietari[oa]|socio|socia|responsavel|responsável)\b|\b(dono|dona|proprietari[oa]|responsavel|responsável)\b.*\b(sim|sou)\b|^(sou |sim[,.]?\s*)(o |a )?(dono|dona|proprietari[oa]|socio|socia|responsavel)\b|eu (que )?(dono|decido|sou o dono|sou a dona|responsavel)/i;
@@ -189,6 +196,11 @@ export function nextInboxReply(
     return "Combinado, desculpa o incômodo. Não mando mais neste número. Se puder, me passa o WhatsApp do(a) proprietário(a) que eu falo direto com ele(a).";
   }
 
+  // Funcionário vai passar pro dono/responsável → mantém conversa + follow-up depois.
+  if (WILL_PASS_TO_OWNER.test(spoken) || WILL_PASS_TO_OWNER.test(msg)) {
+    return `${hi}perfeito, obrigado. Quando o(a) responsável puder olhar, me responde por aqui — ou me passa o WhatsApp dele(a) que eu falo direto, sem te atrapalhar. Fico no aguardo.`;
+  }
+
   if (askedIfOwner(history) && (NOT_OWNER.test(spoken) || (/^(nao|naum|n)\b/.test(msg) && !IS_OWNER.test(spoken) && !audio))) {
     return "Sem problema. Pode me passar o WhatsApp do proprietário ou da proprietária? Assim eu não te incomodo mais.";
   }
@@ -320,6 +332,12 @@ export function buildReadFollowupText(opts: {
   if (ownerYes && !aiAsked) {
     // Follow-up pós-visualização: se já confirmou dono, manda o pitch (advocacia usa o padrão completo).
     return askAboutAiOps(opts.contactName, opts.company, /escrit|advog|jurid/i.test(opts.company) ? "advogados" : "");
+  }
+  const waitingOwner = opts.history.some(
+    (m) => m.from === "contact" && WILL_PASS_TO_OWNER.test(m.text.replace(/^\[Áudio\]\s*/i, "")),
+  );
+  if (waitingOwner && !ownerYes) {
+    return `${hi}aqui é ${opts.agentName} de novo. Conseguiu falar com o(a) responsável? Se preferir, me passa o WhatsApp dele(a) que eu explico em 2 minutos.`;
   }
   if (ownerAsked && !ownerYes && !aiAsked) {
     return `${hi}aqui é ${opts.agentName} de novo. Só confirmo: você é o proprietário, a proprietária ou a pessoa responsável? Se for, te pergunto uma coisa rápida sobre IA na operação.`;

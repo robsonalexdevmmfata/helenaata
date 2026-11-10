@@ -45,7 +45,7 @@ import { agentBenchmark, autonomyBlocksTool, circuitBreaker, integrationHealth, 
 import { createMissionFromObjective, pauseMission, startMission, tickMissions } from "@/lib/helena/mission-engine";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
 import { advanceContactDeal, advanceDealOnApproach, meetingStage, stageForNewProspect } from "@/lib/crm/pipelineStages";
-import { activateMonthCampaign, currentShift, monthPlan, nichesForShift } from "@/lib/helena/month-campaign";
+import { activateFoodCampaign, activateMonthCampaign, currentShift, FOOD_NICHES, monthPlan, nichesForShift } from "@/lib/helena/month-campaign";
 
 export interface ToolContext {
   actor: string;
@@ -726,6 +726,35 @@ const handlers: Record<string, Handler> = {
         missionId: activated.missionId,
         scan: scan.message,
       },
+    );
+  },
+  "campaigns.activate_food": (p, ctx) => {
+    const user = currentUser(getDB());
+    if (mustSubscribe(user)) return fail("Assine Impulso ou Máquina para campanha food.");
+    const city = String(p.city || "Brasil");
+    const limit = Math.min(Math.max(Number(p.limit) || 60, 20), 200);
+    const food = activateFoodCampaign({
+      city,
+      nationwide: p.nationwide !== false,
+      limit,
+      goal: Number(p.goal) || 3000,
+    });
+    const scan = runTool(
+      "prospect.scan_maps",
+      {
+        segment: FOOD_NICHES[0],
+        city,
+        nationwide: /brasil/i.test(city),
+        limit: food.limit,
+        wave: true,
+        niches: FOOD_NICHES,
+      },
+      ctx,
+    );
+    runTool("teams.activate", { teamId: "t_com" }, ctx);
+    return ok(
+      `Campanha Food ligada: lanchonetes, sorveterias, sushi e restaurantes. Time Comercial aborda todos · Inbox vigia quem vai passar pro responsável/dono e agenda follow-up. ${scan.message}`,
+      { niches: FOOD_NICHES, limit: food.limit, city, scan: scan.message },
     );
   },
   "campaigns.start": (p, ctx) => {

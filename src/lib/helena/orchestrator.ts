@@ -678,6 +678,27 @@ export function interpret(text: string): Reply[] {
     ];
   }
 
+  // Campanha food: lanche, sorvete, sushi, restaurantes + follow-up dono
+  if (
+    /campanha\s*food|abord(ar|e|em)?\s*(lanchonete|sorveter|sushi|restaurante)|enviar.*(lanchonete|sorveter|sushi|restaurante)|lanchonetes?\s*(e|,).*(sorveter|sushi|restaurante)|sorveterias?\s*(e|,).*(lanchonete|sushi|restaurante)/.test(n)
+    || (/lanchonete|sorveter|sushi/.test(n) && /restaurante|abord|campanha|dispar/.test(n))
+  ) {
+    return [
+      perform(
+        "campaigns.activate_food",
+        { city: "Brasil", nationwide: true, limit: 60, goal: 3000 },
+        "Campanha Food · lanche, sorvete, sushi e restaurantes",
+        [
+          { label: "Nichos", value: "Lanchonetes, sorveterias, açaí, sushi, pizza, hambúrguer, churrasco, restaurantes…" },
+          { label: "Ação", value: "Maps → Pipeline → WhatsApp (Time Comercial aborda todos)" },
+          { label: "Inbox", value: "Se disser que vai passar pro responsável/dono → follow-up automático" },
+          { label: "Escopo", value: "Brasil inteiro · cardápio/site R$ 100/mês" },
+        ],
+        "Campanha Food ligada. Vou caçar lanchonetes, sorveterias, sushi e outros restaurantes, o time aborda no WhatsApp e o Inbox fica de olho: se alguém falar que vai passar pro responsável ou proprietário, a gente responde e agenda follow-up.",
+      ),
+    ];
+  }
+
   // Meta mensal / campanha 24/7: "quero fazer 3 mil no mês"
   const revenueGoal = parseRevenueGoal(text);
   if (revenueGoal || /campanha\s*24|operar\s*24|24\s*\/\s*7|sorveter|acai|açaí|lanchonete.*noite|pizzaria.*noite/.test(n) && /meta|faturar|fazer|mil|3000|3\s*mil/.test(n)) {

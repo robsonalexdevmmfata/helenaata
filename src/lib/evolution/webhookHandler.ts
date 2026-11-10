@@ -36,7 +36,8 @@ import { bumpAutomation, getDB, update, uid, nowISO } from "@/lib/store";
 import { evaluateHandoff } from "@/lib/helena/whatsapp-formatter";
 import type { HandoffStage } from "@/lib/helena/whatsapp-formatter";
 import { extractMeetingFromText } from "@/lib/helena/calendar";
-import { IS_OWNER, nextInboxReply, previewCtxForContact } from "@/lib/helena/inbox-brain";
+import { IS_OWNER, WILL_PASS_TO_OWNER, nextInboxReply, previewCtxForContact } from "@/lib/helena/inbox-brain";
+import { setCycleTag } from "@/lib/helena/diagnose";
 import { formatSlotMenu, pickProposedSlot, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
 import { advanceContactDeal } from "@/lib/crm/pipelineStages";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
@@ -224,15 +225,41 @@ export async function processEvolutionWebhook(
       }
       const ct = d.contacts.find((x) => x.id === contact!.id);
       if (ct) ct.lastContactAt = nowISO();
-      const ownerLike = IS_OWNER.test(incoming.text.replace(/^\[Áudio\]\s*/i, ""));
+      const spokenIn = incoming.text.replace(/^\[Áudio\]\s*/i, "");
+      const ownerLike = IS_OWNER.test(spokenIn);
+      const passingOwner = WILL_PASS_TO_OWNER.test(spokenIn);
       advanceContactDeal(
         d.deals,
         d.pipelines[0],
         contact!.id,
         ownerLike ? "negociando" : "respondeu",
       );
+      if (passingOwner) {
+        const ct = d.contacts.find((x) => x.id === contact!.id);
+        if (ct) ct.tags = setCycleTag(ct.tags || [], "aguardando_dono");
+        d.activities.unshift({
+          id: uid("ac_pass_"),
+          organizationId: d.organization.id,
+          contactId: contact!.id,
+          type: "whatsapp",
+          text: `${contact!.name} vai passar a conversa ao responsável/proprietário — follow-up agendado.`,
+          actor: "Helena",
+          createdAt: nowISO(),
+        });
+      }
       bumpAutomation(d, "mensagem_recebida");
     });
+    if (WILL_PASS_TO_OWNER.test(incoming.text.replace(/^\[Áudio\]\s*/i, ""))) {
+      runTool(
+        "rpa.followup_schedule",
+        {
+          contactId: contact!.id,
+          kind: "pedido_retorno",
+          fact: "lead_vai_passar_pro_responsavel · aguardar dono no Inbox",
+        },
+        { actor: "Helena", actorType: "helena", requestedBy: "WhatsApp" },
+      );
+    }
     scheduleCyclePush();
   }
 
