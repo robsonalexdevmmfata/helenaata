@@ -278,6 +278,39 @@ export async function runWaveProspecting(opts: {
   const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 3), 14);
   const seen = new Set<string>(getDB().contacts.map((c) => phoneDedupeKey(c.phone)).filter(Boolean));
   const bag: { place: MapPlace; segment: string }[] = [];
+  const allIds: string[] = [];
+  let sentTotal = 0;
+  let failedTotal = 0;
+  let skippedTotal = 0;
+
+  const flushBatch = async (batch: { place: MapPlace; segment: string }[]) => {
+    if (!batch.length) return;
+    const bySeg = new Map<string, MapPlace[]>();
+    for (const item of batch) {
+      const list = bySeg.get(item.segment) ?? [];
+      list.push(item.place);
+      bySeg.set(item.segment, list);
+    }
+    const ids: string[] = [];
+    for (const [segment, places] of bySeg) {
+      ids.push(...insertPlacesAsLeads(places, segment));
+    }
+    allIds.push(...ids);
+    // Pipeline atualiza na hora — não espera a onda inteira.
+    void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush()).catch(() => {});
+    if (!ids.length) return;
+    const contacts = contactsForDispatch(ids);
+    if (!canDispatchWhatsApp()) {
+      skippedTotal += contacts.length;
+      return;
+    }
+    const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
+    sentTotal += disp.sent;
+    failedTotal += disp.failed;
+    skippedTotal += disp.skipped;
+  };
+
+  let pending: { place: MapPlace; segment: string }[] = [];
   for (const city of hubs) {
     for (const niche of niches) {
       if (bag.length >= target) break;
@@ -295,29 +328,25 @@ export async function runWaveProspecting(opts: {
           const k = phoneDedupeKey(p.phone);
           if (!k || seen.has(k) || k === "18981011186") continue;
           seen.add(k);
-          bag.push({ place: p, segment: niche });
+          const row = { place: p, segment: niche };
+          bag.push(row);
+          pending.push(row);
           if (bag.length >= target) break;
+        }
+        // A cada combinação cidade×nicho, joga na Pipeline.
+        if (pending.length) {
+          const chunk = pending;
+          pending = [];
+          await flushBatch(chunk);
         }
       } catch {
         /* próxima combinação */
       }
     }
   }
-  const bySeg = new Map<string, MapPlace[]>();
-  for (const item of bag) {
-    const list = bySeg.get(item.segment) ?? [];
-    list.push(item.place);
-    bySeg.set(item.segment, list);
-  }
-  const ids: string[] = [];
-  for (const [segment, places] of bySeg) {
-    ids.push(...insertPlacesAsLeads(places, segment));
-  }
-  if (!ids.length) return { found: 0, sent: 0, failed: 0, skipped: 0 };
-  const contacts = contactsForDispatch(ids);
-  if (!canDispatchWhatsApp()) return { found: bag.length, sent: 0, failed: 0, skipped: contacts.length };
-  const disp = await dispatchProspectMessages(contacts, buildProspectMessage, opts.organizationId, opts.operationId);
-  return { found: bag.length, sent: disp.sent, failed: disp.failed, skipped: disp.skipped };
+  if (pending.length) await flushBatch(pending);
+  if (!allIds.length && !bag.length) return { found: 0, sent: 0, failed: 0, skipped: 0 };
+  return { found: bag.length, sent: sentTotal, failed: failedTotal, skipped: skippedTotal };
 }
 
 export async function dispatchLeadsToAgents(places: MapPlace[], segment: string) {

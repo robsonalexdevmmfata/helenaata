@@ -699,13 +699,15 @@ const handlers: Record<string, Handler> = {
     const plan = monthPlan(goal);
     const shift = currentShift();
     const niches = nichesForShift(shift);
+    // Primeira onda mais curta pra Pipeline encher rápido (radar 24/7 continua depois).
+    const firstLimit = shift === "night" ? 36 : 48;
     const scan = runTool(
       "prospect.scan_maps",
       {
         segment: niches[0],
         city,
         nationwide: /brasil/i.test(city),
-        limit: Math.min(Math.max(Math.ceil(plan.leads / 30), 40), 120),
+        limit: firstLimit,
         wave: true,
         niches,
       },
@@ -713,7 +715,7 @@ const handlers: Record<string, Handler> = {
     );
     runTool("teams.activate", { teamId: "t_com" }, ctx);
     return ok(
-      `Campanha meta R$ ${goal.toLocaleString("pt-BR")}/mês ligada. Precisa de ~${plan.sales} fechamentos (ticket R$ 100) · ${plan.meetings} reuniões · ~${plan.leads} abordagens no mês. Agora é turno ${shift === "night" ? "noite (food)" : "dia (vários nichos)"}. ${scan.message}`,
+      `Campanha meta R$ ${goal.toLocaleString("pt-BR")}/mês ligada. Precisa de ~${plan.sales} fechamentos (ticket R$ 100) · ${plan.meetings} reuniões · ~${plan.leads} abordagens no mês. Turno agora: ${shift === "night" ? "noite (sorvete, açaí, lanche, pizza…)" : "dia (dentista, clínica, advogado…)"}. Olha a Pipeline — os cards entram assim que o mapa achar. ${scan.message}`,
       {
         goal,
         sales: plan.sales,
@@ -1138,14 +1140,21 @@ const handlers: Record<string, Handler> = {
       // Onda só se pedida de propósito — pedido "300 restaurantes em BC" NÃO vira advogado em SP.
       const wave = p.wave === true || /varios nichos|diversos nichos|onda multi|rpa multi/i.test(segment);
       const whereLabel = nationwide ? "Brasil inteiro" : city;
+      const nicheList = Array.isArray(p.niches) && p.niches.length
+        ? p.niches.map(String)
+        : null;
+      const nicheLabel = nicheList?.length
+        ? nicheList.slice(0, 6).join(", ") + (nicheList.length > 6 ? "…" : "")
+        : "diversos nichos";
       import("@/lib/prospect/runProspecting").then(async ({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
         activateCommercialTeam();
         const { WAVE_NICHES } = await import("@/lib/prospect/mapsSearch");
+        const niches = nicheList?.length ? nicheList : WAVE_NICHES;
         const job = wave
           ? runWaveProspecting({
             limit: limitLive,
             organizationId: getDB().organization.id,
-            niches: Array.isArray(p.niches) ? p.niches.map(String) : WAVE_NICHES,
+            niches,
             nationwide,
             city: nationwide ? undefined : city,
           })
@@ -1167,23 +1176,23 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `${wave ? `RPA multi-nicho (${WAVE_NICHES.length} nichos)` : "Varredura real"}: ${r.found} WhatsApp válido (${whereLabel})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? `RPA (${niches.length} nichos: ${nicheLabel})` : "Varredura real"}: ${r.found} WhatsApp válido (${whereLabel})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
             });
           });
-          scheduleCyclePush();
+          void import("@/lib/persist/cycle").then(({ flushCyclePush }) => flushCyclePush()).catch(() => {});
           const deals = getDB().deals.filter((d) => d.source === "Prospecção").length;
           const convs = getDB().conversations.filter((c) => c.flow?.origin === "prospeccao").length;
           if (r.found > 0) {
             pushHelenaMessage(
-              `RPA ${wave ? "multi-nicho" : segment} concluído em ${whereLabel}: ${r.found} leads com WhatsApp · ${deals} no Pipeline · ${convs} no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). CRM → Pipeline e Atendimento → Inbox.`,
+              `RPA ${wave ? nicheLabel : segment} concluído em ${whereLabel}: ${r.found} leads com WhatsApp · ${deals} no Pipeline · ${convs} no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). Abre CRM → Pipeline.`,
               { type: "result", ok: true, title: "RPA Maps", detail: `${r.found} leads · ${r.sent} enviados` },
             );
           } else {
             pushHelenaMessage(
-              "A varredura terminou sem achar WhatsApp celular válido nesse momento (mapa/OSM). Nada entrou no Pipeline. Tente de novo com nicho + cidade (ex.: “30 clínicas em Campinas”).",
+              "A varredura terminou sem achar WhatsApp celular válido nesse momento (mapa/OSM). Nada entrou no Pipeline. Tente de novo com nicho + cidade (ex.: “30 pizzarias em Campinas”).",
               { type: "result", ok: false, title: "RPA Maps", detail: "0 leads" },
             );
           }
@@ -1195,8 +1204,8 @@ const handlers: Record<string, Handler> = {
         });
       });
       return ok(wave
-        ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos em ${whereLabel} (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
-        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Quando achar leads, entram no Pipeline, Inbox e WhatsApp. Te aviso ao terminar — ainda não é “já abordou”.`);
+        ? `RPA em andamento: até ${limitLive} WhatsApp em ${whereLabel} · nichos: ${nicheLabel}. Os cards já vão aparecer na Pipeline conforme o mapa achar — não precisa esperar o fim.`
+        : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Cards entram na Pipeline assim que o mapa achar WhatsApp. Te aviso ao terminar.`);
     }
     const limit = Math.min(quota.allowed, MAX_PROSPECT_WAVE);
 
