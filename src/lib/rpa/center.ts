@@ -296,17 +296,21 @@ export function maybeEnqueueRadar() {
   });
 }
 
+/** Follow-up só com visualização (✓✓ azul) sem resposta — não chase silêncio cego. */
 export function maybeEnqueueSilenceFollowups() {
   const db = getDB();
-  const cutoff = Date.now() - 48 * 3600_000;
+  const waitMs = Math.max(1, db.salesFlow?.readNoReplyHours || 2) * 3600_000;
+  const now = Date.now();
   for (const conv of db.conversations) {
     const contact = db.contacts.find((c) => c.id === conv.contactId);
     if (!contact || isOptedOut(contact)) continue;
-    const lastAgent = [...conv.messages].reverse().find((m) => m.from === "agent" || m.from === "helena");
-    const lastContact = conv.messages.some((m) => m.from === "contact");
-    if (!lastAgent || lastContact) continue;
-    if (new Date(lastAgent.at).getTime() > cutoff) continue;
-    scheduleFollowup(contact, "sem_resposta", "Silêncio 48h");
+    const f = conv.flow;
+    if (!f?.readAt || !f.lastOutboundAt) continue;
+    if (f.readAt < f.lastOutboundAt) continue;
+    if (f.repliedAt && f.repliedAt >= f.lastOutboundAt) continue;
+    if (conv.messages.some((m) => m.from === "contact" && m.at >= f.lastOutboundAt)) continue;
+    if (now - new Date(f.readAt).getTime() < waitMs) continue;
+    scheduleFollowup(contact, "sem_resposta", "visualizou_sem_responder · continuidade pós ✓✓ azul");
   }
 }
 

@@ -38,14 +38,14 @@ function conv(messages: Conversation["messages"], hoursAgo = 1): Conversation {
 }
 
 describe("não insistir no mesmo número", () => {
-  it("aguarda 24 horas sem resposta antes de propor o follow-up", () => {
+  it("sem visualização não dispara follow-up (mesmo após 24h)", () => {
     const c = conv([{ id: "m1", from: "agent", authorName: "SDR", text: "proposta", at: "", kind: "text" }], 25);
     const sentAt = new Date(c.flow!.lastOutboundAt).getTime();
     expect(evaluateFollowup(c, settings, new Date(sentAt + 23 * 3600_000)).action).toBe("none");
-    expect(evaluateFollowup(c, settings, new Date(sentAt + 24 * 3600_000)).action).toBe("closer");
+    expect(evaluateFollowup(c, settings, new Date(sentAt + 48 * 3600_000)).action).toBe("none");
   });
 
-  it("conta 24 horas desde a leitura quando o contato visualizou", () => {
+  it("follow-up só depois da visualização (✓✓ azul) + janela de leitura", () => {
     const c = conv([{ id: "m1", from: "agent", authorName: "SDR", text: "proposta", at: "", kind: "text" }], 30);
     const sentAt = new Date(c.flow!.lastOutboundAt).getTime();
     c.flow!.readAt = new Date(sentAt + 2 * 3600_000).toISOString();

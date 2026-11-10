@@ -4,6 +4,7 @@
 // segue exatamente as mesmas regras com mensagens reais da Evolution API.
 import type { Conversation, FlowState, Meeting, SalesFlowSettings } from "@/lib/types";
 import { normalize } from "@/lib/format";
+import { buildReadFollowupText } from "@/lib/helena/inbox-brain";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
@@ -81,11 +82,9 @@ export function shouldHoldOutbound(conv: Pick<Conversation, "messages" | "flow" 
 }
 
 /**
- * Decide se a Closer deve entrar agora numa conversa do número compartilhado.
- * - só vale para conversas iniciadas pela prospecção (quando a regra estiver ligada);
- * - se um humano assumiu ou o cliente respondeu, ninguém entra;
- * - 1 follow-up no máximo, e só depois de 48h sem resposta;
- * - duas mensagens do time seguidas sem resposta → esfria e para.
+ * Decide se a Closer / Time deve dar follow-up.
+ * REGRA: só entra com VISUALIZAÇÃO (✓✓ azul) sem resposta.
+ * Silêncio sem leitura NÃO dispara follow-up automático.
  */
 export function evaluateFollowup(conv: Conversation, s: SalesFlowSettings, now = new Date()): FollowupDecision {
   const f = conv.flow;
@@ -100,16 +99,18 @@ export function evaluateFollowup(conv: Conversation, s: SalesFlowSettings, now =
   if (unansweredAgentStreak(conv) >= 2 || f.closerAttempts >= Math.max(1, s.maxCloserAttempts)) {
     return { action: "esfriou" };
   }
-  if (shouldHoldOutbound(conv, now, Math.max(s.noReplyHours, 24))) {
-    return { action: "none" };
-  }
 
+  // Follow-up SOMENTE com visualização das mensagens.
   const read = !!f.readAt && f.readAt >= f.lastOutboundAt;
-  const reason: FollowupReason = read ? "visualizou_sem_responder" : "sem_resposta";
-  const base = new Date(read ? f.readAt! : f.lastOutboundAt).getTime();
-  const wait = (read ? s.readNoReplyHours : s.noReplyHours) * HOUR;
-  const due = nextBusinessTime(new Date(base + wait), s);
+  if (!read) return { action: "none" };
+
+  const reason: FollowupReason = "visualizou_sem_responder";
+  const waitH = Math.max(1, s.readNoReplyHours || READ_CONTINUITY_HOURS);
+  const due = nextBusinessTime(new Date(new Date(f.readAt!).getTime() + waitH * HOUR), s);
   if (now.getTime() < due.getTime()) return { action: "none", dueAt: due.toISOString(), reason };
+  if (shouldHoldOutbound(conv, now, waitH)) {
+    return { action: "none", dueAt: due.toISOString(), reason };
+  }
   return { action: "closer", reason };
 }
 
@@ -241,7 +242,7 @@ export function pickProposedSlot(text: string, slots: string[] | undefined): str
   return null;
 }
 
-/** Mensagem da Closer: curta, humana, sem emojis, sempre com dois horários. */
+/** Mensagem da Closer pós-visualização: lê o contexto e segue a conversa (dono → IA → horário). */
 export function closerFollowupText(opts: {
   contactName: string;
   closerName: string;
@@ -250,11 +251,25 @@ export function closerFollowupText(opts: {
   reason: FollowupReason;
   slots: Date[];
   now?: Date;
+  history?: { from: string; text: string }[];
+  previewUrl?: string;
 }) {
   const first = opts.contactName.replace(/^(Dra?\.)\s*/, "$1 ").split(" ").slice(0, /^Dra?\./.test(opts.contactName) ? 2 : 1).join(" ");
   const menu = formatSlotMenu(opts.slots, opts.now);
+  // Preferência: texto natural baseado nas mensagens vistas.
+  if (opts.reason === "visualizou_sem_responder") {
+    const natural = buildReadFollowupText({
+      contactName: opts.contactName,
+      agentName: opts.closerName,
+      company: opts.company,
+      history: opts.history || [],
+      previewUrl: opts.previewUrl,
+    });
+    if (opts.attempt <= 1) return `${natural}\n\nSe preferir, escolhe um horário de 10 min:\n${menu}`;
+    return `${first}, última da minha parte. ${natural}\n${menu}`;
+  }
   if (opts.attempt <= 1) {
-    return `${first}, aqui é a ${opts.closerName} da ${opts.company}. Você é o proprietário ou a proprietária? Se for, escolhe um horário de 10 min (é só responder o número):\n${menu}`;
+    return `${first}, aqui é a ${opts.closerName} da ${opts.company}. Vi que você visualizou — você é o proprietário ou a pessoa responsável? Se for, me diz se tem IA operando na empresa e escolhe 10 min:\n${menu}`;
   }
   return `${first}, última da minha parte. Se for o dono ou a dona, me diz um destes horários. Se não, eu paro.\n${menu}`;
 }

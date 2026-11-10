@@ -885,24 +885,41 @@ const handlers: Record<string, Handler> = {
     const problem = connectionCheck(db, conv.connectionId ?? s.sharedConnectionId);
     if (problem) return fail(problem);
     const contact = db.contacts.find((c) => c.id === conv.contactId);
-    const reason: FollowupReason = p.reason === "visualizou_sem_responder" ? "visualizou_sem_responder" : (conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt ? "visualizou_sem_responder" : "sem_resposta");
-    // Visualizou (azul): espera curta. Sem resposta: 48h. Não bloquear a continuidade do ✓✓.
-    const waitH = reason === "visualizou_sem_responder" ? Math.max(1, s.readNoReplyHours || 2) : Math.max(24, s.noReplyHours || 48);
+    // Follow-up só com visualização (✓✓ azul). Sem leitura → não assume.
+    if (conv.flow.repliedAt && conv.flow.repliedAt >= conv.flow.lastOutboundAt) {
+      return fail("O lead já respondeu — o Time acompanha a conversa, sem follow-up cego.");
+    }
+    if (conv.flow.state === "respondeu" || conv.messages.at(-1)?.from === "contact") {
+      return fail("O lead já respondeu — o Time acompanha a conversa, sem follow-up cego.");
+    }
+    const read = Boolean(conv.flow.readAt && conv.flow.readAt >= conv.flow.lastOutboundAt);
+    if (!read && p.reason !== "visualizou_sem_responder") {
+      return fail("Follow-up do Time só entra quando o lead visualizou a mensagem (✓✓ azul).");
+    }
+    if (!read) {
+      return fail("Follow-up do Time só entra quando o lead visualizou a mensagem (✓✓ azul).");
+    }
+    const reason: FollowupReason = "visualizou_sem_responder";
+    const waitH = Math.max(1, s.readNoReplyHours || 2);
     if (shouldHoldOutbound(conv, new Date(), waitH) || unansweredAgentStreak(conv) >= 2) {
-      return fail(reason === "visualizou_sem_responder"
-        ? `Ainda dentro da janela de ${waitH}h após o visualizado — a continuidade entra depois.`
-        : "Este número já foi abordado; a Closer só entra depois de 48h sem resposta, e uma vez só");
+      return fail(`Ainda dentro da janela de ${waitH}h após o visualizado — a continuidade entra depois.`);
     }
     const preview = db.sitePreviews?.find((x) => x.contactId === conv.contactId);
     const previewUrlLive = preview?.vercelUrl || (preview ? `https://helenaata.vercel.app/v/${preview.slug}` : "");
     const attempt = conv.flow.closerAttempts + 1;
     const slots = suggestSlots(db.meetings ?? [], closer.id, new Date(), s, 6);
-    const baseText = closerFollowupText({ contactName: contact?.name ?? "cliente", closerName: closer.name, company: db.organization.name, attempt, reason, slots });
-    const text = formatForWhatsApp(
-      previewUrlLive && reason === "visualizou_sem_responder"
-        ? `${baseText}\n\nDeixei a prévia do site pronta pra você ver no celular:\n${previewUrlLive}`
-        : baseText,
-    );
+    const history = (conv.messages || []).slice(-12).map((m) => ({ from: m.from, text: m.text }));
+    const baseText = closerFollowupText({
+      contactName: contact?.name ?? "cliente",
+      closerName: closer.name,
+      company: db.organization.name,
+      attempt,
+      reason,
+      slots,
+      history,
+      previewUrl: previewUrlLive || undefined,
+    });
+    const text = formatForWhatsApp(baseText);
     const previous = ownerName(db, conv.handlerId);
 
     update((d) => {

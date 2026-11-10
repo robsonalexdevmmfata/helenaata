@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideApproval, runTool } from "@/lib/helena/engine";
+import { runTool } from "@/lib/helena/engine";
 import { getDB, nowISO, uid, update } from "@/lib/store";
 import type { Conversation } from "@/lib/types";
 
@@ -49,8 +49,9 @@ function createUnansweredProspect() {
       }],
       flow: {
         origin: "prospeccao",
-        state: "abordado",
+        state: "visualizou",
         lastOutboundAt,
+        readAt: lastOutboundAt,
         closerAttempts: 0,
       },
     };
@@ -59,51 +60,51 @@ function createUnansweredProspect() {
   return { contactId, conversationId };
 }
 
-describe("follow-up de cardápio com aprovação", () => {
-  it("prepara a mensagem após 24h sem enviar antes da aprovação", () => {
+describe("follow-up de cardápio com visualização", () => {
+  it("Closer entra só após visualização e lê a conversa", () => {
     const { contactId, conversationId } = createUnansweredProspect();
     expect(getDB().contacts.find((contact) => contact.id === contactId)?.companyId).toBeUndefined();
     const before = getDB().conversations.find((conversation) => conversation.id === conversationId)!.messages.length;
     const result = runTool(
       "sales.closer_takeover",
-      { conversationId, reason: "sem_resposta" },
+      { conversationId, reason: "visualizou_sem_responder" },
       { actor: "Closer", actorType: "agent", requestedBy: "Automação do número comercial" },
     );
 
     expect(result.ok).toBe(true);
-    expect(result.message).toMatch(/aguardando aprovação/i);
-    const approval = getDB().approvals.find((entry) =>
-      entry.tool === "sales.send_menu_followup" &&
-      entry.status === "pendente" &&
-      entry.params.conversationId === conversationId,
-    );
-    expect(approval?.details.map((detail) => detail.value).join(" ")).toContain("R$ 100,00/mês");
     const conversation = getDB().conversations.find((entry) => entry.id === conversationId)!;
-    expect(conversation.flow?.state).toBe("aguardando_aprovacao");
-    expect(conversation.messages).toHaveLength(before);
+    expect(conversation.flow?.state).toBe("closer");
+    expect(conversation.messages.length).toBeGreaterThan(before);
+    expect(conversation.messages.at(-1)?.text).toMatch(/propriet|responsável|IA|prévia|horário/i);
   });
 
-  it("não envia se o contato responder enquanto a aprovação está pendente", () => {
+  it("sem visualização o follow-up não entra", () => {
     const { conversationId } = createUnansweredProspect();
-    runTool(
+    update((db) => {
+      const conversation = db.conversations.find((entry) => entry.id === conversationId)!;
+      if (conversation.flow) {
+        conversation.flow.readAt = undefined;
+        conversation.flow.state = "abordado";
+      }
+    });
+    const result = runTool(
       "sales.closer_takeover",
       { conversationId, reason: "sem_resposta" },
       { actor: "Closer", actorType: "agent", requestedBy: "Automação do número comercial" },
     );
-    const approval = getDB().approvals.find((entry) =>
-      entry.tool === "sales.send_menu_followup" &&
-      entry.status === "pendente" &&
-      entry.params.conversationId === conversationId,
-    );
-    expect(approval).toBeTruthy();
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/visualizou/i);
+  });
 
+  it("não dá segundo follow-up se o contato já respondeu", () => {
+    const { conversationId } = createUnansweredProspect();
     update((db) => {
       const conversation = db.conversations.find((entry) => entry.id === conversationId)!;
       conversation.messages.push({
         id: uid("msg_reply_"),
         from: "contact",
         authorName: "Ana Souza",
-        text: "Obrigado, vou avaliar.",
+        text: "Sou a proprietária sim",
         at: nowISO(),
         kind: "text",
       });
@@ -111,9 +112,12 @@ describe("follow-up de cardápio com aprovação", () => {
       conversation.flow!.state = "respondeu";
     });
 
-    const result = decideApproval(approval!.id, true);
+    const result = runTool(
+      "sales.closer_takeover",
+      { conversationId, reason: "visualizou_sem_responder" },
+      { actor: "Closer", actorType: "agent", requestedBy: "Automação do número comercial" },
+    );
+    // Já respondeu / streak — Closer não deve empilhar follow-up cego
     expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/respondeu/i);
-    expect(getDB().conversations.find((entry) => entry.id === conversationId)!.messages).toHaveLength(2);
   });
 });
