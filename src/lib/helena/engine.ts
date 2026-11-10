@@ -44,7 +44,7 @@ import { coachGuideText } from "@/lib/helena/coach";
 import { agentBenchmark, autonomyBlocksTool, circuitBreaker, integrationHealth, missionReplayText, replayMission } from "@/lib/helena/reliability";
 import { createMissionFromObjective, pauseMission, startMission, tickMissions } from "@/lib/helena/mission-engine";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
-import { meetingStage, stageForNewProspect } from "@/lib/crm/pipelineStages";
+import { advanceContactDeal, advanceDealOnApproach, meetingStage, stageForNewProspect } from "@/lib/crm/pipelineStages";
 
 export interface ToolContext {
   actor: string;
@@ -461,6 +461,9 @@ const handlers: Record<string, Handler> = {
         ct.lastContactAt = nowISO();
         if (/vercel\.app|\/v\//.test(outText)) ct.tags = setCycleTag(ct.tags, "link_enviado");
         else if (!(ct.tags || []).some((t) => t.startsWith("#ciclo-"))) ct.tags = setCycleTag(ct.tags, "encontrado");
+      }
+      if (c.flow?.origin === "prospeccao" || p.countAsProspect) {
+        advanceContactDeal(d.deals, d.pipelines[0], c.contactId, "abordado");
       }
       const wa = d.connections.find((x) => x.id === c.connectionId);
       if (wa && c.channel === "whatsapp") wa.sentToday += 1;
@@ -941,7 +944,12 @@ const handlers: Record<string, Handler> = {
       const ag = d.agents.find((a) => a.id === closer.id);
       if (ag) { ag.metrics.tasks += 1; if (attempt === 1) ag.metrics.conversations += 1; ag.currentTask = `Resgatando ${contact?.name ?? "lead"}`; }
       const deal = d.deals.find((x) => x.contactId === c.contactId && x.status === "aberto");
-      if (deal) { deal.ownerId = closer.id; deal.ownerType = "agent"; deal.updatedAt = nowISO(); }
+      if (deal) {
+        deal.ownerId = closer.id;
+        deal.ownerType = "agent";
+        advanceDealOnApproach(deal, d.pipelines[0], "abordado");
+        deal.updatedAt = nowISO();
+      }
       d.activities.unshift({
         id: uid("ac_"),
         organizationId: d.organization.id,
@@ -989,12 +997,14 @@ const handlers: Record<string, Handler> = {
         }
         const ct = d.contacts.find((x) => x.id === conv.contactId);
         if (ct) ct.tags = setCycleTag(ct.tags || [], "visualizou");
+        const deal = advanceContactDeal(d.deals, d.pipelines[0], conv.contactId, "visualizou");
         d.activities.unshift({
           id: uid("ac_"),
           organizationId: d.organization.id,
           contactId: conv.contactId,
+          dealId: deal?.id,
           type: "whatsapp",
-          text: `${contact?.name ?? "Cliente"} visualizou a mensagem (✓✓ azul). Helena agenda continuidade.`,
+          text: `${contact?.name ?? "Cliente"} visualizou a mensagem (✓✓ azul). Pipeline atualizado · Helena agenda continuidade.`,
           actor: "Helena",
           createdAt: nowISO(),
         });
@@ -1007,6 +1017,7 @@ const handlers: Record<string, Handler> = {
           { actor: "Helena", actorType: "helena", requestedBy: ctx.actor },
         );
       }
+      scheduleCyclePush();
       return ok(`${contact?.name ?? "Cliente"} visualizou (azul). Continuidade de prospecção agendada.`);
     }
     if (p.event !== "reply") return fail("evento desconhecido");
@@ -1026,6 +1037,19 @@ const handlers: Record<string, Handler> = {
       }
       const ct = d.contacts.find((x) => x.id === c.contactId);
       if (ct) ct.lastContactAt = nowISO();
+      const deal = advanceContactDeal(d.deals, d.pipelines[0], c.contactId, "respondeu");
+      if (deal) {
+        d.activities.unshift({
+          id: uid("ac_"),
+          organizationId: d.organization.id,
+          contactId: c.contactId,
+          dealId: deal.id,
+          type: "etapa",
+          text: `${contact?.name ?? "Cliente"} respondeu — deal em ${d.pipelines[0]?.stages.find((s) => s.id === deal.stageId)?.name || deal.stageId}.`,
+          actor: "Helena",
+          createdAt: nowISO(),
+        });
+      }
     });
 
     const fresh = getDB().conversations.find((c) => c.id === conv.id);
@@ -1049,9 +1073,11 @@ const handlers: Record<string, Handler> = {
           c.unread = 0;
           if (c.flow) c.flow.lastOutboundAt = nowISO();
         });
+        scheduleCyclePush();
         return ok(booked.ok ? `Cliente respondeu e ${closer.name} marcou a reunião para ${when}` : `Cliente respondeu, mas o horário ${when} estava ocupado`, { meetingId: booked.data?.meetingId });
       }
     }
+    scheduleCyclePush();
     return ok(`${contact?.name ?? "Cliente"} respondeu`);
   },
   "prospect.scan_maps": (p, ctx) => {

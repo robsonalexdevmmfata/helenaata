@@ -15,6 +15,7 @@ import { getDB, update, uid, nowISO } from "@/lib/store";
 import { unansweredAgentStreak, wasDeliveredOutbound } from "@/lib/helena/sales-flow";
 import { phoneDedupeKey } from "@/lib/prospect/runProspecting";
 import { scheduleCyclePush } from "@/lib/persist/cycle";
+import { advanceDealOnApproach } from "@/lib/crm/pipelineStages";
 
 // ── Configurações de disparo seguro ──────────────────────────────────────────
 
@@ -193,16 +194,9 @@ export async function dispatchProspectMessages(
             closerAttempts: conv.flow?.closerAttempts ?? 0,
           };
         }
-        // Time entrou em contato → Proposta enviada (após Qualificado).
+        // Time entrou em contato → Proposta enviada (Pipeline acompanha a abordagem).
         const deal = d.deals.find((x) => x.contactId === contact.contactId && x.status === "aberto");
-        const prop = d.pipelines[0]?.stages.find((s) => s.id === "st_prop" || /proposta/i.test(s.name));
-        if (deal && prop && (deal.stageId === "st_qual" || deal.stageId === "st_novo" || /qualific|novo/i.test(
-          d.pipelines[0]?.stages.find((s) => s.id === deal.stageId)?.name || "",
-        ))) {
-          deal.stageId = prop.id;
-          deal.probability = prop.probability;
-          deal.updatedAt = nowISO();
-        }
+        advanceDealOnApproach(deal, d.pipelines[0], "abordado", nowISO());
         const wa = d.connections.find((c) => c.id === "wa_agency")
           ?? d.connections.find((c) => /info tech|helena/i.test(c.name))
           ?? d.connections.find((c) => c.status === "online");

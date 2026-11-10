@@ -348,7 +348,23 @@ export async function pullCycleIntoStore() {
       if (Array.isArray(data.inbox?.conversations)) mergeConversations(d, data.inbox.conversations);
       for (const row of data.deals || data.inbox?.deals || []) {
         const id = row.id || row.app_id;
-        if (!id || d.deals.some((x) => x.id === id)) continue;
+        if (!id) continue;
+        const existing = d.deals.find((x) => x.id === id);
+        if (existing) {
+          // Sync etapa da abordagem (servidor/outro device) sem perder o card.
+          const remoteAt = row.updatedAt ? new Date(row.updatedAt).getTime() : 0;
+          const localAt = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+          if (remoteAt >= localAt) {
+            if (row.stageId) existing.stageId = row.stageId;
+            if (row.probability != null) existing.probability = Number(row.probability) || existing.probability;
+            if (row.status) existing.status = row.status;
+            if (row.ownerId) existing.ownerId = row.ownerId;
+            if (row.ownerType) existing.ownerType = row.ownerType;
+            if (row.tags) existing.tags = row.tags;
+            existing.updatedAt = row.updatedAt || existing.updatedAt;
+          }
+          continue;
+        }
         const pipeline = d.pipelines[0];
         const stage = pipeline?.stages[0];
         d.deals.unshift({

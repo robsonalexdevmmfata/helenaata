@@ -8,13 +8,14 @@ export function alwaysOnTruth() {
       "Disparo WhatsApp já enfileirado no worker do Render (Evolution).",
       "Retomada da sessão WhatsApp no boot do servidor, se houver creds no disco.",
       "Fila Postgres `rpa_jobs` vencida, quando o ciclo estiver gravado.",
+      "Tick comercial 24/7: Pipeline acompanha abordagem + follow-up pós ✓✓ azul (sales-flow no Render).",
     ],
     needsPanel: [
       "Planejar missão, dossiê, conselho e briefing (store do painel).",
-      "tickRpaJobs local: radar, follow-up e diagnóstico só com o app aberto — até o worker cobrir o kind.",
-      "Closer automática no número compartilhado (tick no layout).",
+      "Nova varredura Maps / RPA sob demanda (Helena no chat).",
+      "Aprovar prévia de site antes do envio (admin).",
     ],
-    note: "Always-on de verdade é o Render + Postgres. A aba não é o motor. Missão no localStorage não sobrevive sozinha a outro dispositivo.",
+    note: "Always-on de verdade é o Render + Postgres. Abordagens e etapas do Pipeline sincronizam no ciclo — a aba não precisa ficar aberta pra follow-up.",
   };
 }
 

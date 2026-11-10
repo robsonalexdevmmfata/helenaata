@@ -152,6 +152,17 @@ export async function startBackground() {
   setInterval(() => {
     tickRpaQueue().catch(() => {});
   }, 15_000);
+  // Pipeline + follow-up comercial 24/7 (mesmo com o painel fechado).
+  setInterval(() => {
+    import("./sales-flow.mjs")
+      .then(({ tickCommercialAlwaysOn }) => tickCommercialAlwaysOn())
+      .then((s) => {
+        if (s?.queued || s?.advanced) {
+          console.log(`[Helena] comercial 24/7: +${s.advanced || 0} pipeline · ${s.queued || 0} follow-up`);
+        }
+      })
+      .catch(() => {});
+  }, 60_000);
 }
 
 /**

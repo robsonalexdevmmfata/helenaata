@@ -566,6 +566,54 @@ export async function retryRpaJobDb(id) {
   return { ok: true };
 }
 
+/** Snapshots recentes pra tick comercial 24/7 (Pipeline + follow-up sem painel aberto). */
+export async function listRecentWorkspaceSnapshots(limit = 40) {
+  const p = await getPool();
+  if (!p) return [];
+  try {
+    const res = await q(
+      `select app_organization_id as "appOrganizationId", payload, updated_at as "updatedAt"
+         from workspace_snapshots
+        where updated_at > now() - interval '14 days'
+        order by updated_at desc
+        limit $1`,
+      [Math.min(Math.max(Number(limit) || 40, 1), 80)],
+    );
+    return res.rows || [];
+  } catch (err) {
+    console.warn("[helena-db] listRecentWorkspaceSnapshots:", err?.message || err);
+    return [];
+  }
+}
+
+export async function patchWorkspaceSnapshot(appOrganizationId, mutator) {
+  const appOrg = String(appOrganizationId || "");
+  if (!appOrg || typeof mutator !== "function") return { ok: false };
+  const p = await getPool();
+  if (!p) return { ok: false, skipped: true };
+  try {
+    const cur = await q(
+      `select payload from workspace_snapshots where app_organization_id = $1 limit 1`,
+      [appOrg],
+    );
+    const payload = cur.rows[0]?.payload;
+    if (!payload || typeof payload !== "object") return { ok: false, empty: true };
+    const next = mutator({ ...payload });
+    if (!next || typeof next !== "object") return { ok: false };
+    next.savedAt = new Date().toISOString();
+    await q(
+      `update workspace_snapshots
+          set payload = $2::jsonb, revision = workspace_snapshots.revision + 1, updated_at = now()
+        where app_organization_id = $1`,
+      [appOrg, JSON.stringify(next)],
+    );
+    return { ok: true };
+  } catch (err) {
+    console.warn("[helena-db] patchWorkspaceSnapshot:", err?.message || err);
+    return { ok: false, error: err?.message };
+  }
+}
+
 export async function rpaMonitorDb() {
   const queued = (await q("select count(*)::int as n from rpa_jobs where status = 'queued'")).rows[0]?.n || 0;
   const failed = (await q("select count(*)::int as n from rpa_jobs where status = 'failed'")).rows[0]?.n || 0;

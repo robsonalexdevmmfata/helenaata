@@ -36,8 +36,10 @@ import { bumpAutomation, getDB, update, uid, nowISO } from "@/lib/store";
 import { evaluateHandoff } from "@/lib/helena/whatsapp-formatter";
 import type { HandoffStage } from "@/lib/helena/whatsapp-formatter";
 import { extractMeetingFromText } from "@/lib/helena/calendar";
-import { nextInboxReply, previewCtxForContact } from "@/lib/helena/inbox-brain";
+import { IS_OWNER, nextInboxReply, previewCtxForContact } from "@/lib/helena/inbox-brain";
 import { formatSlotMenu, pickProposedSlot, suggestSlots, unansweredAgentStreak } from "@/lib/helena/sales-flow";
+import { advanceContactDeal } from "@/lib/crm/pipelineStages";
+import { scheduleCyclePush } from "@/lib/persist/cycle";
 import { runTool } from "@/lib/helena/engine";
 import { syncLiveCommercial } from "@/lib/analytics";
 
@@ -222,8 +224,16 @@ export async function processEvolutionWebhook(
       }
       const ct = d.contacts.find((x) => x.id === contact!.id);
       if (ct) ct.lastContactAt = nowISO();
+      const ownerLike = IS_OWNER.test(incoming.text.replace(/^\[Áudio\]\s*/i, ""));
+      advanceContactDeal(
+        d.deals,
+        d.pipelines[0],
+        contact!.id,
+        ownerLike ? "negociando" : "respondeu",
+      );
       bumpAutomation(d, "mensagem_recebida");
     });
+    scheduleCyclePush();
   }
 
   // 6. Avalia se precisa de handoff entre agentes

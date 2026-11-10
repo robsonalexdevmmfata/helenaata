@@ -15,6 +15,8 @@ import { processEvolutionWebhook } from "./webhookHandler";
 import { repairGhostWhatsAppDrafts } from "./prospectDispatcher";
 import { getDB, nowISO, uid, update } from "@/lib/store";
 import { sanitizeChatText } from "@/lib/helena/whatsapp-formatter";
+import { advanceContactDeal } from "@/lib/crm/pipelineStages";
+import { scheduleCyclePush } from "@/lib/persist/cycle";
 
 const SEEN_KEY = "helena_evo_seen_ids";
 const BOOT_KEY = "helena_evo_bootstrapped";
@@ -190,11 +192,14 @@ function upsertFromEvolution(opts: {
     }
     if (opts.fromMe && /Robson Alex|Info Tech/i.test(opts.text) && !c.flow) {
       c.flow = { origin: "prospeccao", state: "abordado", lastOutboundAt: opts.at, closerAttempts: 0 };
+      advanceContactDeal(d.deals, d.pipelines[0], contactId, "abordado", opts.at);
     } else if (c.flow && opts.fromMe && opts.text) {
       c.flow.lastOutboundAt = opts.at;
+      advanceContactDeal(d.deals, d.pipelines[0], contactId, "abordado", opts.at);
     } else if (c.flow && !opts.fromMe && opts.text) {
       c.flow.repliedAt = opts.at;
       c.flow.state = c.flow.state === "closer" || c.flow.state === "reuniao_agendada" ? c.flow.state : "respondeu";
+      advanceContactDeal(d.deals, d.pipelines[0], contactId, "respondeu", opts.at);
     }
     const ct = d.contacts.find((x) => x.id === contactId);
     if (ct) {
@@ -202,6 +207,7 @@ function upsertFromEvolution(opts: {
       if (phone) ct.phone = phone;
     }
   });
+  scheduleCyclePush();
 }
 
 export async function hydrateConversationFromEvolution(conversationId: string) {
