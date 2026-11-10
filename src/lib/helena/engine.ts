@@ -1072,6 +1072,7 @@ const handlers: Record<string, Handler> = {
       const limitLive = Math.min(quota.allowed, MAX_PROSPECT_WAVE);
       // Onda só se pedida de propósito — pedido "300 restaurantes em BC" NÃO vira advogado em SP.
       const wave = p.wave === true || /varios nichos|diversos nichos|onda multi|rpa multi/i.test(segment);
+      const whereLabel = nationwide ? "Brasil inteiro" : city;
       import("@/lib/prospect/runProspecting").then(async ({ runRealProspecting, runWaveProspecting, activateCommercialTeam }) => {
         activateCommercialTeam();
         const { WAVE_NICHES } = await import("@/lib/prospect/mapsSearch");
@@ -1081,6 +1082,7 @@ const handlers: Record<string, Handler> = {
             organizationId: getDB().organization.id,
             niches: Array.isArray(p.niches) ? p.niches.map(String) : WAVE_NICHES,
             nationwide,
+            city: nationwide ? undefined : city,
           })
           : runRealProspecting({
             segment,
@@ -1100,7 +1102,7 @@ const handlers: Record<string, Handler> = {
               actor: ctx.actor,
               actorType: ctx.actorType,
               action: "prospect.scan_maps",
-              description: `${wave ? `RPA multi-nicho (${WAVE_NICHES.length} nichos)${nationwide ? " Brasil" : " SP"}` : "Varredura real"}: ${r.found} WhatsApp válido (${nationwide ? "Brasil inteiro" : city})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
+              description: `${wave ? `RPA multi-nicho (${WAVE_NICHES.length} nichos)` : "Varredura real"}: ${r.found} WhatsApp válido (${whereLabel})${noWhatsAppAi ? " · filtro sem IA no atendimento" : " · sem site"}. Evolution: ${r.sent} enviados, ${r.failed} falhas.`,
               result: r.found ? "sucesso" : "falha",
               requestedBy: ctx.requestedBy ?? ctx.actor,
               durationMs: 0,
@@ -1111,7 +1113,7 @@ const handlers: Record<string, Handler> = {
           const convs = getDB().conversations.filter((c) => c.flow?.origin === "prospeccao").length;
           if (r.found > 0) {
             pushHelenaMessage(
-              `RPA ${wave ? "multi-nicho" : segment} concluído: ${r.found} leads com WhatsApp · ${deals} no Pipeline · ${convs} no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). CRM → Pipeline e Atendimento → Inbox.`,
+              `RPA ${wave ? "multi-nicho" : segment} concluído em ${whereLabel}: ${r.found} leads com WhatsApp · ${deals} no Pipeline · ${convs} no Inbox · ${r.sent} disparos Evolution (${r.failed} falhas). CRM → Pipeline e Atendimento → Inbox.`,
               { type: "result", ok: true, title: "RPA Maps", detail: `${r.found} leads · ${r.sent} enviados` },
             );
           } else {
@@ -1128,7 +1130,7 @@ const handlers: Record<string, Handler> = {
         });
       });
       return ok(wave
-        ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos ${nationwide ? "no Brasil" : "em SP + interior"} (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
+        ? `RPA multi-nicho em andamento: até ${limitLive} WhatsApp válidos em ${whereLabel} (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias e mais). Leads → Pipeline + Inbox + Evolution. Te aviso ao terminar.`
         : `Varredura ${nationwide ? "nacional" : "em " + city} iniciada para ${segment}. Quando achar leads, entram no Pipeline, Inbox e WhatsApp. Te aviso ao terminar — ainda não é “já abordou”.`);
     }
     const limit = Math.min(quota.allowed, MAX_PROSPECT_WAVE);

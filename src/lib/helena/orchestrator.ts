@@ -17,7 +17,7 @@ import { agentCouncil, companyBriefing, crisisState, isCompanyStatusQuestion, is
 import { recoverOpportunities } from "./decision";
 import { integrationHealth, screenContextLine } from "./reliability";
 import { pauseHappyNation, playFarewellMusic, playHappyNation } from "./music";
-import { extractProspectIntent } from "@/lib/prospect/mapsSearch";
+import { extractProspectIntent, resolveProspectScope } from "@/lib/prospect/mapsSearch";
 import { isPresenceIntent } from "@/lib/dev/presence";
 import { canUseDevTeam } from "@/lib/saas";
 
@@ -158,8 +158,9 @@ export async function sendToHelena(text: string) {
     const user = currentUser(getDB());
     const requestedBy = user?.name || "Gestor";
     const allowDev = canUseDevTeam(user);
+    const scope = resolveProspectScope(clean);
     const wantsProspect =
-      /(1000|mil)\s*leads?|\brpa\b|prospect|prospecc|cacar|caçar|varr|diversos?\s*nichos?|brasil\s*(inteiro|todinho)|ativar\s+o?\s*time\s*(comercial|market|inteiro)/i.test(clean);
+      /(1000|mil)\s*leads?|\brpa\b|prospect|prospecc|cacar|caçar|procure|procurar|varr|diversos?\s*nichos?|brasil\s*(inteiro|todinho)|ativar?\s+o?\s*time\s*(comercial|market|inteiro|de\s*market|dev)/i.test(clean);
     // Prospecção SEMPRE antes do Time Dev — nunca troca Maps por prévia Vercel.
     const orderedCalls = [...groqRes.toolCalls].sort((a, b) => {
       const rank = (name: string) =>
@@ -170,10 +171,25 @@ export async function sendToHelena(text: string) {
     });
     for (const tc of orderedCalls) {
       if (tc.name === "prospect_scan_maps") {
-        const args = {
-          ...tc.arguments,
-          ...(wantsProspect ? { wave: true, nationwide: true, limit: Math.min(Number(tc.arguments.limit) || 1000, 1000), city: "Brasil" } : {}),
-        };
+        // Cidade do prompt manda: NUNCA sobrescrever Andradina/BC com “Brasil”.
+        const args = wantsProspect
+          ? {
+              ...tc.arguments,
+              segment: scope.namedCity && !scope.wave
+                ? (tc.arguments.segment || scope.segment)
+                : (scope.wave ? scope.segment : (tc.arguments.segment || scope.segment)),
+              city: scope.city,
+              nationwide: scope.nationwide,
+              wave: scope.wave,
+              limit: Math.min(Number(tc.arguments.limit) || scope.limit, 1000),
+              noWhatsAppAi: scope.noWhatsAppAi || tc.arguments.noWhatsAppAi,
+              ...(scope.nationwide ? { state: "TODOS" } : { state: tc.arguments.state }),
+            }
+          : {
+              ...tc.arguments,
+              city: scope.namedCity ? scope.city : (tc.arguments.city || scope.city),
+              nationwide: scope.namedCity ? false : Boolean(tc.arguments.nationwide),
+            };
         const res = runTool("prospect.scan_maps", args, { actor: "Helena", actorType: "helena", requestedBy });
         pushHelenaMessage(
           groqRes.text || res.message || `Varredura Maps iniciada. Leads primeiro — Time Dev só depois.`,
@@ -493,7 +509,7 @@ export function interpret(text: string): Reply[] {
     }];
   }
 
-  // RPA multi-nicho / 1000 leads / Brasil (não só SP/Campinas).
+  // RPA multi-nicho / 1000 leads — cidade do prompt manda (nunca força Brasil se citou Andradina/BC/etc).
   if (
     /\brpa\b/.test(n)
     || /expediente\s*(rpa|automat|multi)/.test(n)
@@ -502,35 +518,34 @@ export function interpret(text: string): Reply[] {
     || /(1000|mil)\s*leads?/.test(n)
     || /brasil\s*(inteiro|todinho|todo)/.test(n)
   ) {
-    const nums = [...n.matchAll(/(\d{1,4})/g)].map((m) => Number(m[1])).filter((x) => x >= 10 && x <= 1000);
-    const wantsMil = /(1000|mil)\s*leads?|brasil\s*(inteiro|todinho)|diversos?\s*nichos?|time\s*inteiro/.test(n);
-    const limit = Math.min(nums.find((x) => x >= 80) ?? (wantsMil ? 1000 : nums[0]) ?? 1000, 1000);
-    // "não só SP/Campinas" + mil leads = Brasil inteiro por padrão.
-    const nationwide = /brasil|nacional|todinho|país|pais|nao\s*somente|nao\s*so|diversos?\s*nichos?|time\s*inteiro|(1000|mil)\s*leads?/.test(n);
+    const scope = resolveProspectScope(text);
+    const limit = scope.limit;
     const multi = true;
     if (multi) {
       const goalMatch = n.match(/(?:fechar|meta|faturar|bater)\s*(?:de\s*)?(?:r\$\s*)?(\d{3,5})/);
+      const where = scope.nationwide ? "Brasil inteiro" : scope.city;
       const actions = [
         perform(
           "prospect.scan_maps",
           {
-            segment: "diversos nichos locais",
-            city: "Brasil",
-            nationwide: true,
-            state: "TODOS",
+            segment: scope.segment,
+            city: scope.city,
+            nationwide: scope.nationwide,
+            state: scope.nationwide ? "TODOS" : undefined,
             limit,
-            wave: true,
+            wave: scope.wave,
+            noWhatsAppAi: scope.noWhatsAppAi,
           },
-          `RPA multi-nicho · até ${limit} leads · Brasil inteiro`,
+          `RPA ${scope.wave ? "multi-nicho" : scope.segment} · até ${limit} leads · ${where}`,
           [
-            { label: "Modo", value: "RPA · diversos nichos e profissões" },
-            { label: "Nichos", value: "Dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias, oficinas, academias…" },
-            { label: "Escopo", value: "Brasil inteiro (capitais + hubs) — não só SP/Campinas" },
+            { label: "Modo", value: scope.wave ? "RPA · diversos nichos e profissões" : `Varredura · ${scope.segment}` },
+            { label: "Nichos", value: scope.wave ? "Dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias…" : scope.segment },
+            { label: "Escopo", value: scope.nationwide ? "Brasil inteiro (capitais + hubs)" : scope.city },
             { label: "Meta", value: `Até ${limit} WhatsApp válidos sem site` },
             { label: "Times", value: "Comercial + Closer ativos · Dev quando Máquina" },
             { label: "Disparo", value: "Evolution · só com WhatsApp online" },
           ],
-          `RPA multi-nicho no Brasil inteiro: até ${limit} leads sem site/cardápio em vários nichos. Pipeline + Inbox + WhatsApp. Te aviso quando a onda terminar.`,
+          `RPA ${scope.wave ? "multi-nicho" : scope.segment} em ${where}: até ${limit} leads. Pipeline + Inbox + WhatsApp. Te aviso quando a onda terminar.`,
         ),
       ];
       if (goalMatch) {
@@ -604,43 +619,38 @@ export function interpret(text: string): Reply[] {
   }
 
   // Prospecção autônoma: qualquer nicho que o gestor pedir (não só dentista)
-  if (/sem.?site|google maps|maps|varr\w*|prospect|prospecc|ptrospec|cacar lead|caçar lead|buscar cliente|buscar lead|gerar?\s+\d*\s*leads?|gere\s+\d*\s*leads?|ativar o time|ativ\w*\s+time|sem ia|sem inteligencia|chatbot|atendente virtual|ia no whatsapp/.test(n)) {
-    const intent = extractProspectIntent(text);
-    const weak = /negocios locais|sem site|empresas|clientes|^leads?$/.test(
-      intent.segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+  if (/sem.?site|google maps|maps|varr\w*|prospect|prospecc|ptrospec|cacar lead|caçar lead|buscar cliente|buscar lead|procure|procurar|gerar?\s+\d*\s*leads?|gere\s+\d*\s*leads?|ativar o time|ativ\w*\s+time|sem ia|sem inteligencia|chatbot|atendente virtual|ia no whatsapp/.test(n)) {
+    const scope = resolveProspectScope(text);
+    const weak = /negocios locais|sem site|empresas|clientes|^leads?$|diversos/.test(
+      scope.segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
     );
-    const segment = weak ? "Dentistas" : intent.segment;
-    const nationwide = intent.nationwide;
-    const city = intent.city;
-    const nums = [...n.matchAll(/(\d{1,4})/g)].map((m) => Number(m[1])).filter((x) => x >= 10 && x <= 1000);
-    const asked = nums.find((x) => x >= 80) ?? nums[0] ?? 10;
-    const wave = weak || asked >= 80 || /onda|1000|mil leads|diversos nichos|varios nichos|\brpa\b|brasil/.test(n);
-    const limit = Math.min(wave ? (nums.find((x) => x >= 80) ?? 1000) : asked, 1000);
-    const br = nationwide || wave;
+    const segment = scope.wave ? scope.segment : (weak ? "Dentistas" : scope.segment);
+    const { city, nationwide, wave, limit, noWhatsAppAi } = scope;
+    const where = nationwide ? "Brasil inteiro" : city;
 
     return [
       perform(
         "prospect.scan_maps",
         {
-          segment: wave ? "vários nichos locais" : segment,
-          city: br ? "Brasil" : city,
-          nationwide: br,
-          state: br ? "TODOS" : undefined,
+          segment: wave ? "diversos nichos locais" : segment,
+          city,
+          nationwide,
+          state: nationwide ? "TODOS" : undefined,
           limit,
           wave,
-          noWhatsAppAi: intent.noWhatsAppAi,
+          noWhatsAppAi,
         },
-        `Varredura Maps: ${wave ? "onda multi-nicho" : segment} · ${br ? "Brasil inteiro" : city}`,
+        `Varredura Maps: ${wave ? "onda multi-nicho" : segment} · ${where}`,
         [
           { label: "Nicho", value: wave ? "RPA diversos nichos (dentistas, clínicas, estética, advogados, restaurantes, barbearias, pet, imobiliárias…)" : segment },
-          { label: "Escopo", value: br ? "Brasil inteiro — não só SP/Campinas" : city },
-          { label: "Critério", value: intent.noWhatsAppAi ? "WhatsApp válido · sem rastros públicos de IA/chatbot no atendimento (heurística)" : "Sem site + WhatsApp celular válido · sem inventar número" },
+          { label: "Escopo", value: where },
+          { label: "Critério", value: noWhatsAppAi ? "WhatsApp válido · sem rastros públicos de IA/chatbot no atendimento (heurística)" : "Sem site + WhatsApp celular válido · sem inventar número" },
           { label: "CRM", value: "Pipeline → Qualificado · Inbox · Contatos" },
           { label: "WhatsApp", value: "Evolution (chip conectado)" },
         ],
         wave
-          ? `RPA multi-nicho no Brasil (até ${limit} WhatsApp válidos). Pipeline + Inbox + disparo. Te aviso ao terminar.`
-          : `Varredura de ${segment} em ${br ? "Brasil" : city} iniciada. Leads → Pipeline + Inbox + WhatsApp. Te aviso ao terminar.`,
+          ? `RPA multi-nicho em ${where} (até ${limit} WhatsApp válidos). Pipeline + Inbox + disparo. Te aviso ao terminar.`
+          : `Varredura de ${segment} em ${where} iniciada. Leads → Pipeline + Inbox + WhatsApp. Te aviso ao terminar.`,
       ),
     ];
   }

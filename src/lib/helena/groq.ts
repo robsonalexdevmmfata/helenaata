@@ -334,7 +334,7 @@ ${CALENDAR_TOOL_PROMPT}
 Diretrizes:
 1. Se perguntarem como usar / o que fazer / me ensina: chame helena_coach.
 2. Se pedirem follow-up, cuidar de tudo, resgatar frios: chame helena_run_followups.
-3. Prospecção / RPA / 1000 leads / diversos nichos / Brasil: SEMPRE prospect_scan_maps primeiro (nationwide=true, wave). NUNCA chame só dev_build_presence nesse pedido — cardápio/site/time Dev vêm DEPOIS dos leads.
+3. Prospecção / RPA / leads: SEMPRE prospect_scan_maps primeiro. Se o gestor citou CIDADE (Andradina, Balneário Camboriú, Campinas…), use essa city com nationwide=false — NUNCA troque por Brasil. nationwide=true e wave só se pediu Brasil/nacional/diversos nichos sem cidade. NUNCA chame só dev_build_presence nesse pedido — cardápio/site/time Dev vêm DEPOIS dos leads.
 4. Antes de venda no WhatsApp, leads_diagnose. Dono primeiro; preço só se perguntarem (site/cardápio R$ 100/mês).
 5. Horário fechado → calendar_agendar_reuniao na hora.
 ${allowDev ? "6. Prévia Vercel pura (sem RPA): dev_build_presence. Cardápio = só restaurante/lanchonete. Sorveteria e serviços = site. Se misturar prospecção+Dev, chame só prospect_scan_maps." : "6. Sem Time Dev liberado: prospect_scan_maps; comercial prospecta."}

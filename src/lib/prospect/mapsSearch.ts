@@ -140,19 +140,76 @@ function overpassClauses(segment: string) {
     .map((clause) => clause.replace(/^nwr/, "node"));
 }
 
+const CITY_ALIASES: Array<[RegExp, string]> = [
+  [/adradina|andradina/, "Andradina"],
+  [/balneario\s+(?:de\s+)?camboriu|bc\b/, "Balneário Camboriú"],
+  [/sao\s+paulo|s[aã]o\s+paulo/, "São Paulo"],
+  [/campinas/, "Campinas"],
+  [/aracatuba|ara[cç]atuba/, "Araçatuba"],
+];
+
+function normalizeCityName(raw: string): string {
+  const key = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const hit = CITY_ALIASES.find(([re]) => re.test(key));
+  if (hit) return hit[1];
+  return raw
+    .split(/\s+/)
+    .map((w) => (/^(de|da|do|das|dos)$/i.test(w) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(" ");
+}
+
+/** Escopo de prospecção: cidade nomeada no prompt SEMPRE ganha de “Brasil / 1000 leads”. */
+export function resolveProspectScope(text: string) {
+  const intent = extractProspectIntent(text);
+  const n = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const namedCity = Boolean(intent.city && !/^brasil$/i.test(intent.city));
+  const wantsBrasilExplicit =
+    /brasil\s*(inteiro|todinho|todo)|todo\s+o\s+brasil|nacional|todos\s+os\s+estados|\bno brasil\b/.test(n);
+  const segKey = intent.segment.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const hasSpecificNiche = !/negocios locais|sem site|empresas|clientes|^leads?$|diversos|varios nichos|leads?\s*quentes?|^por\s+\d/.test(segKey);
+  const nums = [...n.matchAll(/(\d{1,4})/g)].map((m) => Number(m[1])).filter((x) => x >= 10 && x <= 1000);
+  const asked = nums.find((x) => x >= 80) ?? nums[0] ?? 10;
+  const multiNicheAsk =
+    /diversos?\s*nichos?|varios\s*nichos?|multi[\s-]?nicho|todos?\s*os\s*nichos|onda\s*multi|\brpa\b/.test(n)
+    || ((/leads?\s*quentes?|(1000|mil)\s*leads?/.test(n)) && !hasSpecificNiche);
+  // Cidade explícita trava nationwide — mesmo pedindo 1000 leads.
+  const nationwide = namedCity ? false : (wantsBrasilExplicit || intent.nationwide || /(1000|mil)\s*leads?/.test(n));
+  const wave = multiNicheAsk || (!hasSpecificNiche && (asked >= 80 || nationwide));
+  const limit = Math.min(Math.max(asked, wave ? 80 : 10), 1000);
+  const city = namedCity ? intent.city : nationwide ? "Brasil" : intent.city;
+  return {
+    segment: wave && !hasSpecificNiche ? "diversos nichos locais" : intent.segment,
+    city,
+    nationwide,
+    wave,
+    limit,
+    namedCity,
+    noWhatsAppAi: intent.noWhatsAppAi,
+  };
+}
+
 export function extractProspectIntent(text: string) {
   const n = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const nationwide = /brasil inteiro|todo o brasil|nacional|todos os estados|\bno brasil\b/.test(n);
-  const cityMatch = text.match(/\bem\s+([A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+){0,2}(?:,\s*[A-Z]{2})?)/i);
+  const nationwideAsk = /brasil inteiro|todo o brasil|nacional|todos os estados|\bno brasil\b/.test(n);
+  const cityMatch = text.match(
+    /\bem\s+([A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+(?:\s+(?:de|da|do|das|dos|[A-ZÁÉÍÓÚÂÊÔÃÕa-záéíóúâêôãõ]+)){0,3}(?:,\s*[A-Z]{2})?)/i,
+  );
   const cityRaw = (cityMatch?.[1] ?? "")
-    .replace(/\s+(sem|com|so|só|leads?|quentes?|site|whatsapp|inteligencia|inteligência|chatbot|atendente|e|para|pelo|via)\b[\s\S]*$/i, "")
+    .replace(/\s+(sem|com|so|só|leads?|quentes?|site|whatsapp|inteligencia|inteligência|chatbot|atendente|e|para|pelo|via|sme)\b[\s\S]*$/i, "")
     .trim();
-  const city = cityRaw && !/brasil/i.test(cityRaw) ? cityRaw : "Brasil";
+  const aliasHit = CITY_ALIASES.find(([re]) => re.test(n));
+  const city =
+    cityRaw && !/brasil/i.test(cityRaw)
+      ? normalizeCityName(cityRaw)
+      : aliasHit && !nationwideAsk
+        ? aliasHit[1]
+        : "Brasil";
+  const namedCity = Boolean(city && !/^brasil$/i.test(city));
 
   const labels: Array<[RegExp, string]> = [
     [/odontolog|dentista|consultorio odont/, "Dentistas e consultórios odontológicos"],
     [/advog|escritorio de advoc/, "Advogados"],
-    [/clinic.*medic|medico/, "Clínicas Médicas"],
+    [/clinic|medico/, "Clínicas Médicas"],
     [/estetica/, "Clínicas de estética"],
     [/restaurante|pizzaria|lanchonete/, "Restaurantes"],
     [/padaria|cafeteria/, "Padarias e cafeterias"],
@@ -167,19 +224,33 @@ export function extractProspectIntent(text: string) {
   ];
 
   let segment = "";
-  const after = n.match(/(?:prospectar|cacar|buscar|varrer|leads de|nicho)\s+(.+?)(?:\s+em\s+|\s+sem site|\s+no brasil|$)/);
+  const after = n.match(/(?:prospectar|cacar|buscar|procure|procurar|varrer|leads de|nicho)\s+(.+?)(?:\s+em\s+|\s+sem site|\s+no brasil|$)/);
   if (after) {
-    segment = after[1].replace(/\s+sem site.*$/, "").replace(/\s+para a agencia.*$/, "").trim();
+    segment = after[1]
+      .replace(/^\d+\s*/, "")
+      .replace(/^por\s+(\d+\s*)?/, "")
+      .replace(/\s+sem site.*$/, "")
+      .replace(/\s+para a agencia.*$/, "")
+      .replace(/\s+quentes?\b.*$/i, "")
+      .trim();
   }
-  if (!segment || /^(clientes|leads|empresas|negocios|negocios locais)$/.test(segment)) {
+  if (
+    !segment
+    || /^(clientes|leads|empresas|negocios|negocios locais|\d+|leads?\s*quentes?)$/.test(segment)
+    || /leads?\s*quentes?/.test(segment)
+  ) {
     const hit = labels.find(([re]) => re.test(n));
     segment = hit ? hit[1] : "negócios locais sem site";
+  } else {
+    const hit = labels.find(([re]) => re.test(segment));
+    if (hit) segment = hit[1];
   }
 
   return {
     segment,
     city,
-    nationwide: nationwide || city === "Brasil",
+    // Cidade nomeada nunca vira “Brasil inteiro” só porque pediu volume alto.
+    nationwide: namedCity ? false : (nationwideAsk || city === "Brasil"),
     noWhatsAppAi: isNoWhatsAppAiIntent(text),
   };
 }

@@ -73,7 +73,7 @@ export function detectWhatsAppAiSignals(text: string, url = ""): WaAiSignal {
 
 export function isNoWhatsAppAiIntent(text: string) {
   const n = fold(text);
-  return /sem ia|sem inteligencia|sem chatbot|atendente virtual|ia no whatsapp|bot no whatsapp|inteligencia artificial.*(whatsapp|atend)|whatsapp.*(sem ia|sem bot|humano)/.test(
+  return /sem ia|sem agente\s*(de\s*)?ia|sem inteligencia|sem chatbot|atendente virtual|ia no whatsapp|bot no whatsapp|inteligencia artificial.*(whatsapp|atend)|whatsapp.*(sem ia|sem bot|humano)/.test(
     n,
   );
 }

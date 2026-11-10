@@ -249,13 +249,26 @@ export async function runWaveProspecting(opts: {
   operationId?: string;
   niches?: string[];
   nationwide?: boolean;
+  /** Quando o gestor pediu cidade específica (ex.: Balneário Camboriú), a onda fica só nela. */
+  cities?: string[];
+  city?: string;
 }) {
   activateCommercialTeam();
   const target = Math.min(Math.max(opts.limit ?? 150, 1), 1000);
   // Diversos nichos + várias cidades ao mesmo tempo (até 1000 leads). Brasil = hubs nacionais.
+  // Cidade nomeada no prompt: não espalha pra SP/Brasil.
   const { NATIONAL_HUBS } = await import("./mapsSearch");
-  const cityPool = opts.nationwide ? [...new Set([...NATIONAL_HUBS, ...WAVE_CITIES])] : WAVE_CITIES;
-  const hubs = cityPool.slice(0, target <= 60 ? 3 : target <= 200 ? 6 : cityPool.length);
+  const pinned = (opts.cities?.length ? opts.cities : opts.city ? [opts.city] : [])
+    .map((c) => String(c).trim())
+    .filter((c) => c && !/^brasil$/i.test(c));
+  const cityPool = pinned.length
+    ? pinned
+    : opts.nationwide
+      ? [...new Set([...NATIONAL_HUBS, ...WAVE_CITIES])]
+      : WAVE_CITIES;
+  const hubs = pinned.length
+    ? pinned
+    : cityPool.slice(0, target <= 60 ? 3 : target <= 200 ? 6 : cityPool.length);
   const pool = (opts.niches?.length ? opts.niches : WAVE_NICHES).filter(Boolean);
   const niches = pool.slice(0, target <= 60 ? Math.min(8, pool.length) : target <= 200 ? Math.min(12, pool.length) : pool.length);
   const perCombo = Math.min(Math.max(Math.ceil(target / Math.max(1, hubs.length * niches.length)) + 2, 3), 14);
