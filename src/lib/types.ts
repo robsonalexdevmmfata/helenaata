@@ -906,6 +906,8 @@ export interface HelenaSettings {
   blockAtLimit: boolean;
   /** Meta de faturamento mensal (ex.: 3000) — campanha 24/7. */
   monthlyGoal?: number;
+  /** ISO: até quando o chip fica em resfriamento (Meta restringiu). */
+  waCoolUntil?: string;
 }
 
 export interface LgpdRequest {

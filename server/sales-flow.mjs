@@ -77,6 +77,8 @@ export async function tickCommercialAlwaysOn() {
     const deals = Array.isArray(payload.deals) ? payload.deals : [];
     const contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
     const connections = Array.isArray(payload.connections) ? payload.connections : [];
+    const coolUntil = payload.helenaSettings?.waCoolUntil;
+    const cooling = Boolean(payload.killSwitchActive || (coolUntil && Date.now() < new Date(coolUntil).getTime()));
     const waOnline = connections.some((c) => c?.status === "online");
     let changed = false;
     let queuedHere = false;
@@ -106,7 +108,7 @@ export async function tickCommercialAlwaysOn() {
         }
       }
 
-      if (queuedHere || !waOnline) continue;
+      if (queuedHere || !waOnline || cooling) continue;
       if (flow.state === "esfriou" || flow.state === "reuniao_agendada" || flow.state === "respondeu") continue;
       if ((flow.closerAttempts || 0) >= 1) continue;
       if (!flow.readAt || !flow.lastOutboundAt) continue;
@@ -122,7 +124,7 @@ export async function tickCommercialAlwaysOn() {
         instance: payload.evolutionInstance || "helena",
         number: phone,
         text,
-        delayMs: 20_000,
+        delayMs: 90_000,
       });
       if (!enq.ok) continue;
 

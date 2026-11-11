@@ -2,8 +2,13 @@ import type { Contact, Conversation, DB, SalesFlowSettings } from "@/lib/types";
 import { isBusinessTime, nextBusinessTime, shouldHoldOutbound } from "@/lib/helena/sales-flow";
 import { dailyLimitFor, mustSubscribe, prospectsUsedToday } from "@/lib/saas";
 
-const MIN_GAP_MS = 35_000;
-const HOUR_CAP = 20;
+/** Espaço mínimo entre disparos (chip novo / pós-restrição: bem mais lento). */
+const MIN_GAP_MS = 90_000;
+/** Teto por hora — Meta restringe fácil acima disso em massa. */
+const HOUR_CAP = 8;
+/** Em cooldown (WhatsApp restringiu): quase para. */
+const COOLDOWN_HOUR_CAP = 2;
+const COOLDOWN_GAP_MS = 5 * 60_000;
 
 export function isOptedOut(contact?: Pick<Contact, "tags" | "consent"> | null) {
   if (!contact) return false;
@@ -31,6 +36,12 @@ export function sentLastHour(db: DB, now = Date.now()) {
   ).length;
 }
 
+export function isWhatsAppCooldowning(db: DB) {
+  const until = db.helenaSettings?.waCoolUntil;
+  if (!until) return false;
+  return Date.now() < new Date(until).getTime();
+}
+
 export function evaluateOutbound(opts: {
   db: DB;
   conv?: Conversation;
@@ -42,6 +53,17 @@ export function evaluateOutbound(opts: {
   const isTest = typeof process !== "undefined" && Boolean(process.env?.VITEST);
   if (mustSubscribe(user)) {
     return { ok: false, message: "Trial acabou. Assine Impulso ou Máquina para o WhatsApp voltar a disparar." };
+  }
+  if (opts.db.killSwitchActive) {
+    return { ok: false, message: "Kill switch ligado — nenhum WhatsApp sai até você liberar." };
+  }
+  if (isWhatsAppCooldowning(opts.db)) {
+    const until = opts.db.helenaSettings?.waCoolUntil;
+    return {
+      ok: false,
+      waitMs: until ? Math.max(0, new Date(until).getTime() - now.getTime()) : 3_600_000,
+      message: `WhatsApp em resfriamento até ${until ? new Date(until).toLocaleString("pt-BR") : "amanhã"} — Meta restringiu o chip. Zero disparo em massa.`,
+    };
   }
   if (isOptedOut(opts.contact)) {
     return { ok: false, message: "Este número pediu para não ser contatado (opt-out / sem consentimento)." };
@@ -74,12 +96,15 @@ export function evaluateOutbound(opts: {
   if (used >= cap) {
     return { ok: false, message: `Limite diário de ${cap} abordagens atingido.` };
   }
-  if (!isTest && sentLastHour(opts.db, now.getTime()) >= HOUR_CAP) {
-    return { ok: false, waitMs: 3_600_000, message: "Teto antiban: no máximo 20 disparos por hora." };
+  const cooling = isWhatsAppCooldowning(opts.db);
+  const hourCap = cooling ? COOLDOWN_HOUR_CAP : HOUR_CAP;
+  const minGap = cooling ? COOLDOWN_GAP_MS : MIN_GAP_MS;
+  if (!isTest && sentLastHour(opts.db, now.getTime()) >= hourCap) {
+    return { ok: false, waitMs: 3_600_000, message: `Teto antiban: no máximo ${hourCap} disparos por hora.` };
   }
   const gap = now.getTime() - lastWhatsAppOutboundAt(opts.db);
-  if (!isTest && gap >= 0 && gap < MIN_GAP_MS) {
-    const waitMs = MIN_GAP_MS - gap;
+  if (!isTest && gap >= 0 && gap < minGap) {
+    const waitMs = minGap - gap;
     return { ok: false, waitMs, message: `Antiban: espere ${Math.ceil(waitMs / 1000)}s entre um WhatsApp e outro.` };
   }
   if (opts.conv && shouldHoldOutbound(opts.conv, now, 48)) {

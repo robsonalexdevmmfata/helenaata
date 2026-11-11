@@ -21,6 +21,8 @@ const OUTBOUND_TOOLS = new Set([
   "messages.send",
   "campaigns.start",
   "campaigns.create",
+  "campaigns.activate_month",
+  "campaigns.activate_food",
   "operations.start",
   "rpa.run_shift",
   "rpa.first_mission",
@@ -40,6 +42,10 @@ export function autonomyBlocksTool(db: DB, name: string) {
 export function circuitBreaker(db: DB, name: string): string | null {
   if (db.killSwitchActive && OUTBOUND_TOOLS.has(name)) {
     return "Kill switch ativo: Helena não dispara ação externa.";
+  }
+  const coolUntil = db.helenaSettings?.waCoolUntil;
+  if (coolUntil && Date.now() < new Date(coolUntil).getTime() && OUTBOUND_TOOLS.has(name)) {
+    return `WhatsApp em resfriamento até ${new Date(coolUntil).toLocaleString("pt-BR")}: sem disparo em massa.`;
   }
   const failed = (db.rpaJobs || []).filter((j) => j.status === "failed").length;
   if (failed >= 3 && (name === "rpa.run_shift" || name === "rpa.first_mission")) {

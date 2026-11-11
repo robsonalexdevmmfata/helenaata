@@ -16,12 +16,14 @@ import { unansweredAgentStreak, wasDeliveredOutbound } from "@/lib/helena/sales-
 import { phoneDedupeKey } from "@/lib/prospect/runProspecting";
 import { flushCyclePush, scheduleCyclePush } from "@/lib/persist/cycle";
 import { advanceDealOnApproach } from "@/lib/crm/pipelineStages";
+import { evaluateOutbound, isWhatsAppCooldowning } from "@/lib/whatsapp/antiban";
 
 // ── Configurações de disparo seguro ──────────────────────────────────────────
 
-const DEFAULT_DELAY_MS = 8_000;
-const MAX_BURST = 6;
-const BURST_PAUSE_MS = 35_000;
+/** Antiban forte: Meta restringe fácil com rajada. */
+const DEFAULT_DELAY_MS = 75_000;
+const MAX_BURST = 2;
+const BURST_PAUSE_MS = 4 * 60_000;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,12 @@ export async function dispatchProspectMessages(
 
   repairGhostWhatsAppDrafts();
 
+  if (isWhatsAppCooldowning(getDB()) || getDB().killSwitchActive) {
+    result.skipped = contacts.length;
+    result.errors.push("WhatsApp em resfriamento / kill switch — disparo em massa parado.");
+    return result;
+  }
+
   for (let i = 0; i < contacts.length; i++) {
     const contact = contacts[i]!;
 
@@ -117,6 +125,11 @@ export async function dispatchProspectMessages(
       continue;
     }
     const dbNow = getDB();
+    if (dbNow.killSwitchActive || isWhatsAppCooldowning(dbNow)) {
+      result.skipped += contacts.length - i;
+      result.errors.push("Resfriamento ativado no meio da fila — parei o lote.");
+      break;
+    }
     const key = phoneDedupeKey(cleanPhone);
     const already = dbNow.contacts.find((c) => phoneDedupeKey(c.phone) === key);
     const existingConv = already
@@ -132,6 +145,19 @@ export async function dispatchProspectMessages(
     // Já abordado de verdade → nunca chama de novo (evita mensagem repetida).
     if (recentSend || (existingConv && unansweredAgentStreak(existingConv) >= 1)) {
       result.skipped++;
+      continue;
+    }
+
+    const gate = evaluateOutbound({
+      db: dbNow,
+      conv: existingConv,
+      contact: already || dbNow.contacts.find((c) => c.id === contact.contactId),
+    });
+    if (!gate.ok) {
+      result.skipped++;
+      result.errors.push(gate.message);
+      if (gate.waitMs && gate.waitMs > 0) await sleep(Math.min(gate.waitMs, BURST_PAUSE_MS));
+      if (/kill switch|resfriamento|teto antiban/i.test(gate.message)) break;
       continue;
     }
 

@@ -101,6 +101,11 @@ export function promiseConflicts(db: DB) {
 export function crisisState(db: DB) {
   const reasons: string[] = [];
   if (db.killSwitchActive) reasons.push("Kill switch ligado — missões e operações congeladas.");
+  const coolUntil = db.helenaSettings?.waCoolUntil;
+  const chipCooling = Boolean(coolUntil && Date.now() < new Date(coolUntil).getTime());
+  if (chipCooling) {
+    reasons.push(`WhatsApp restringido / resfriando até ${new Date(coolUntil!).toLocaleString("pt-BR")} — zero disparo em massa.`);
+  }
   const waOffline = db.connections.some((c) => /whatsapp/i.test(c.name) && c.status === "offline");
   if (waOffline) reasons.push("WhatsApp da operação está offline.");
   const failedJobs = (db.rpaJobs || []).filter((j) => j.status === "failed").length;
@@ -109,14 +114,16 @@ export function crisisState(db: DB) {
   if (cooling >= 5) reasons.push(`${cooling} oportunidades esfriando ou paradas no dossiê.`);
   const pending = db.approvals.filter((a) => a.status === "pendente").length;
   if (pending >= 5) reasons.push(`${pending} aprovações travando execução.`);
-  const active = reasons.length >= 2;
+  const active = reasons.length >= 2 || chipCooling || db.killSwitchActive;
   return {
     active,
     reasons,
     plan: active
       ? [
           "Helena orquestra; não dispara sozinha.",
-          waOffline ? "Time Comercial: não enviar até o chip voltar." : "Time Comercial: só follow-up com opt-out e horário comercial.",
+          chipCooling || waOffline
+            ? "Time Comercial: não enviar em massa até a Meta liberar o chip."
+            : "Time Comercial: só follow-up com opt-out e horário comercial.",
           failedJobs ? "Operações: reprocessar RPA falho uma a uma, sem lote." : "Operações: manter a fila existente.",
           "Qualidade: nenhuma promessa nova até o comercial confirmar capacidade.",
         ]

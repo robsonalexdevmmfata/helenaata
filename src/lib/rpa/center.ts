@@ -307,6 +307,9 @@ function radarInWindow(sch: RadarSchedule, hour: number) {
 export function maybeEnqueueRadar() {
   const db = getDB();
   ensureRpaCollections(db);
+  if (db.killSwitchActive) return;
+  const coolUntil = db.helenaSettings?.waCoolUntil;
+  if (coolUntil && Date.now() < new Date(coolUntil).getTime()) return;
   const now = new Date();
   const hour = now.getHours();
   const day = now.toISOString().slice(0, 10);

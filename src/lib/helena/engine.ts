@@ -29,6 +29,7 @@ import {
 import { runPresencePipeline } from "@/lib/dev/presence";
 import { canUseDevTeam, grantAccessDays, grantLifetimeAccess, isPlatformAdmin, mustSubscribe, MAX_PROSPECT_WAVE, reserveProspects, setDailyLeadQuota } from "@/lib/saas";
 import { evaluateOutbound, isOptedOut } from "@/lib/whatsapp/antiban";
+import { activateWhatsAppCooldown, clearWhatsAppCooldown } from "@/lib/whatsapp/cooldown";
 import { findOrDraftConversation, pickRpaLeads, rpaOpening } from "@/lib/rpa/shift";
 import { enqueueRemoteSend } from "@/lib/rpa/enqueue";
 import {
@@ -2083,11 +2084,27 @@ const handlers: Record<string, Handler> = {
     const text = `${c.recommendation}\n${c.seats.map((s) => `• ${s.team}: ${s.stance} — ${s.evidence}`).join("\n")}`;
     return ok(text, { seats: c.seats, recommendation: c.recommendation });
   },
+  "whatsapp.cooldown": (p, ctx) => {
+    const hours = Number(p.hours) || 48;
+    const { until } = activateWhatsAppCooldown({ hours, actor: ctx.actor || "Helena" });
+    return ok(
+      `WhatsApp em resfriamento até ${new Date(until).toLocaleString("pt-BR")}. Campanhas, radar e missões pausados. Kill switch ligado. Espere a Meta liberar o chip — sem disparo em massa.`,
+      { until, hours },
+    );
+  },
+  "whatsapp.cooldown_clear": (_p, ctx) => {
+    clearWhatsAppCooldown(ctx.actor || "Helena");
+    return ok("Resfriamento liberado e kill switch desligado. Volte só com antiban lento (poucos por hora).");
+  },
   "helena.health": () => {
     const h = integrationHealth(getDB());
+    const cool = getDB().helenaSettings?.waCoolUntil;
+    const coolNote = cool && Date.now() < new Date(cool).getTime()
+      ? ` Chip em resfriamento até ${new Date(cool).toLocaleString("pt-BR")}.`
+      : "";
     return ok(
-      `Integrações: kill switch ${h.killSwitch ? "ligado" : "desligado"}; circuito ${h.circuitOpen ? "aberto" : "fechado"}; RPA ${h.rpa.failed} falha(s), ${h.rpa.queued} na fila. ${h.note}`,
-      { ...h },
+      `Integrações: kill switch ${h.killSwitch ? "ligado" : "desligado"}; circuito ${h.circuitOpen ? "aberto" : "fechado"}; RPA ${h.rpa.failed} falha(s), ${h.rpa.queued} na fila.${coolNote} ${h.note}`,
+      { ...h, waCoolUntil: cool },
     );
   },
   "helena.benchmark": () => {
@@ -2371,6 +2388,8 @@ export function tickSalesFlow(now = new Date()) {
   }
   const s = getDB().salesFlow;
   if (!s?.enabled || db.killSwitchActive) return;
+  const coolUntil = db.helenaSettings?.waCoolUntil;
+  if (coolUntil && Date.now() < new Date(coolUntil).getTime()) return;
   const closer = db.agents.find((a) => a.id === s.closerAgentId);
   if (!closer || closer.status === "pausado" || closer.status === "erro") return;
   const conn = db.connections.find((c) => c.id === s.sharedConnectionId);

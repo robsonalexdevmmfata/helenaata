@@ -10,14 +10,14 @@ function prune(now = Date.now()) {
   while (sentHour.length && now - sentHour[0] > 3_600_000) sentHour.shift();
 }
 
-export function enqueueRpaJob({ instance, number, text, delayMs = 35_000 }) {
+export function enqueueRpaJob({ instance, number, text, delayMs = 75_000 }) {
   const now = Date.now();
   prune(now);
-  if (sentHour.length >= 20) {
-    return { ok: false, error: "teto antiban 20/hora no worker" };
+  if (sentHour.length >= 8) {
+    return { ok: false, error: "teto antiban 8/hora no worker" };
   }
   const id = `rpa_${seq++}`;
-  const runAt = now + Math.max(5_000, Number(delayMs) || 35_000);
+  const runAt = now + Math.max(60_000, Number(delayMs) || 75_000);
   jobs.push({ id, instance: instance || "helena", number: String(number).replace(/\D/g, ""), text: String(text), runAt, status: "queued" });
   if (jobs.length > 200) jobs.splice(0, jobs.length - 200);
   return { ok: true, id, runAt };

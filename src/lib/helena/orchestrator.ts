@@ -139,6 +139,28 @@ export async function sendToHelena(text: string) {
     content: m.text,
   }));
 
+  // Meta restringiu o chip → para tudo agora (antes de qualquer prospecção).
+  if (/restring(iu|iu\s+minha|iu\s+o)|whatsapp\s+(ban|bloque|restr)|chip\s+(ban|bloque|restr)|baniram|me\s+baniram|numero\s+restr|n[uú]mero\s+restr|bloqueou\s+(meu\s+)?whats|paus(a|ar)\s+(o\s+)?dispar|esfriar?\s+(o\s+)?(chip|whats)/i.test(clean)
+    && !/liberar|desbloquear|tirar\s+(o\s+)?resfri|cooldown_clear|ja\s+voltou|j[aá]\s+liberou/i.test(clean)) {
+    helenaUi.set({ state: "planejando" });
+    await sleep(150);
+    const res = runTool("whatsapp.cooldown", { hours: 48 }, { actor: "Helena", actorType: "helena", requestedBy: currentUser(getDB())?.name || "Gestor" });
+    pushHelenaMessage(
+      res.message,
+      { type: "result", ok: res.ok, title: "WhatsApp · resfriamento", detail: "Campanhas e radar pausados. Só responda manual no Inbox se alguém escrever. Espere 48h+ a Meta liberar." },
+    );
+    helenaUi.set({ state: "ocioso" });
+    return;
+  }
+  if (/liberar\s+(o\s+)?whats|tirar\s+(o\s+)?resfri|chip\s+voltou|whatsapp\s+voltou|cooldown_clear|desligar\s+kill/i.test(clean)) {
+    helenaUi.set({ state: "planejando" });
+    await sleep(150);
+    const res = runTool("whatsapp.cooldown_clear", {}, { actor: "Helena", actorType: "helena", requestedBy: currentUser(getDB())?.name || "Gestor" });
+    pushHelenaMessage(res.message, { type: "result", ok: res.ok, title: "WhatsApp · liberado", detail: res.message });
+    helenaUi.set({ state: "ocioso" });
+    return;
+  }
+
   if (isCompanyStatusQuestion(clean) || isCouncilQuestion(clean) || isCrisisQuestion(clean) || isMissionPlanIntent(clean)) {
     helenaUi.set({ state: "planejando" });
     await sleep(200);
@@ -243,6 +265,12 @@ export async function sendToHelena(text: string) {
         pushHelenaMessage(
           groqRes.text || res.message,
           { type: "result", ok: res.ok, title: "Resgate de Leads Frios (>48h)", detail: res.message }
+        );
+      } else if (tc.name === "whatsapp_cooldown") {
+        const res = runTool("whatsapp.cooldown", tc.arguments, { actor: "Helena", actorType: "helena", requestedBy });
+        pushHelenaMessage(
+          groqRes.text || res.message,
+          { type: "result", ok: res.ok, title: "WhatsApp · resfriamento", detail: res.message },
         );
       } else if (tc.name === "helena_briefing" || tc.name === "helena_council" || tc.name === "helena_crisis" || tc.name === "helena_coach" || tc.name === "helena_run_followups") {
         const tool = tc.name.replace("_", ".") as "helena.briefing" | "helena.council" | "helena.crisis" | "helena.coach" | "helena.run_followups";
@@ -674,6 +702,35 @@ export function interpret(text: string): Reply[] {
           { label: "Responsável", value: "Closer (IA)" },
         ],
         `Reunião gravada na Agenda compartilhada para ${contact?.name}. O lead foi para Reunião Agendada no pipeline.`
+      ),
+    ];
+  }
+
+  // WhatsApp restringido / ban / esfriar chip
+  if (/restring(iu|iu\s+minha)|whatsapp\s+(ban|bloque|restr)|chip\s+(ban|bloque|restr)|baniram|bloqueou\s+(meu\s+)?whats|paus(a|ar)\s+(o\s+)?dispar|esfriar?\s+(o\s+)?(chip|whats)/.test(n)
+    && !/liberar|desbloquear|tirar\s+(o\s+)?resfri|ja\s+voltou|j[aá]\s+liberou/.test(n)) {
+    return [
+      perform(
+        "whatsapp.cooldown",
+        { hours: 48 },
+        "WhatsApp · resfriamento (Meta)",
+        [
+          { label: "Ação", value: "Kill switch + pausa campanhas/radar" },
+          { label: "Duração", value: "48 horas (ajustável)" },
+          { label: "Permitido", value: "Só resposta manual no Inbox" },
+        ],
+        "Chip em resfriamento. Zero disparo em massa até a Meta liberar.",
+      ),
+    ];
+  }
+  if (/liberar\s+(o\s+)?whats|tirar\s+(o\s+)?resfri|chip\s+voltou|whatsapp\s+voltou|desligar\s+kill/.test(n)) {
+    return [
+      perform(
+        "whatsapp.cooldown_clear",
+        {},
+        "WhatsApp · liberar chip",
+        [{ label: "Ação", value: "Desliga kill switch e resfriamento" }],
+        "Resfriamento liberado. Volte só com antiban lento.",
       ),
     ];
   }

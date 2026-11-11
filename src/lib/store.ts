@@ -202,9 +202,10 @@ function hydrate(db: DB): DB {
     if (pl.id === "pl_com" || /comercial/i.test(pl.name)) ensureCommercialStageOrder(pl);
   }
   promoteNoSiteDealsToQualified(db.deals || [], db.pipelines?.[0]);
-  // Tira teto antigo de 30 leads/dia no chip — operação Máquina = 1000.
+  // Não força 1000/dia no hydrate — isso queimava o chip. Cap seguro se vier absurdo.
   for (const c of db.connections || []) {
-    if ((c.dailyLimit || 0) > 0 && c.dailyLimit < 150) c.dailyLimit = 1000;
+    if ((c.dailyLimit || 0) > 200) c.dailyLimit = 80;
+    if ((c.dailyLimit || 0) > 0 && c.dailyLimit < 20) c.dailyLimit = 40;
   }
   // Time Comercial sempre pode mover etapa no pipeline.
   db.agents?.forEach((a) => {

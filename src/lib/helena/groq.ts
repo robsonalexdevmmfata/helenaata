@@ -268,6 +268,18 @@ export const GROQ_TOOLS = [
   {
     type: "function",
     function: {
+      name: "whatsapp_cooldown",
+      description: "Meta restringiu/banhiu o WhatsApp. Para disparo em massa, pausa campanhas/radar e liga kill switch por N horas (padrão 48).",
+      parameters: {
+        type: "object",
+        properties: { hours: { type: "number", description: "Horas de resfriamento (12–168). Padrão 48." } },
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
       name: "missions_plan",
       description: "Planeja uma missão comercial rastreável (radar → abordagem → BANT → agenda → proposta). Não dispara WhatsApp sozinha.",
       parameters: {
